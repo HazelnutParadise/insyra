@@ -52,13 +52,25 @@ Both scatter charts SHALL return a nil chart and an error when a cell of `X` or 
 - **WHEN** `plot.CreateRadarChart(cfg, a, b)`
 - **THEN** a chart with two series comes back with a nil error
 
+### Requirement: gplot groups bar series
+
+`gplot.CreateBarChart` SHALL draw several lists as grouped bars, side by side in each category, one colour per list, with a legend naming each list.
+
+#### Scenario: Two bar series
+- **WHEN** `gplot.CreateBarChart(cfg, a, b)` with two lists of three values
+- **THEN** a chart comes back with three categories of two bars each and a legend naming both lists
+
+#### Scenario: Bar series of different lengths
+- **WHEN** `gplot.CreateBarChart(cfg, a, b)` where `a` has 3 values and `b` has 2
+- **THEN** the chart is nil and the error names list 2 and both lengths
+
 ## MODIFIED Requirements
 
 ### Requirement: gplot takes insyra's types
 
 `gplot` SHALL take its data as insyra's own types, checked by the compiler:
 - `CreateHistogram` takes one `insyra.IDataList`.
-- `CreateBarChart`, `CreateLineChart` and `CreateStepChart` take `...insyra.IDataList` and name each series after its list. `CreateBarChart` draws the lists as grouped bars, side by side in each category.
+- `CreateBarChart`, `CreateLineChart` and `CreateStepChart` take `...insyra.IDataList` and name each series after its list.
 - `CreateHeatmapChart` takes an `insyra.IDataTable`, with row *i* of the table as row *i* of the grid.
 - `CreateScatterChart` takes `...ScatterSeries`, each with a `Name` and two lists, `X` and `Y`, where point *i* is `(X[i], Y[i])`.
 
@@ -69,14 +81,6 @@ Both scatter charts SHALL return a nil chart and an error when a cell of `X` or 
 #### Scenario: Two columns as a scatter series
 - **WHEN** `CreateScatterChart(cfg, ScatterSeries{Name: "s", X: dt.GetColByName("h"), Y: dt.GetColByName("w")})` is called with columns of equal length
 - **THEN** a chart comes back with one point per row and a nil error
-
-#### Scenario: Two bar series
-- **WHEN** `gplot.CreateBarChart(cfg, a, b)` with two lists of three values
-- **THEN** a chart comes back with three categories of two bars each and a legend naming both lists
-
-#### Scenario: Bar series of different lengths
-- **WHEN** `gplot.CreateBarChart(cfg, a, b)` where `a` has 3 values and `b` has 2
-- **THEN** the chart is nil and the error names list 2 and both lengths
 
 ### Requirement: gplot refuses data it cannot pair or draw
 
