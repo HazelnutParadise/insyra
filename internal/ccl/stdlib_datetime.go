@@ -3,6 +3,8 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +113,50 @@ func registerDateTimeFunctions() {
 			return diff.Seconds(), nil
 		default:
 			return nil, fmt.Errorf("DATEDIFF: unknown unit %q (expected day/hour/minute/second)", unit)
+		}
+	})
+
+	// DUR(x, unit) returns x in a unit, the units DATEDIFF takes. x is a duration,
+	// such as the difference of two dates, or a duration string such as "1h30m"
+	// or "2d". An empty cell stays empty. A number is refused, since it has no
+	// unit to convert from.
+	registerFunction("DUR", func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("DUR requires 2 arguments (x, unit)")
+		}
+		unit, ok := args[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("DUR: unit must be a string, got %T", args[1])
+		}
+		var d time.Duration
+		switch x := args[0].(type) {
+		case nil:
+			return nil, nil
+		case time.Duration:
+			d = x
+		case string:
+			if d, ok = readDuration(x); !ok {
+				return nil, fmt.Errorf("DUR: cannot read %q as a duration; write it like '36h', '1h30m' or '2d'", x)
+			}
+		default:
+			if _, isNumber := toFloat64(x); isNumber {
+				if _, isBool := x.(bool); !isBool {
+					return nil, fmt.Errorf("DUR: %v is a number, which has no unit; write a duration such as '36h'", x)
+				}
+			}
+			return nil, fmt.Errorf("DUR: cannot read %T as a duration", x)
+		}
+		switch strings.ToLower(unit) {
+		case "day", "days":
+			return d.Hours() / 24.0, nil
+		case "hour", "hours":
+			return d.Hours(), nil
+		case "minute", "minutes":
+			return d.Minutes(), nil
+		case "second", "seconds":
+			return d.Seconds(), nil
+		default:
+			return nil, fmt.Errorf("DUR: unknown unit %q (expected day/hour/minute/second)", unit)
 		}
 	})
 
@@ -240,7 +286,7 @@ func datePart(t time.Time, unit string) (float64, bool) {
 // than a generic one.
 func datePartFunction(name, unit string) func(args ...any) (any, error) {
 	refuseDuration := func(what string) error {
-		return fmt.Errorf("%s takes a date and was given %s; to express a duration in %ss, use DATEDIFF(end, start, '%s'), or divide the difference of two dates, which counts seconds", name, what, unit, unit)
+		return fmt.Errorf("%s takes a date and was given %s; to express a duration in %ss, use DUR(x, '%s'), or DATEDIFF(end, start, '%s') for two dates", name, what, unit, unit, unit)
 	}
 	return func(args ...any) (any, error) {
 		if len(args) != 1 {
@@ -251,6 +297,8 @@ func datePartFunction(name, unit string) func(args ...any) (any, error) {
 			return v, nil
 		}
 		switch x := args[0].(type) {
+		case nil:
+			return nil, fmt.Errorf("%s takes a date and the value is empty", name)
 		case time.Duration:
 			return nil, refuseDuration("a duration")
 		case string:
@@ -266,6 +314,39 @@ func datePartFunction(name, unit string) func(args ...any) (any, error) {
 		}
 		return nil, fmt.Errorf("%s: cannot convert %T to date", name, args[0])
 	}
+}
+
+// dayWeekTerm matches the days and weeks of a duration string, which
+// time.ParseDuration does not read.
+var dayWeekTerm = regexp.MustCompile(`(\d+\.?\d*|\.\d+)[dw]`)
+
+// durationText matches a whole duration string, each term a number and a unit,
+// the way time.ParseDuration reads one, with d and w added. It is checked first:
+// a replacement inside malformed text such as "1.2.5d" could otherwise leave
+// text that parses to an unrelated duration.
+var durationText = regexp.MustCompile(`^[+-]?(0|((\d+\.?\d*|\.\d+)(ns|us|µs|μs|ms|s|m|h|d|w))+)$`)
+
+// readDuration reads what DUR takes: a time.Duration, or a string
+// time.ParseDuration reads, with d and w also accepted as 24 and 168 hours. A
+// string is rewritten in hours rather than added up afterwards, so a term out of
+// range fails in ParseDuration like any other.
+func readDuration(s string) (time.Duration, bool) {
+	if !durationText.MatchString(s) {
+		return 0, false
+	}
+	rewritten := dayWeekTerm.ReplaceAllStringFunc(s, func(term string) string {
+		n, err := strconv.ParseFloat(term[:len(term)-1], 64)
+		if err != nil {
+			return term
+		}
+		hours := 24.0
+		if term[len(term)-1] == 'w' {
+			hours = 168
+		}
+		return strconv.FormatFloat(n*hours, 'f', -1, 64) + "h"
+	})
+	d, err := time.ParseDuration(rewritten)
+	return d, err == nil
 }
 
 // addDuration shifts t by n units of a clock unit, refusing a shift a Duration

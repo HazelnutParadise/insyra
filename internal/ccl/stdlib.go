@@ -21,7 +21,7 @@ import (
 //   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
-//     MINUTE, SECOND, DAYOFMONTH, WEEKDAY, DATEPART, DATEDIFF, DATEADD,
+//     MINUTE, SECOND, DAYOFMONTH, WEEKDAY, DATEPART, DATEDIFF, DUR, DATEADD,
 //     FORMAT_DATE
 //   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)

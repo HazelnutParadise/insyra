@@ -818,6 +818,7 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
+| `DUR(x, unit)` | A duration in `'day'` / `'hour'` / `'minute'` / `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`. An empty cell stays empty |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
 | `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
 
@@ -849,7 +850,7 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 
 These take a part of a date, as in Excel, Google Sheets and Power BI: `DAY('2024-01-02T06:30:15Z')` is `2`, `HOUR` of it `6`, `MINUTE` `30` and `SECOND` `15`. They accept a `time.Time` or a string Insyra's date parser reads, read in the date's own time zone, and return a `float64`, like `YEAR` and `MONTH`. `DATEPART(d, 'day')` and the other units give the same answers.
 
-A duration, a duration string such as `'36h'`, or a number is not a date, and is an error that names the way to express a duration in a unit. A number is not read as an Excel serial date. Use `DATEDIFF` for the difference between two dates, or divide the difference, which counts seconds:
+A duration, a duration string such as `'36h'`, or a number is not a date, and is an error that names the way to express a duration in a unit. A number is not read as an Excel serial date. Use `DUR` for a duration or a duration string, and `DATEDIFF` for the difference between two dates, or divide the difference, which counts seconds:
 
 ```go
 // Given A and B are date/time columns
@@ -857,6 +858,7 @@ dt.AddColUsingCCL("order_day", "DAY(A)")                    // -> day of the mon
 dt.AddColUsingCCL("order_hour", "HOUR(A)")                  // -> hour 0-23
 dt.AddColUsingCCL("diff", "A - B")                          // -> time.Duration
 dt.AddColUsingCCL("diff_days", "DATEDIFF(A, B, 'day')")     // -> float64 days
+dt.AddColUsingCCL("wait_days", "DUR(C, 'day')")             // -> C holds '36h' or a time.Duration: 1.5
 dt.AddColUsingCCL("diff_hours", "(A - B) / 3600")           // -> float64 hours
 ```
 
