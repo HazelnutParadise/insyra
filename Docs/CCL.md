@@ -773,6 +773,9 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
 | `ROUND(x, n?)` | Round to `n` decimal places (default `0`), half away from zero, reading `x` as it is written: `ROUND(1.005, 2)` is `1.01`. A negative `n` rounds to tens, hundreds and so on. A `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUNDUP(x, n)` | Round away from zero to `n` decimal places. `n` is required, and may be negative | `ROUNDUP(3.141, 2)` → `3.15`, `ROUNDUP(-3.141, 1)` → `-3.2` |
+| `ROUNDDOWN(x, n)` | Round toward zero to `n` decimal places. `n` is required, and may be negative | `ROUNDDOWN(3.149, 2)` → `3.14`, `ROUNDDOWN(-3.14, 1)` → `-3.1` |
+| `INT(x)` | The same as `FLOOR(x)`, under Excel's name | `INT(-8.9)` → `-9` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
@@ -823,7 +826,7 @@ dt.ExecuteCCL(`
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. Text may be written the way a spreadsheet displays a number: `'10%'` is 0.1 and `'1,234.5'` is 1234.5. Commas must group digits in threes, so `'1,23'` is `nil`, and a currency sign such as `'$12'` is `nil` |
 | `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
-| `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
+| `BOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
 

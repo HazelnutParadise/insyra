@@ -415,6 +415,19 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 - **WHEN** an expression is `ROUND(1250, -2)`
 - **THEN** the result is 1300
 
+### Requirement: BOOL converts a value to a boolean
+
+`BOOL(x)` SHALL read `x` as a boolean, give an empty result for `nil` and for a value that cannot be read as one, and require one argument. `TOBOOL` SHALL NOT be a second working name in a release that has removed it, and SHALL point to `BOOL` where it remains.
+
+#### Scenario: Text that reads as a boolean
+
+- **WHEN** an expression is `BOOL('yes')`
+- **THEN** the result is true
+
+#### Scenario: Text that does not
+
+- **WHEN** an expression is `BOOL('maybe')`
+- **THEN** the result is empty
 ### Requirement: CCL reports what kind of value a cell holds
 
 `ISBLANK` SHALL be true for `nil` and empty text and false for `NaN`. `ISNUM` SHALL be true for a value of a number type other than `NaN`, and false for text. `ISTEXT` and `ISBOOL` SHALL follow the value's type. `ISDATE` SHALL be true for a date and for text that reads as one. `ISERROR` SHALL be true when its argument cannot be computed on that row, and an undefined function or a missing column SHALL still be an error.
@@ -433,4 +446,22 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** column B holds 0
 - **THEN** `ISERROR(A / B)` is true
+### Requirement: CCL rounds in a chosen direction
+
+`ROUNDUP(x, n)` SHALL round away from zero and `ROUNDDOWN(x, n)` toward zero, each to `n` decimal places with `n` required and possibly negative, reading `x` as it is written. `INT(x)` SHALL round down to an integer, as `FLOOR` does.
+
+#### Scenario: Away from and toward zero
+
+- **WHEN** the number is -3.14159 and `n` is 1
+- **THEN** `ROUNDUP` gives -3.2 and `ROUNDDOWN` gives -3.1
+
+#### Scenario: Written value
+
+- **WHEN** an expression is `ROUNDUP(1.1, 1)`
+- **THEN** the result is 1.1
+
+#### Scenario: INT of a negative number
+
+- **WHEN** an expression is `INT(-8.9)`
+- **THEN** the result is -9
 
