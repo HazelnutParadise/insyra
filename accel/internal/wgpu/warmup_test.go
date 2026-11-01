@@ -83,7 +83,10 @@ func TestFirstBufferWarmsTheKernels(t *testing.T) {
 		t.Fatal("making a buffer did not start warmup")
 	}
 	done := make(chan struct{})
-	go func() { warm(h); close(done) }()
+	warmMu.Lock()
+	generation := releasedDevices
+	warmMu.Unlock()
+	go func() { warm(h, generation); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Minute):
@@ -106,7 +109,8 @@ func (r recordedRelease) Release() { *r.order = append(*r.order, "teardown") }
 
 // A kernel warmup compiled but had not installed when the device was lost is
 // released with the lost device's other children, so the device can be
-// replaced (a lost device is not replaced while any child is alive).
+// replaced (a lost device is not replaced while any child is alive), and the
+// release is counted so a warmup that has not compiled yet stops.
 func TestReleasingALostDeviceReleasesTheWarmupInFlight(t *testing.T) {
 	var order []string
 	sharedMu.Lock()
@@ -122,7 +126,25 @@ func TestReleasingALostDeviceReleasesTheWarmupInFlight(t *testing.T) {
 	warmMu.Lock()
 	inFlight := warmInFlight
 	warmMu.Unlock()
-	if inFlight != nil || len(left) != 0 || len(order) != 1 {
+	warmMu.Lock()
+	released := releasedDevices
+	warmMu.Unlock()
+	if inFlight != nil || len(left) != 0 || len(order) != 1 || released == 0 {
 		t.Fatalf("after release: in flight %v, teardown %d, released %v", inFlight, len(left), order)
+	}
+}
+
+// A warmup started before its device was released compiles nothing.
+func TestWarmupStopsOnAReleasedDevice(t *testing.T) {
+	warmMu.Lock()
+	stale := releasedDevices - 1
+	warmMu.Unlock()
+	h := &handle{} // no device: compiling on it would panic
+	done := make(chan struct{})
+	go func() { warm(h, stale); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("warm did not return")
 	}
 }

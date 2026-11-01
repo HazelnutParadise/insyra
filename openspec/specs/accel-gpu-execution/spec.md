@@ -2,9 +2,7 @@
 
 ## Purpose
 What running an operation on a GPU must guarantee: the result is bit-identical to the CPU reference whatever the device, only operations measured to win are offered, the device is chosen by the work per row, and a submission too large for one dispatch is split rather than dropped.
-
 ## Requirements
-
 ### Requirement: A device result is bit-identical to its CPU reference
 The system SHALL ship a CPU reference implementation for every device operation, and SHALL verify on the running platform that the device result matches it bit for bit.
 
@@ -242,3 +240,22 @@ The system SHALL return a correct result from a built-in operation whose call me
 #### Scenario: Nearest-row search meets a loss
 - **WHEN** the device is lost during an exact nearest-row search
 - **THEN** the search returns the CPU result and reports that it was not accelerated
+
+### Requirement: Built-in kernels compile in the background
+
+The first resident buffer made on a device SHALL start compiling every built-in kernel in the background without holding the submission lock, so a computation waits for at most the kernel it needs; a compiled kernel SHALL be installed only once, and one a computation built first SHALL be released.
+
+#### Scenario: The first buffer on a device
+
+- **WHEN** a resident buffer is made on a device and the background compile finishes
+- **THEN** every built-in kernel is built and none reports an error
+
+### Requirement: Background compiling survives a lost device
+
+A kernel compiled in the background but not installed when its device is lost SHALL be released before the device is released, and a background compile whose device was released SHALL stop without compiling.
+
+#### Scenario: A loss between compile and install
+
+- **WHEN** a lost device is released while a compiled kernel waits to be installed
+- **THEN** that kernel is released first and the waiting slot is empty
+

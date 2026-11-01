@@ -24,6 +24,11 @@ var warmMu sync.Mutex
 // children, since a lost device is not replaced while any of them is alive.
 var warmInFlight *compiledKernel
 
+// releasedDevices counts the lost devices releaseLostDevice has released.
+// Guarded by warmMu. A warmup records it when it starts and compiles only
+// while it is unchanged, so it never compiles on a device already released.
+var releasedDevices int
+
 // warmOnFirstBuffer starts warmup when the first resident buffer is made on
 // a device; a test that needs kernels left unbuilt can turn it off.
 var warmOnFirstBuffer = true
@@ -37,7 +42,11 @@ func startWarmupLocked(h *handle) {
 		return
 	}
 	h.warmStarted = true
-	go warm(h)
+	// submitMu before warmMu, as everywhere.
+	warmMu.Lock()
+	generation := releasedDevices
+	warmMu.Unlock()
+	go warm(h, generation)
 }
 
 // warm builds each built-in kernel on h that is not built yet. It compiles
@@ -46,7 +55,7 @@ func startWarmupLocked(h *handle) {
 // computation built the kernel first, or the device was retired meanwhile,
 // warm releases what it compiled. A kernel warm fails to compile is left for
 // its first use, which reports the error.
-func warm(h *handle) {
+func warm(h *handle, generation int) {
 	for _, k := range builtinKernels {
 		submitMu.Lock()
 		retired, built := h.retired, k.pipe != nil || k.err != nil
@@ -58,6 +67,11 @@ func warm(h *handle) {
 			continue
 		}
 		warmMu.Lock()
+		if releasedDevices != generation {
+			// h was retired and its device released since the check above.
+			warmMu.Unlock()
+			return
+		}
 		c, err := k.compile(h)
 		if err == nil {
 			warmInFlight = c

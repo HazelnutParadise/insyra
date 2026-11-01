@@ -591,4 +591,5 @@ func releaseLostDevice() {
 		releaseQuietly(resource)
 	}
 	teardown = nil
+	releasedDevices++
 }
