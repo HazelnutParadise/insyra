@@ -2,6 +2,7 @@ package datafetch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -458,5 +459,21 @@ func TestFugleStreamStopsWhenConnectionsStayFull(t *testing.T) {
 	}
 	if err := st.Err(); err == nil || !strings.Contains(err.Error(), "Maximum number of connections") {
 		t.Errorf("Err = %v", err)
+	}
+}
+
+// A reply that came in before the connection dropped answers the command, however
+// the wait for the two happens to go.
+func TestFugleStreamReplyBeatsADroppedConnection(t *testing.T) {
+	lost := make(chan struct{})
+	close(lost)
+	for range 200 {
+		s := &fugleStream{replies: make(chan fugleStreamReply, 1), timeout: time.Second}
+		s.replies <- fugleStreamReply{event: "subscribed"}
+		applied := false
+		err := s.awaitReply("subscribe", "subscribed", lost, func(json.RawMessage) { applied = true })
+		if err != nil || !applied {
+			t.Fatalf("err = %v, applied = %v; want the reply to count", err, applied)
+		}
 	}
 }
