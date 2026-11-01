@@ -367,7 +367,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`CreateRadarChart` 跟其他建構函式一樣改用可變參數收系列：`CreateRadarChart(cfg, a, b)`。手上已經有 slice 時寫 `series...`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - **BREAKING（行為）**：`CreateBarChart` 和 `CreateLineChart` 收到空清單時回傳錯誤並指出是哪一個，例如 `plot: CreateLineChart: list 3 is empty`；以前會畫出一個空系列並回傳圖表。錯誤和警告裡的位置都照你寫的參數從 1 開始算，`nil` 參數也算進去；以前錯誤只算跳過 `nil` 之後剩下的清單，`nil` 清單的警告則是從 0 開始算。呼叫失敗時，也不會再先記下跳過 `nil` 清單的警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - **BREAKING（外觀）**：系列配色從原本的 64 色改成取自 Insyra 官網的 9 色：藍 `#2550B0`、橘 `#EE9A2C`、紅 `#D73E3E`、青綠 `#2A9D8F`、紫 `#764BA2`、粉 `#FF69B4`、綠 `#4CAF50`、亮藍 `#2196F3`，以及給最後一個「其他」系列用的灰 `#7F8C8D`。品牌藍 `#1F449B` 和橘 `#F9AC41` 為了圖表微調過，藍色調亮、橘色調深，讓細線在白底上看得清楚。顏色順序經過檢查，相鄰系列對色弱讀者也分得開。第 10 個系列會從第 1 色重新開始，所以再多的話建議拆成幾張圖。`gplot` 也用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
-- 配色有名稱了：`ColorBlue`、`ColorOrange`、`ColorRed`、`ColorTeal`、`ColorPurple`、`ColorPink`、`ColorGreen`、`ColorBrightBlue` 和 `ColorGray`，都是一般字串常數，可以直接放進 `Colors`。`ColorCream`（`#FFF4E6`）是品牌底色，用在 `BackgroundColor`。
+- 配色有名稱了：`ColorBlue`、`ColorOrange`、`ColorRed`、`ColorTeal`、`ColorPurple`、`ColorPink`、`ColorGreen`、`ColorBrightBlue` 和 `ColorGray`，都是一般字串常數，可以直接放進 `Colors`。`ColorCream`（`#FFF4E6`）和 `ColorWhite`（`#FFFFFF`）是品牌底色，用在 `BackgroundColor`。
 
 ### `isr`
 - `DT` 與 `DL` 都可用 `Err()`、`PopErr()`、`ClearErr()`、`SetErr()`；`ClearErr`／`SetErr` 回傳 isr 型別，積木語法不會斷在 `*insyra.DataTable`。

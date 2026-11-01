@@ -2,7 +2,7 @@
 
 ### Requirement: The palette has named colours
 
-`plot` and `gplot` SHALL export the palette as string constants in palette order, `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, and the brand's background colour as `ColorCream`. Series *i* drawn without `Colors` SHALL use the constant at position *i*.
+`plot` and `gplot` SHALL export the palette as string constants in palette order, `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, and the brand's background colours as `ColorCream` and `ColorWhite`. Series *i* drawn without `Colors` SHALL use the constant at position *i*.
 
 #### Scenario: Other in gray by name
 - **WHEN** `gplot.CreateBarChart(BarChartConfig{Colors: []string{gplot.ColorBlue, gplot.ColorGray}}, a, other)`

@@ -22,6 +22,12 @@ func TestColorConstantsAreThePalette(t *testing.T) {
 	}
 }
 
+func TestBackgroundConstants(t *testing.T) {
+	if ColorCream != "#FFF4E6" || ColorWhite != "#FFFFFF" {
+		t.Errorf("ColorCream = %s, ColorWhite = %s", ColorCream, ColorWhite)
+	}
+}
+
 func TestConstantsReachTheChart(t *testing.T) {
 	quiet(t)
 	c, err := CreateBarChart(BarChartConfig{BackgroundColor: ColorCream, Colors: []string{ColorBlue, ColorGray}},

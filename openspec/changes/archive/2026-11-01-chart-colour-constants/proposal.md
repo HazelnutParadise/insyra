@@ -4,7 +4,7 @@ Setting a colour means knowing its hex value, so giving an "Other" series the pa
 
 ## What Changes
 
-- `plot` and `gplot` export `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue`, `ColorGray` and `ColorCream`, plain string constants holding the palette and the brand's background colour.
+- `plot` and `gplot` export `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue`, `ColorGray`, `ColorCream` and `ColorWhite`, plain string constants holding the palette and the brand's background colours.
 - Every `gplot` config gains `BackgroundColor`, read like a value of `Colors`; empty keeps white.
 
 ## Impact

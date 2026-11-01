@@ -17,8 +17,8 @@ import (
 // than taking a new hue.
 var hex = []string{Blue, Orange, Red, Teal, Purple, Pink, Green, BrightBlue, Gray}
 
-// The palette's colours, and the brand's background colour. Cream is too pale
-// to be a series, so it is not in the palette; it is for a chart's background.
+// The palette's colours, and the brand's two background colours. Cream and white
+// are too pale to be a series, so they are not in the palette.
 const (
 	Blue       = "#2550B0" // Insyra blue, tuned for charts
 	Orange     = "#EE9A2C" // Insyra orange, tuned for charts
@@ -30,6 +30,7 @@ const (
 	BrightBlue = "#2196F3"
 	Gray       = "#7F8C8D" // For "Other"
 	Cream      = "#FFF4E6"
+	White      = "#FFFFFF"
 )
 
 // names are the colours' names, in palette order.

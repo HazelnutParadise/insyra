@@ -10,11 +10,11 @@ import (
 	"gonum.org/v1/plot"
 )
 
-// The chart palette and the brand's background colour, usable in a config's
+// The chart palette and the brand's background colours, usable in a config's
 // Colors and BackgroundColor fields. They are plain strings, so they mix with
 // your own values. Without Colors, series take the first nine in this order;
-// ColorGray is for a series that folds the rest into "Other". ColorCream is too
-// pale to be a series and is meant for BackgroundColor.
+// ColorGray is for a series that folds the rest into "Other". ColorCream and
+// ColorWhite are too pale to be series and are meant for BackgroundColor.
 const (
 	ColorBlue       = palette.Blue
 	ColorOrange     = palette.Orange
@@ -26,6 +26,7 @@ const (
 	ColorBrightBlue = palette.BrightBlue
 	ColorGray       = palette.Gray
 	ColorCream      = palette.Cream
+	ColorWhite      = palette.White
 )
 
 // seriesColor is the default colour of series i in every chart: the palette

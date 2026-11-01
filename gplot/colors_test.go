@@ -126,8 +126,10 @@ func TestColorConstantsAreThePalette(t *testing.T) {
 			t.Errorf("series %d is %s; the constant says %s", i+1, got, c)
 		}
 	}
-	if _, ok := parseColor(ColorCream); !ok {
-		t.Errorf("ColorCream %q does not parse", ColorCream)
+	for _, c := range []string{ColorCream, ColorWhite} {
+		if _, ok := parseColor(c); !ok {
+			t.Errorf("background colour %q does not parse", c)
+		}
 	}
 }
 

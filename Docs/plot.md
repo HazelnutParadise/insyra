@@ -139,7 +139,7 @@ When a config's `Colors` is left empty, the bar, line, pie and scatter charts co
 
 The palette has names: `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, in series order. `gplot` has the same constants. They are plain strings, so they mix with your own values: `Colors: []string{plot.ColorBlue, plot.ColorGray}`.
 
-`ColorCream`, `#FFF4E6`, is the brand's background colour. It is too pale to be a series, so it is not in the palette; use it for `BackgroundColor`. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white.
+`ColorCream`, `#FFF4E6`, and `ColorWhite`, `#FFFFFF`, are the brand's background colours. They are too pale to be series, so they are not in the palette; use them for `BackgroundColor`. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white.
 
 ## Things to be careful about
 

@@ -478,7 +478,7 @@ A value is `#RGB`, `#RRGGBB`, `#RRGGBBAA` or a CSS colour name such as `green`, 
 
 The palette has names: `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, in series order. `plot` has the same constants. They are plain strings, so they mix with your own values.
 
-`ColorCream`, `#FFF4E6`, is the brand's background colour. It is too pale to be a series, so it is not in the palette; use it for `BackgroundColor`, which every config has and which reads a value the way `Colors` does. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+`ColorCream`, `#FFF4E6`, and `ColorWhite`, `#FFFFFF`, are the brand's background colours. They are too pale to be series, so they are not in the palette; use them for `BackgroundColor`, which every config has and which reads a value the way `Colors` does. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
 
 ## A series that cannot be drawn fails the chart
 
