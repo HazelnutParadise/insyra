@@ -791,7 +791,7 @@ dt.ExecuteCCL(`
 
 | Function | Description |
 | --- | --- |
-| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
+| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. Text may be written the way a spreadsheet displays a number: `'10%'` is 0.1 and `'1,234.5'` is 1234.5. Commas must group digits in threes, so `'1,23'` is `nil`, and a currency sign such as `'$12'` is `nil` |
 | `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
