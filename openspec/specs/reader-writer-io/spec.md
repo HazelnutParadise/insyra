@@ -2,9 +2,7 @@
 
 ## Purpose
 How `insyra` reads CSV, JSON and Excel from an `io.Reader` and writes CSV and JSON to an `io.Writer`, how the path-based entry points relate to them, and how a CSV is read in batches.
-
 ## Requirements
-
 ### Requirement: Every format reads from a reader and writes to a writer
 
 CSV, JSON and Excel in `insyra` SHALL each offer a read entry point that takes a source rather than a path, and CSV and JSON SHALL each offer a write entry point that takes a destination. The existing path-based entry points SHALL call them, so a path and a reader over the same bytes produce the same table.
@@ -40,3 +38,18 @@ CSV, JSON and Excel in `insyra` SHALL each offer a read entry point that takes a
 #### Scenario: Stopping early
 - **WHEN** the loop breaks after the first batch of a large input
 - **THEN** the rest of the input is not read
+
+### Requirement: Excel readers let the caller choose text or typed columns
+
+`ReadExcelSheet` and `ReadExcel` SHALL take an optional `rawStrings`: true SHALL keep every cell as text, false SHALL type columns by the rule CSV reading follows, and more than one value SHALL be an error. Left out, every cell SHALL stay text and one warning SHALL say columns are typed by default from 0.4.
+
+#### Scenario: Left out
+
+- **WHEN** a sheet holds a column of numbers and `rawStrings` is left out
+- **THEN** the cells stay text
+
+#### Scenario: False
+
+- **WHEN** a sheet holds a column of whole numbers and `rawStrings` is false
+- **THEN** the cells are `int64`
+
