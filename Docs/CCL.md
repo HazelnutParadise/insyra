@@ -789,7 +789,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
-| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -925,6 +925,22 @@ Calculates the count of non-nil (non-empty) values in the input.
 "COUNT(@)"           // Count of all non-nil values in the entire table
 "COUNTA(A)"          // Count of non-nil values in column A; the same as COUNT here
 ```
+
+### COUNTIF, SUMIF, AVGIF
+
+Count, add up or average the rows where a condition holds. The condition is an expression, written without quotes: quoted text in CCL is the text itself, so `'>0'` is not a condition.
+
+```
+"COUNTIF(A > 0)"                       // Rows where A is above 0
+"COUNTIF(A == 'apple')"                // Rows where A is apple
+"COUNTIF(A > 0 && B < 5)"              // Several conditions
+"COUNTIF(REGEX_MATCH(A, '^ap'))"       // A regular expression
+"SUMIF(A > 0, B)"                      // Add up B on the rows where A is above 0
+"SUMIF(A > 0, A)"                      // Add up the positive values of A
+"AVGIF(STARTSWITH(C, 'a'), B)"         // Average B on the rows where C starts with a
+```
+
+A condition reads each row the way `IF` does, so an empty cell is neither above 0 nor equal to `'apple'`, and it is different from `'apple'`: `COUNTIF(A != 'apple')` counts it. A condition that is empty on a row does not hold there. `SUMIF` and `AVGIF` read their values the way `SUM` and `AVG` do, and give 0 when no row holds. A condition that does not depend on the row holds for every row or none, so `COUNTIF(TRUE)` is the number of rows. A condition that is neither true nor false on a row, such as a column of words, is an error naming the row.
 
 ### MAX
 
