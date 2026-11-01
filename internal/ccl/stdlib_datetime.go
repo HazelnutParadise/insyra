@@ -218,7 +218,11 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("FORMAT_DATE: layout must be a string, got %T", args[1])
 		}
-		return t.Format(layout), nil
+		out, err := formatDateValue(t, layout)
+		if err != nil {
+			return nil, fmt.Errorf("FORMAT_DATE: %w", err)
+		}
+		return out, nil
 	})
 }
 

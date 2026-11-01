@@ -792,7 +792,7 @@ dt.ExecuteCCL(`
 | Function | Description |
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). An integer under a float verb is formatted as the `float64` it equals, so `TEXT(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TEXT(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). An integer under a float verb is formatted as the `float64` it equals, so `TOSTR(50, '%.1f')` is `"50.0"`, and `%d` formats it as itself. A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -818,7 +818,7 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DUR(x, unit)` | A duration in `'day'` / `'hour'` / `'minute'` / `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`. An empty cell stays empty |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
-| `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
+| `FORMAT_DATE(d, format)` | Format a date, by a Go reference layout (`"2006-01-02"`) or Excel's codes (`"yyyy-mm-dd"`) |
 
 ```go
 dt.AddColUsingCCL("order_year", "YEAR(['order_date'])")
@@ -843,6 +843,24 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days). A fraction keeps its hours and minutes: `0.5` moves the date 12 hours, `0.0625` 1 hour 30 minutes and `0.001` 86.4 seconds. The date moves by a duration, so a shift of more than about 292 years (106,751 days) either way is an error.
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
+
+### Formats
+
+`TEXT` and `FORMAT_DATE` read a format written the Go way or the Excel way, and tell which from the format alone:
+
+| Wanted | Go | Excel |
+| --- | --- | --- |
+| `1.50` | `TEXT(x, '%.2f')` | `TEXT(x, '0.00')` |
+| `1,234.50` | | `TEXT(x, '#,##0.00')` |
+| `15.0%` | | `TEXT(x, '0.0%')` |
+| `2024-03-09` | `FORMAT_DATE(d, '2006-01-02')` | `FORMAT_DATE(d, 'yyyy-mm-dd')` |
+| `14:05` | `FORMAT_DATE(d, '15:04')` | `FORMAT_DATE(d, 'hh:mm')` |
+
+- A format holding a Go `fmt` verb is Go. One holding a digit from 1 to 9 is a Go date layout. `0` or `#` with no letters is an Excel number code. Anything else with letters is a date format, in Excel's codes or Go's names (`Mon`, `Monday`, `Jan`, `January`, `MST`).
+- Excel number codes: `0`, `#`, a thousands comma, a point, `%`, and literal text around them, such as `$0.00` or `0.0 "kg"`. Sections with `;`, a scaling comma and scientific notation are errors.
+- Excel date codes, in any case: `yyyy` `yy`, `m` `mm` `mmm` `mmmm`, `d` `dd` `ddd` `dddd`, `h` `hh`, `s` `ss`, `.000` after seconds, `AM/PM`, `A/P`. As in Excel, `m` or `mm` right after an hour code or right before a second code is minutes. Text such as `yyyy年mm月dd日`, or anything in `"..."`, is written as it is. Any other ASCII letter is an error, so a typo does not come back as its own text; `mon` in lower case is one, while Go's `Mon` is read.
+- The two kinds round differently. An Excel code rounds half away from zero on the number as written: `TEXT(2.5, '0')` is `3` and `TEXT(1.005, '0.00')` is `1.01`. A Go verb rounds the binary value: `TEXT(2.5, '%.0f')` is `2` and `TEXT(1.005, '%.2f')` is `1.00`.
+- Under an Excel code or a date format, an empty cell stays empty, and a value of the other kind is an error, such as a number under `yyyy-mm-dd`. A number is not read as an Excel serial date. A date is written in its own time zone.
 
 ### DAY / HOUR / MINUTE / SECOND
 
@@ -996,7 +1014,6 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
 | `TRIM(s)` | `TRIM(s)` | CCL also strips tabs and line breaks from the ends; Excel strips only spaces. Inside the text both turn a run of spaces into one |
 | `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
-| `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
 | Numbers | `int64` and `float64` | Excel stores every number as a double. CCL keeps integers as `int64` through `+`, `-`, `*`, `%`, `SUM`, `MIN` and `MAX`, so `7 % 3` is the integer `1`, an integer past 2^53 keeps every digit, and a result past the `int64` range is an error. `/` and `^` give a `float64` (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)) |
 
 ## Sequence Functions

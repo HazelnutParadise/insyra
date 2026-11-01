@@ -36,8 +36,9 @@ func registerTypeConversionFunctions() {
 		return v, nil
 	})
 
-	// TEXT: the 1-arg form convert to string with default formatting;
-	// 2-arg form treats the second arg as a Go fmt verb format (e.g. "%.2f").
+	// TEXT: the 1-arg form converts to string with default formatting;
+	// 2-arg form reads the second arg as a Go fmt verb (e.g. "%.2f") or an Excel
+	// code (e.g. "0.00", "yyyy-mm-dd"); see text_format.go.
 	tostr := func(args ...any) (any, error) {
 		if len(args) < 1 || len(args) > 2 {
 			return nil, fmt.Errorf("requires 1 or 2 arguments")
@@ -48,6 +49,9 @@ func registerTypeConversionFunctions() {
 		format, ok := args[1].(string)
 		if !ok {
 			return nil, fmt.Errorf("format arg must be a string, got %T", args[1])
+		}
+		if kind := kindOfFormat(format); kind != kindGoVerb {
+			return textWithFormat(args[0], format, kind)
 		}
 		out := fmt.Sprintf(format, args[0])
 		// fmt writes its own complaint into the string when the verb does not
