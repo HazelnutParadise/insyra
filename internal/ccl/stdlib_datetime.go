@@ -106,6 +106,9 @@ func registerDateTimeFunctions() {
 		}
 	})
 
+	// Deprecated: DATEPART is removed in 0.4, where HOUR, MINUTE, SECOND and DAY
+	// read dates. It stays the way to read those parts on 0.3.x.
+	//
 	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
 	// "year", "month", "day", "hour", "minute" or "second" (singular or
 	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
