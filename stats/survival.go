@@ -113,29 +113,3 @@ func KaplanMeier(durations, observed insyra.IDataList) (*KaplanMeierResult, erro
 	}
 	return res, nil
 }
-
-// eventFlags reads the event indicator, which may be bool or 0/1.
-func eventFlags(dl insyra.IDataList, want int) ([]bool, error) {
-	if insyra.IsNilList(dl) {
-		return nil, errors.New("observed is nil")
-	}
-	var raw []any
-	dl.AtomicDo(func(l *insyra.DataList) { raw = l.Data() })
-	if len(raw) != want {
-		return nil, fmt.Errorf("durations has %d rows and observed has %d", want, len(raw))
-	}
-	out := make([]bool, len(raw))
-	for i, v := range raw {
-		switch x := v.(type) {
-		case bool:
-			out[i] = x
-		default:
-			f, ok := insyra.ToFloat64Safe(v)
-			if !ok || (f != 0 && f != 1) {
-				return nil, fmt.Errorf("observed holds %v at row index %d; it must be true, false, 1 or 0", v, i)
-			}
-			out[i] = f == 1
-		}
-	}
-	return out, nil
-}
