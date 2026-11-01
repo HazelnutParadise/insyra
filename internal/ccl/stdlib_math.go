@@ -32,8 +32,11 @@ func (r roundRule) String() string {
 // shortest decimal text. Multiplying instead would see the binary value: the
 // float64 closest to 1.005 lies just below it, and 1.005 would round to 1.
 func roundWritten(f float64, digits int, rule roundRule) float64 {
-	if math.IsNaN(f) || math.IsInf(f, 0) || f == 0 {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return f
+	}
+	if f == 0 {
+		return 0
 	}
 	text := strconv.FormatFloat(math.Abs(f), 'f', -1, 64)
 	whole, frac, _ := strings.Cut(text, ".")
