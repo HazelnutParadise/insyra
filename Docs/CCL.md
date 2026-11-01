@@ -760,6 +760,9 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | --- | --- | --- |
 | `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
 | `ROUND(x, n?)` | Round to `n` decimal places (default `0`), half away from zero, reading `x` as it is written: `ROUND(1.005, 2)` is `1.01`. A negative `n` rounds to tens, hundreds and so on. A `NaN` for `n` is an error | `ROUND(3.14159, 2)` → `3.14` |
+| `ROUNDUP(x, n)` | Round away from zero to `n` decimal places. `n` is required, and may be negative | `ROUNDUP(3.141, 2)` → `3.15`, `ROUNDUP(-3.141, 1)` → `-3.2` |
+| `ROUNDDOWN(x, n)` | Round toward zero to `n` decimal places. `n` is required, and may be negative | `ROUNDDOWN(3.149, 2)` → `3.14`, `ROUNDDOWN(-3.14, 1)` → `-3.1` |
+| `INT(x)` | The same as `FLOOR(x)`, under Excel's name | `INT(-8.9)` → `-9` |
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |

@@ -71,7 +71,8 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //   - Logical: IF, AND, OR, CASE
 //   - Null/NaN: ISNA, IFNA
 //   - String concat (this file)
-//   - Math (stdlib_math.go): ABS, ROUND, FLOOR, CEIL, TRUNC, MOD, POW,
+//   - Math (stdlib_math.go): ABS, ROUND, ROUNDUP, ROUNDDOWN, INT, FLOOR,
+//     CEIL, TRUNC, MOD, POW,
 //     SQRT, LN, LOG, LOG10, EXP, SIGN
 //   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
 //     LEFT, RIGHT, MID, REPLACE, FIND, CONTAINS, STARTSWITH,
