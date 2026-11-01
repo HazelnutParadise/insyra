@@ -746,7 +746,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
-| `MOD(a, b)` | Remainder of `a / b`, with the sign of `a`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
+| `MOD(a, b)` | Remainder of `a / b`, with the sign of `b`, as in Excel: `MOD(-7, 3)` is `2`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
 | `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
@@ -998,7 +998,6 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | `AVERAGE(...)` | `AVG(...)` | Different name |
 | `COUNT(...)` | `COUNT(...)` | CCL counts every value that is not `nil`, text included, like Excel's `COUNTA`. Excel's `COUNT` counts numbers only |
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
-| `MOD(a, b)` | `MOD(a, b)` | CCL's result has the sign of `a`, Excel's the sign of `b`: `MOD(-7, 3)` is `-1` in CCL and `2` in Excel |
 | `TRIM(s)` | `TRIM(s)` | CCL strips the ends only; Excel also turns each run of spaces inside the text into one space |
 | `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
 | `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
