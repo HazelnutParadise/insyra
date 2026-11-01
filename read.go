@@ -12,8 +12,8 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"sync"
 	"strings"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
