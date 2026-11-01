@@ -4,6 +4,7 @@ package gplot
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
@@ -14,10 +15,12 @@ import (
 
 // LineChartConfig defines the configuration for a multi-series line chart.
 type LineChartConfig struct {
-	Title     string    // Title of the chart.
-	XAxis     []float64 // X-axis data.
-	XAxisName string    // Optional: X-axis name.
-	YAxisName string    // Optional: Y-axis name.
+	BackgroundColor string    // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string    // Title of the chart.
+	XAxis           []float64 // X-axis data.
+	XAxisName       string    // Optional: X-axis name.
+	YAxisName       string    // Optional: Y-axis name.
+	Colors          []string  // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // CreateLineChart draws one line per list, named after the list. A plain
@@ -33,17 +36,24 @@ type LineChartConfig struct {
 // decimal included, is drawn as its value, and any other cell, whether nil,
 // text (a numeric string such as "2" included) or a bool, is drawn as 0.
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
-	return drawLines("CreateLineChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, plotter.NoStep, data)
+	return drawLines("CreateLineChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, config.Colors, config.BackgroundColor, plotter.NoStep, data)
 }
 
 // drawLines builds a line or step chart; stepKind is plotter.NoStep for a line.
-func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
+func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName string, colorValues []string, background string, stepKind plotter.StepKind, data []insyra.IDataList) (*plot.Plot, error) {
+	colors, err := readColors(funcName, colorValues)
+	if err != nil {
+		return nil, err
+	}
 	data, _, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError(funcName, "no data to draw")
 	}
 
-	plt := plot.New()
+	plt, err := newPlot(funcName, background)
+	if err != nil {
+		return nil, err
+	}
 	plt.Title.Text = title
 	plt.X.Label.Text = xAxisName
 	plt.Y.Label.Text = yAxisName
@@ -57,7 +67,7 @@ func drawLines(funcName, title string, xAxis []float64, xAxisName, yAxisName str
 
 	var failed []string
 	for i, dl := range data {
-		if err := addLineSeries(plt, dl.GetName(), readValues(dl), xAxis, i, stepKind); err != nil {
+		if err := addLineSeries(plt, dl.GetName(), readValues(dl), xAxis, i, colors.at(i), stepKind); err != nil {
 			failed = append(failed, err.Error())
 		}
 	}
@@ -79,7 +89,7 @@ func seriesError(funcName string, failed []string) error {
 }
 
 // addLineSeries adds one series to the plot, or says why it cannot.
-func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, index int, stepKind plotter.StepKind) error {
+func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, index int, lineColor color.Color, stepKind plotter.StepKind) error {
 	if len(xAxis) != len(values) {
 		return fmt.Errorf("series %q has %d values but XAxis has %d", seriesName, len(values), len(xAxis))
 	}
@@ -123,7 +133,7 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
 
-	line.Color = seriesColor(index)
+	line.Color = lineColor
 	line.Width = vg.Points(2)
 
 	plt.Add(line)

@@ -4,6 +4,7 @@ package gplot
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -15,9 +16,11 @@ import (
 
 // ScatterChartConfig defines the configuration for a multi-series scatter chart.
 type ScatterChartConfig struct {
-	Title     string // Title of the chart.
-	XAxisName string // Optional: X-axis name.
-	YAxisName string // Optional: Y-axis name.
+	BackgroundColor string   // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string   // Title of the chart.
+	XAxisName       string   // Optional: X-axis name.
+	YAxisName       string   // Optional: Y-axis name.
+	Colors          []string // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // ScatterSeries is one set of points for CreateScatterChart: point i is
@@ -41,6 +44,10 @@ func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*pl
 	if len(series) == 0 {
 		return nil, chartError("CreateScatterChart", "no data to draw")
 	}
+	colors, err := readColors("CreateScatterChart", config.Colors)
+	if err != nil {
+		return nil, err
+	}
 	xs := make([][]float64, len(series))
 	ys := make([][]float64, len(series))
 	var failed []string
@@ -55,7 +62,10 @@ func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*pl
 	}
 
 	// Create a new plot.
-	plt := plot.New()
+	plt, err := newPlot("CreateScatterChart", config.BackgroundColor)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title
@@ -63,7 +73,7 @@ func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*pl
 	plt.Y.Label.Text = config.YAxisName
 
 	for i, s := range series {
-		if err := addScatterSeries(plt, s.Name, xs[i], ys[i], i); err != nil {
+		if err := addScatterSeries(plt, s.Name, xs[i], ys[i], i, colors.at(i)); err != nil {
 			failed = append(failed, err.Error())
 		}
 	}
@@ -119,7 +129,7 @@ func readScatterAxis(i int, name, axis string, cells []any) ([]float64, error) {
 }
 
 // addScatterSeries adds one series to the plot, or says why it cannot.
-func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index int) error {
+func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index int, pointColor color.Color) error {
 	scatterData := make(plotter.XYs, len(xs))
 	for i := range xs {
 		scatterData[i].X = xs[i]
@@ -131,7 +141,7 @@ func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index
 		return fmt.Errorf("series %q cannot be drawn: %w", seriesName, err)
 	}
 
-	scatter.Color = seriesColor(index)
+	scatter.Color = pointColor
 
 	// Set different shapes for each series
 	shapes := []draw.GlyphDrawer{

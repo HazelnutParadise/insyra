@@ -8,10 +8,11 @@ import (
 
 // HistogramConfig defines the configuration for a single series histogram.
 type HistogramConfig struct {
-	Title     string // Title of the chart.
-	XAxisName string // Optional: X-axis name.
-	YAxisName string // Optional: Y-axis name.
-	Bins      int    // Number of bins for the histogram. Zero or negative means the default (10).
+	BackgroundColor string // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string // Title of the chart.
+	XAxisName       string // Optional: X-axis name.
+	YAxisName       string // Optional: Y-axis name.
+	Bins            int    // Number of bins for the histogram. Zero or negative means the default (10).
 }
 
 // defaultHistogramBins is used when HistogramConfig.Bins is left at its zero
@@ -54,7 +55,10 @@ func CreateHistogram(config HistogramConfig, data insyra.IDataList) (*plot.Plot,
 	hist.FillColor = seriesColor(0)
 
 	// Create a new plot.
-	plt := plot.New()
+	plt, err := newPlot("CreateHistogram", config.BackgroundColor)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title

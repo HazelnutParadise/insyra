@@ -15,17 +15,23 @@ import (
 // series that folds the rest into "Other", which should not look like one
 // more category. A tenth series starts again from the first colour rather
 // than taking a new hue.
-var hex = []string{
-	"#2550B0", // Insyra blue, tuned for charts
-	"#EE9A2C", // Insyra orange, tuned for charts
-	"#D73E3E", // Insyra red
-	"#2A9D8F", // Teal
-	"#764BA2", // Purple
-	"#FF69B4", // Pink
-	"#4CAF50", // Green
-	"#2196F3", // Bright blue
-	"#7F8C8D", // Gray, for "Other"
-}
+var hex = []string{Blue, Orange, Red, Teal, Purple, Pink, Green, BrightBlue, Gray}
+
+// The palette's colours, and the brand's two background colours. Cream and white
+// are too pale to be a series, so they are not in the palette.
+const (
+	Blue       = "#2550B0" // Insyra blue, tuned for charts
+	Orange     = "#EE9A2C" // Insyra orange, tuned for charts
+	Red        = "#D73E3E" // Insyra red
+	Teal       = "#2A9D8F"
+	Purple     = "#764BA2"
+	Pink       = "#FF69B4"
+	Green      = "#4CAF50"
+	BrightBlue = "#2196F3"
+	Gray       = "#7F8C8D" // For "Other"
+	Cream      = "#FFF4E6"
+	White      = "#FFFFFF"
+)
 
 // names are the colours' names, in palette order.
 var names = []string{"Insyra blue", "Insyra orange", "Insyra red", "Teal", "Purple", "Pink", "Green", "Bright blue", "Gray"}

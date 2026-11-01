@@ -13,13 +13,14 @@ import (
 
 // HeatmapChartConfig defines the configuration for a heatmap chart.
 type HeatmapChartConfig struct {
-	Title     string    // Title of the chart.
-	XAxisName string    // Optional: X-axis name.
-	YAxisName string    // Optional: Y-axis name.
-	XAxis     []float64 // Optional: X-axis coordinates. If not provided, will use indices.
-	YAxis     []float64 // Optional: Y-axis coordinates. If not provided, will use indices.
-	Colors    int       // Optional: Number of colors in the palette. Default is 20.
-	Alpha     float64   // Optional: Alpha (transparency) for colors. Default is 1.0.
+	BackgroundColor string    // Optional: Background of the chart, read like a value of Colors. Default is white.
+	Title           string    // Title of the chart.
+	XAxisName       string    // Optional: X-axis name.
+	YAxisName       string    // Optional: Y-axis name.
+	XAxis           []float64 // Optional: X-axis coordinates. If not provided, will use indices.
+	YAxis           []float64 // Optional: Y-axis coordinates. If not provided, will use indices.
+	Colors          int       // Optional: Number of colors in the palette. Default is 20.
+	Alpha           float64   // Optional: Alpha (transparency) for colors. Default is 1.0.
 }
 
 // gridData implements the plotter.GridXYZ interface for heatmap data.
@@ -98,7 +99,10 @@ func CreateHeatmapChart(config HeatmapChartConfig, data insyra.IDataTable) (*plo
 	}
 
 	// Create a new plot.
-	plt := plot.New()
+	plt, err := newPlot("CreateHeatmapChart", config.BackgroundColor)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title

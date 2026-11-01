@@ -137,6 +137,10 @@ const (
 
 When a config's `Colors` is left empty, the bar, line, pie and scatter charts colour series *i* from one palette, the same one `gplot` uses: nine colours from the Insyra website, blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The order is checked so neighbouring series stay apart for colour-blind readers. The ninth colour, gray `#7F8C8D`, is for a last series that folds the rest into "Other", so keep at most eight series plus that one, or draw several charts; a tenth series starts again from the first colour. With fewer series, set `Colors` to give an "Other" series that gray yourself. Set `Colors` to use your own.
 
+The palette has names: `ColorBlue`, `ColorOrange`, `ColorRed`, `ColorTeal`, `ColorPurple`, `ColorPink`, `ColorGreen`, `ColorBrightBlue` and `ColorGray`, in series order. `gplot` has the same constants. They are plain strings, so they mix with your own values: `Colors: []string{plot.ColorBlue, plot.ColorGray}`.
+
+`ColorCream`, `#FFF4E6`, and `ColorWhite`, `#FFFFFF`, are the brand's background colours. They are too pale to be series, so they are not in the palette; use them for `BackgroundColor`. On cream, orange, pink, green and bright blue fall below 3:1 contrast, so thin lines are harder to read than on white.
+
 ## Things to be careful about
 
 ### A chart that cannot be built is an error
