@@ -703,6 +703,19 @@ Example:
 
 > **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
+### Type Checks
+
+Each takes one value and gives `true` or `false`.
+
+| Function | True when the value is | Excel |
+| --- | --- | --- |
+| `ISBLANK(x)` | Empty: `nil` or `''`. A blank in a numeric column reads as `NaN`, which `ISNA` reports, so write `ISBLANK(A) \|\| ISNA(A)` to catch both | `ISBLANK` |
+| `ISNUM(x)` | A number. `NaN` and text such as `'12'` are not | `ISNUMBER` |
+| `ISTEXT(x)` | Text, `''` included | `ISTEXT` |
+| `ISBOOL(x)` | `true` or `false` | `ISLOGICAL` |
+| `ISDATE(x)` | A date, or text that reads as one such as `'2024-01-02'`. A number is not | none |
+| `ISERROR(x)` | Something that cannot be computed on that row, by the rule `IFERROR` follows: a misspelt function or a column that does not exist still fails | `ISERROR` |
+
 ### IFERROR Function
 
 ```
@@ -1049,7 +1062,10 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | `COUNT(...)` | `COUNT(...)` | The same over a range: numbers and dates count, and text does not, even when it reads as a number. A `NaN` is skipped. `COUNTA` counts every value that is not `nil` |
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
 | `TRIM(s)` | `TRIM(s)` | CCL also strips tabs and line breaks from the ends; Excel strips only spaces. Inside the text both turn a run of spaces into one |
-| `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
+| `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument. Both tell upper and lower case apart; to ignore case, write `FIND(LOWER(x), LOWER(y))` |
+| `VALUE(text)` | `VALUE(x)` | Text that is not a number is `nil` in CCL and an error in Excel. Both read percent signs and thousands commas; Excel also reads currency and date or time text, which is `nil` in CCL |
+| `TEXT(value, format)` | `TEXT(x, fmt?)` | The format can be left out in CCL, which then writes the value in its default form. Excel requires one |
+| `DATE(year, month, day)` | `DATE(year, month, day)` | CCL reads the year as written. Excel adds 1900 to a year from 0 to 1899, so `DATE(108, 1, 2)` is 2008 there and the year 108 in CCL |
 | Numbers | `int64` and `float64` | Excel stores every number as a double. CCL keeps integers as `int64` through `+`, `-`, `*`, `%`, `SUM`, `MIN` and `MAX`, so `7 % 3` is the integer `1`, an integer past 2^53 keeps every digit, and a result past the `int64` range is an error. `/` and `^` give a `float64` (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)) |
 
 ## Sequence Functions
