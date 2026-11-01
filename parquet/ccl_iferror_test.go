@@ -25,6 +25,9 @@ func TestParquetCCLIfError(t *testing.T) {
 	if _, err := FilterWithCCL(context.Background(), path, "IFERROR(['nope'] + 1, 0) > 0"); err == nil {
 		t.Error("FilterWithCCL read a missing column as the fallback")
 	}
+	if _, err := FilterWithCCL(context.Background(), path, "IFERROR(['nope'].0, 0) == 0"); err == nil {
+		t.Error("FilterWithCCL read a fixed row of a missing column as the fallback")
+	}
 	if err := ApplyCCL(context.Background(), path, "NEW('m') = IFERROR(['nope'] + 1, 0)"); err == nil {
 		t.Error("ApplyCCL read a missing column as the fallback")
 	}

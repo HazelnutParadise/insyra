@@ -82,3 +82,20 @@ func TestConditionalAggregatesRefuse(t *testing.T) {
 		t.Errorf("COUNTIF(VALUE(A) > 0) = %v, %v; want 1", got, err)
 	}
 }
+
+// A SUMIF the caller registered gets its arguments as any aggregate does.
+func TestARegisteredSumIfIsNotExpanded(t *testing.T) {
+	var conditionRows int
+	RegisterAggregateFunction("SUMIF", func(args ...[]any) (any, error) {
+		conditionRows = len(args[0])
+		return 0.0, nil
+	})
+	t.Cleanup(RegisterStandardFunctions)
+	ctx := mapCtx(t, map[string][]any{"A": {1.0, 2.0, 3.0}})
+	if _, err := evalOne(t, ctx, "SUMIF(TRUE, A)"); err != nil {
+		t.Fatal(err)
+	}
+	if conditionRows != 1 {
+		t.Errorf("the registered SUMIF got %d condition values, want 1", conditionRows)
+	}
+}

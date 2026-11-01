@@ -93,7 +93,9 @@ func registerRemovedName(name, use string) {
 func registerFunction(name string, fn Func) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	defaultFunctions[strings.ToUpper(name)] = fn
+	key := strings.ToUpper(name)
+	defaultFunctions[key] = fn
+	delete(userFunctions, key)
 }
 
 // registerAggregateFunction registers an aggregate function as the built-in it
