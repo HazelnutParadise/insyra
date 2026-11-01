@@ -176,11 +176,19 @@ func TestDeprecatedNamesWarnOnce(t *testing.T) {
 			t.Errorf("%s = %#v, %v; want %#v", c.expr, v, err, c.want)
 		}
 	}
-	// DAYOFMONTH has no replacement here, since DAY converts a duration.
-	warnedOnce.Delete("DAYOFMONTH")
-	got = nil
-	if _, err := evalOne(t, ctx, "DAYOFMONTH('2024-03-09')"); err != nil || len(got) != 0 {
-		t.Errorf("DAYOFMONTH: %v, warnings %v; want no error and no warning", err, got)
+	// DATEPART and DAYOFMONTH warn too, now that DAY, HOUR and the others read a date.
+	for _, c := range []struct{ name, expr, use string }{
+		{"DAYOFMONTH", "DAYOFMONTH('2024-03-09')", "use DAY"},
+		{"DATEPART", "DATEPART('2024-03-09', 'day')", "HOUR"},
+	} {
+		warnedOnce.Delete(c.name)
+		got = nil
+		if _, err := evalOne(t, ctx, c.expr); err != nil {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if len(got) != 1 || !strings.Contains(got[0], c.use) {
+			t.Errorf("%s: warnings %v, want one naming %q", c.name, got, c.use)
+		}
 	}
 }
 

@@ -54,9 +54,7 @@ func registerDateTimeFunctions() {
 		return float64(t.Month()), nil
 	})
 
-	// Deprecated: DAYOFMONTH is removed in 0.4, where DAY reads a date. It stays
-	// the way to read that part on 0.3.x, so it logs no warning.
-	registerFunction("DAYOFMONTH", func(args ...any) (any, error) {
+	registerDeprecatedName("DAYOFMONTH", "DAY", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("DAYOFMONTH requires 1 argument")
 		}
@@ -164,10 +162,9 @@ func registerDateTimeFunctions() {
 	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
 	// "year", "month", "day", "hour", "minute" or "second" (singular or
 	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
-	// family and what Excel's YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give;
-	// CCL's HOUR, MINUTE and SECOND convert durations instead. A fraction of
-	// a second is dropped, as Excel's SECOND drops it.
-	registerFunction("DATEPART", func(args ...any) (any, error) {
+	// family and gives what YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give, so it
+	// is deprecated. A fraction of a second is dropped, as Excel's SECOND drops it.
+	registerDeprecatedName("DATEPART", "YEAR, MONTH, DAY, HOUR, MINUTE or SECOND", func(args ...any) (any, error) {
 		if len(args) != 2 {
 			return nil, fmt.Errorf("DATEPART requires 2 arguments (d, unit)")
 		}
@@ -300,15 +297,41 @@ func readDuration(s string) (time.Duration, bool) {
 // deprecated names, and MOD.
 var warnedOnce sync.Map
 
-// registerDurationPart registers DAY, HOUR, MINUTE or SECOND, which convert a
-// duration here and read a date in 0.4. It warns once per process per function:
-// the function runs once per row, and one line is enough to say what will change.
+// registerDurationPart registers DAY, HOUR, MINUTE or SECOND. A date gives that
+// part of the date, as in 0.4 and Excel. Anything else converts a duration, which
+// goes away in 0.4, so it warns once per process per function: the function runs
+// once per row, and one line is enough to say what will change.
 func registerDurationPart(name string, fn Func) {
 	unit := strings.ToLower(name)
 	registerFunction(name, func(args ...any) (any, error) {
-		warnOnce(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
+		if len(args) == 1 {
+			if t, ok := dateArgumentOf(args[0]); ok {
+				switch unit {
+				case "day":
+					return float64(t.Day()), nil
+				case "hour":
+					return float64(t.Hour()), nil
+				case "minute":
+					return float64(t.Minute()), nil
+				default:
+					return float64(t.Second()), nil
+				}
+			}
+		}
+		warnOnce(name, "%s(x) converts a duration to %ss here, and from 0.4 it only reads a date; use DUR(x, '%s') for a duration", name, unit, unit)
 		return fn(args...)
 	})
+}
+
+// dateArgumentOf reads v as a date, leaving text that reads as a duration to the
+// duration rule.
+func dateArgumentOf(v any) (time.Time, bool) {
+	if text, isText := v.(string); isText {
+		if _, err := time.ParseDuration(text); err == nil {
+			return time.Time{}, false
+		}
+	}
+	return toTime(v)
 }
 
 // warnOnce logs a warning about name once per process, since these functions run

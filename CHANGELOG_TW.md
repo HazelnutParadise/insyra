@@ -22,10 +22,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **行為改變**：讀取 CSV 時，若 `Encoding` 是 insyra 無法解碼的名稱（`ReadCSV`、`ReadCSV_FileWithOptions`、`StreamCSV`，以及 `csvxl.CsvToExcel`、`AppendCsvToExcel`），現在會回傳列出支援名稱的錯誤。以前會把位元組原樣交回，所以像 "big6" 這種打錯的名稱會把 Big5 檔案讀成亂碼而且沒有錯誤。Windows 的 `cp950`、`cp936` 現在視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 - `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
-- CCL 的 `DATEPART` 標為棄用，將在 0.4 移除。0.4 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 會讀日期，結果跟它相同。它在 0.3.x 的行為沒有改變：這四個函式在這裡還是換算時間長度，所以要取日期的這幾個部分仍然要用 `DATEPART`，也不會記警告。另外兩個部分已經可以用 `YEAR` 和 `MONTH`。
+- CCL 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 改成跟 0.4 一樣讀日期：`HOUR('2024-01-02T06:30:15Z')` 是 6（以前是 6.504…），`DAY('2024-01-02')` 是 2（以前是 0），`time.Time` 也不再報錯。時間長度、時間長度字串和數字照舊換算，會警告一次並指向 `DUR`。`DATEPART` 和 `DAYOFMONTH` 標為棄用，各警告一次，0.4 移除，請改用這幾個函式。
 - CCL 新增 `DUR(x, unit)`，把時間長度換算成天、時、分或秒：`DUR('36h', 'day')` 是 `1.5`，`DUR(A - B, 'hour')` 跟 `DATEDIFF(A, B, 'hour')` 一樣。除了 Go 的單位，也認得 `d` 和 `w`；空值維持空值；數字和看不懂的文字會回傳錯誤並指出是哪個值。
 - CCL 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 在程式裡第一次執行時會記一則警告：它們在這裡是換算時間長度，從 0.4 開始會改成讀日期的部分，所以 `DAY(x)` 的答案會變。現在的結果不變。請把換算時間長度的公式改成 `DUR(x, 'day')`，兩邊答案都一樣。
-- CCL 的 `TONUM`、`TOSTR`、`SUBSTR` 標為棄用，將在 0.4 移除：請改用功能相同的 `VALUE`、`TEXT`、`MID`。它們在程式裡第一次執行時會各記一則警告。`DAYOFMONTH` 也標為棄用，之後改用 0.4 的 `DAY`；它不會記警告，因為 `DAY` 在這裡還是換算時間長度。
+- CCL 的 `TONUM`、`TOSTR`、`SUBSTR` 標為棄用，將在 0.4 移除：請改用功能相同的 `VALUE`、`TEXT`、`MID`。它們在程式裡第一次執行時會各記一則警告。
 - CCL 的 `MOD` 和 `%` 第一次遇到 0.4 會改變答案的數字時會記一則警告：從 0.4 開始，餘數改成跟著第二個數的正負號，跟 Excel 一樣，所以 `MOD(-7, 3)` 會從 `-1` 變成 `2`。現在的結果不變，只有正數的公式也不會警告。
 - CCL 的 `WEEKDAY`、`TRIM`、`COUNT` 在 0.4 會改成跟 Excel 一樣，現在遇到答案會變的情況時會警告一次：`WEEKDAY` 會改成週日 1～週六 7；`TRIM` 會把文字中間連續的空白縮成一個；`COUNT` 只數數字和日期。現在的結果不變。CCL 新增 `COUNTA`，在兩條版本線上都數所有非 `nil` 的值，要數儲存格請用它。
 - CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
