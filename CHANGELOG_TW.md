@@ -37,6 +37,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：新增 `BOOL`，把值轉成布林值。`TOBOOL` 棄用，會警告一次，0.4 移除，請改用 `BOOL`。
 - CCL：新增 `ISBLANK`、`ISNUM`、`ISTEXT`、`ISBOOL`、`ISDATE`、`ISERROR`，判斷格子裡是什麼。`ISBLANK` 算 `nil` 和空字串，`NaN` 還是用 `ISNA` 判斷。
 - `ReadExcelSheet` 和 `ReadExcel` 新增選填的 `rawStrings`：`true` 每格都留文字，`false` 像讀 CSV 一樣判斷欄位型別。沒傳的話還是留文字，並警告一次，因為 0.4 起預設會判斷型別。`isr.Excel_inOpts.RawStrings` 和 CLI `load` 的 `infer` 也能選。
+- CCL：新增 `INT(x)`、`ROUNDUP(x, n)`、`ROUNDDOWN(x, n)`，行為跟 Excel 一樣。`ROUNDUP` 往離 0 遠的方向，`ROUNDDOWN` 往靠近 0 的方向，`INT` 跟 `FLOOR` 結果相同。
 
 ### `ml` 與 `nn`
 

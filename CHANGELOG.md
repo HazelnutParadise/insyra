@@ -37,6 +37,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `BOOL` converts a value to a boolean. `TOBOOL` is deprecated in its favour, logs one warning, and is removed in 0.4.
 - CCL: `ISBLANK`, `ISNUM`, `ISTEXT`, `ISBOOL`, `ISDATE` and `ISERROR` say what a cell holds. `ISBLANK` counts `nil` and empty text, and `NaN` stays with `ISNA`.
 - `ReadExcelSheet` and `ReadExcel` take an optional `rawStrings`: `true` keeps every cell as text, and `false` types columns the way CSV reading does. Left out, cells stay text and one warning says that from 0.4 columns are typed by default. `isr.Excel_inOpts.RawStrings` and `infer` on the CLI's `load` give the same choice.
+- CCL: `INT(x)`, `ROUNDUP(x, n)` and `ROUNDDOWN(x, n)`, as in Excel. `ROUNDUP` rounds away from zero and `ROUNDDOWN` toward zero, and `INT` gives what `FLOOR` gives.
 
 ### `ml` and `nn`
 
