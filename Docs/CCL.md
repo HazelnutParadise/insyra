@@ -712,7 +712,7 @@ Example:
 "IFERROR(value, valueIfError)"
 ```
 
-Gives `value`, or `valueIfError` when computing `value` fails on that row, such as dividing by zero, adding to a word, or `SQRT` of a negative number. `valueIfError` is computed only when it is needed.
+Gives `value`, or `valueIfError` when computing `value` fails on that row, such as dividing by zero, adding to a word, or `SQRT` of a negative number. `valueIfError` is computed only on the rows that need it; an aggregate inside it, as anywhere in a formula, may be computed once ahead of the rows.
 
 ```
 "IFERROR(A / B, 0)"          // 0 on the rows where B is 0

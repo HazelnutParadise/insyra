@@ -38,10 +38,9 @@ func roundWritten(f float64, digits int) float64 {
 		}
 	}
 	// The last kept digit stands digits places after the point.
-	result, err := strconv.ParseFloat("0"+string(kept)+"e"+strconv.Itoa(-digits), 64)
-	if err != nil {
-		return f
-	}
+	// A result past float64's range comes back as an infinity along with an
+	// error, and an infinity is the answer.
+	result, _ := strconv.ParseFloat("0"+string(kept)+"e"+strconv.Itoa(-digits), 64)
 	if result == 0 {
 		return 0
 	}

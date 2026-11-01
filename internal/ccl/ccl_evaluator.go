@@ -1,7 +1,6 @@
 package ccl
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -346,7 +345,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			if err == nil {
 				return val, nil
 			}
-			if errors.Is(err, errUnknownName) {
+			if isFormulaMistake(err) {
 				return nil, err
 			}
 			return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
@@ -440,7 +439,12 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 			return callAggregateFunction(t.name, aggArgs)
 		}
 
-		// Default: evaluate all args then call function
+		// Default: evaluate all args then call function. The name is checked
+		// first, so an argument that fails cannot hide a misspelt function from
+		// IFERROR.
+		if _, known := lookupFunction(t.name); !known {
+			return nil, fmt.Errorf("%w: %s", errUnknownName, t.name)
+		}
 		functionDepth := callDepth + 1
 		args := []any{}
 		for _, arg := range t.args {
@@ -550,7 +554,10 @@ func foldAggregates(n cclNode, ctx Context) (cclNode, bool) {
 		if _, isAgg := lookupAggregateFunction(upper); isAgg && !containsRowIndex(t) {
 			val, err := evaluateWithCallDepth(t, ctx, 0, 0)
 			if err != nil {
-				return n, false
+				// Keep the failure. A row reaching this part fails with it, and
+				// under IFERROR the rows carry on, which must not scan the whole
+				// column again on every row.
+				return &cclFailedPartNode{err: err}, true
 			}
 			// Only a scalar is safe to inline. A column-shaped result belongs
 			// to the sequence path, which spreads it across the rows itself.

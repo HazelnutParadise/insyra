@@ -21,6 +21,13 @@ func TestParquetCCLIfError(t *testing.T) {
 	if rows, _ := kept.Size(); rows != 1 {
 		t.Errorf("FilterWithCCL kept %d rows, want 1", rows)
 	}
+	// A column the file does not have is a mistake in the formula.
+	if _, err := FilterWithCCL(context.Background(), path, "IFERROR(['nope'] + 1, 0) > 0"); err == nil {
+		t.Error("FilterWithCCL read a missing column as the fallback")
+	}
+	if err := ApplyCCL(context.Background(), path, "NEW('m') = IFERROR(['nope'] + 1, 0)"); err == nil {
+		t.Error("ApplyCCL read a missing column as the fallback")
+	}
 	if err := ApplyCCL(context.Background(), path, "NEW('r') = IFERROR(A / B, -1)"); err != nil {
 		t.Fatal(err)
 	}

@@ -24,6 +24,9 @@ var goVerb = regexp.MustCompile(`%[-+# 0]*(\[\d+\])?(\d+|\*)?(\.(\d+|\*)?)?(\[\d
 // goLayoutDigit is what only a Go date layout holds.
 var goLayoutDigit = regexp.MustCompile(`[1-9]`)
 
+// goFractionOnly is a Go layout of nothing but fractional seconds, such as .000.
+var goFractionOnly = regexp.MustCompile(`^[.,]0+$`)
+
 // formatKind says how a format reads.
 type formatKind int
 
@@ -100,7 +103,8 @@ func isASCIILetter(c byte) bool {
 
 // formatDateValue formats t by a date format of either kind, in t's own zone.
 func formatDateValue(t time.Time, format string) (string, error) {
-	if goLayoutDigit.MatchString(unquote(format)) {
+	bare := unquote(format)
+	if goLayoutDigit.MatchString(bare) || goFractionOnly.MatchString(bare) {
 		return t.Format(format), nil
 	}
 	return formatExcelDate(t, format)
@@ -144,12 +148,15 @@ func formatExcelDate(t time.Time, format string) (string, error) {
 // scanDateFormat splits a date format into its pieces.
 func scanDateFormat(format string) ([]dateToken, error) {
 	var tokens []dateToken
-	lit := func(s string) {
-		if n := len(tokens); n > 0 && tokens[n-1].code == "" {
-			tokens[n-1].literal += s
-			return
+	// A long run of literal text is gathered in one builder, because appending
+	// to a string byte by byte is quadratic in the format's length.
+	var pending strings.Builder
+	lit := func(s string) { pending.WriteString(s) }
+	flush := func() {
+		if pending.Len() > 0 {
+			tokens = append(tokens, dateToken{literal: pending.String()})
+			pending.Reset()
 		}
-		tokens = append(tokens, dateToken{literal: s})
 	}
 	seenCode := false
 scan:
@@ -171,6 +178,7 @@ scan:
 		}
 		for _, name := range goDateNames {
 			if strings.HasPrefix(rest, name) {
+				flush()
 				tokens = append(tokens, dateToken{code: name})
 				seenCode = true
 				i += len(name)
@@ -179,6 +187,7 @@ scan:
 		}
 		for _, m := range []struct{ text, code string }{{"AM/PM", "ampm"}, {"A/P", "ap"}} {
 			if len(rest) >= len(m.text) && strings.EqualFold(rest[:len(m.text)], m.text) {
+				flush()
 				tokens = append(tokens, dateToken{code: m.code, literal: rest[:len(m.text)]})
 				seenCode = true
 				i += len(m.text)
@@ -186,18 +195,20 @@ scan:
 			}
 		}
 		if rest[:min(2, len(rest))] == "PM" || rest[:min(2, len(rest))] == "pm" {
+			flush()
 			tokens = append(tokens, dateToken{code: "ampm", literal: rest[:2]})
 			seenCode = true
 			i += 2
 			continue
 		}
 		c := format[i]
-		if c == '.' && len(tokens) > 0 && strings.HasPrefix(tokens[len(tokens)-1].code, "s") {
+		if c == '.' && pending.Len() == 0 && len(tokens) > 0 && strings.HasPrefix(tokens[len(tokens)-1].code, "s") {
 			n := 1
 			for i+n < len(format) && format[i+n] == '0' {
 				n++
 			}
 			if n > 1 && n <= 4 {
+				flush()
 				tokens = append(tokens, dateToken{code: "fraction", literal: format[i : i+n]})
 				i += n
 				continue
@@ -219,6 +230,7 @@ scan:
 		code := strings.Repeat(string(lower), n)
 		switch {
 		case lower == 'y' && n <= 4, lower == 'm' && n <= 4, lower == 'd' && n <= 4, lower == 'h' && n <= 2, lower == 's' && n <= 2:
+			flush()
 			tokens = append(tokens, dateToken{code: code})
 			seenCode = true
 			i += n
@@ -226,6 +238,7 @@ scan:
 			return nil, fmt.Errorf("date format %q holds %q, which is not a date code; use y, m, d, h and s, or a Go layout such as 2006-01-02", format, format[i:i+n])
 		}
 	}
+	flush()
 	if !seenCode {
 		return nil, fmt.Errorf("date format %q holds no date code", format)
 	}
@@ -241,7 +254,7 @@ func dateCodeText(t time.Time, tok dateToken, tokens []dateToken, i int, twelveH
 	case "y", "yy":
 		return fmt.Sprintf("%02d", t.Year()%100)
 	case "yyy", "yyyy":
-		return strconv.Itoa(t.Year())
+		return fmt.Sprintf("%04d", t.Year())
 	case "m", "mm":
 		minutes := t.Minute()
 		isMinute := isClockCode(tokens, i, -1, "h") || isClockCode(tokens, i, 1, "s")
@@ -435,12 +448,12 @@ func formatExcelDecimal(text, format string) (string, error) {
 	text = strings.TrimLeft(text, "+-")
 	intPart, fracPart := roundDecimal(text, nf.percents*2, nf.maxFrac)
 	fracPart = strings.TrimRight(fracPart, "0")
-	for len(fracPart) < nf.minFrac {
-		fracPart += "0"
+	if len(fracPart) < nf.minFrac {
+		fracPart += strings.Repeat("0", nf.minFrac-len(fracPart))
 	}
 	intPart = strings.TrimLeft(intPart, "0")
-	for len(intPart) < nf.minInt {
-		intPart = "0" + intPart
+	if len(intPart) < nf.minInt {
+		intPart = strings.Repeat("0", nf.minInt-len(intPart)) + intPart
 	}
 	if nf.grouped {
 		intPart = groupThousands(intPart)
