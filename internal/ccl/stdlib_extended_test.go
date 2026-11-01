@@ -291,7 +291,7 @@ func TestDateTimeFunctions(t *testing.T) {
 	wantFloat(t, got, 15)
 
 	got, _ = callFn(t, "WEEKDAY", d)
-	wantFloat(t, got, float64(time.Monday)) // 1
+	wantFloat(t, got, 2) // Monday, counting Sunday as 1
 
 	// String input gets parsed automatically.
 	got, _ = callFn(t, "YEAR", "2024-07-15")

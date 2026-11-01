@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+// countsAsNumber reports whether COUNT counts val: a number or a date, as in an
+// Excel range. Text is not one even when it reads as a number, nor is a bool, and
+// NaN is skipped as the other aggregates skip it.
+func countsAsNumber(val any) bool {
+	switch val.(type) {
+	case nil, string, bool:
+		return false
+	case time.Time:
+		return true
+	}
+	f, ok := toFloat64(val)
+	return ok && !math.IsNaN(f)
+}
+
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // Categories:
 //   - Logical: IF, AND, OR, CASE
@@ -23,7 +37,7 @@ import (
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
 //     MINUTE, SECOND, DAYOFMONTH, WEEKDAY, DATEPART, DATEDIFF, DATEADD,
 //     FORMAT_DATE
-//   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
+//   - Aggregates: SUM, AVG, COUNT, COUNTA, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
 	registerMathFunctions()
@@ -131,7 +145,19 @@ func RegisterStandardFunctions() {
 		return sum / float64(count), nil
 	})
 
+	// COUNT counts numbers and dates, as Excel's does; COUNTA counts every value
+	// that is not nil, text included.
 	registerAggregateFunction("COUNT", func(args ...[]any) (any, error) {
+		var count int
+		forEachValue(args, func(val any) {
+			if countsAsNumber(val) {
+				count++
+			}
+		})
+		return float64(count), nil
+	})
+
+	registerAggregateFunction("COUNTA", func(args ...[]any) (any, error) {
 		var count int
 		forEachValue(args, func(val any) {
 			if val != nil {

@@ -636,7 +636,7 @@ When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`,
 
 ```
 "SUM(@)"             // Sum of all numeric values in the entire table
-"COUNT(@)"           // Count of all non-nil cells in the entire table
+"COUNTA(@)"          // Count of all non-nil cells in the entire table
 ```
 
 > **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
@@ -768,7 +768,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | --- | --- |
 | `LEN(s)` | Number of Unicode characters |
 | `UPPER(s)` / `LOWER(s)` | Case conversion |
-| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip whitespace from both ends / the left / the right. `TRIM` also turns each run of spaces inside the text into one space, as in Excel; a tab inside stays |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
 | `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
@@ -815,7 +815,7 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `DAY(d)` | Day of the month, 1–31 |
 | `HOUR(d)` / `MINUTE(d)` / `SECOND(d)` | Hour 0–23, minute 0–59, second 0–59; a fraction of a second is dropped |
 | `DAYOFMONTH(d)` | **Deprecated**: the same as `DAY(d)`, kept so existing formulas keep working. Use `DAY` |
-| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `WEEKDAY(d)` | 1 (Sunday) – 7 (Saturday), Excel's default |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
@@ -886,21 +886,18 @@ Calculates the mean of the numeric values in the input.
 "AVG(A.(0:9))"       // Mean of the first ten rows of A
 ```
 
-**`AVG` is not `SUM` divided by `COUNT`.** `AVG` divides by how many values it
-could read as numbers; `COUNT` counts values that are not `nil`, including text.
-On a column holding `[10, nil, 30, "abc"]`, `SUM` is `40`, `COUNT` is `3`, and
-`AVG` is `20` — because the mean is taken over the two numbers, not over the
-three non-empty cells.
+**`AVG` is not always `SUM` divided by `COUNT`.** `AVG` and `SUM` also read text that holds a number; `COUNT` counts only numbers and dates. On a column holding `[10, nil, 30, "12", "abc"]`, `SUM` is `52`, `AVG` is `17.33…`, `COUNT` is `2` and `COUNTA` is `4`.
 
 ### COUNT
 
 Calculates the count of non-nil (non-empty) values in the input.
 
 ```
-"COUNT(A)"           // Count of non-nil values in column A
-"COUNT(A, B)"        // Count of non-nil values in columns A and B
-"COUNT(@.#)"         // Count of non-nil values in the current row
-"COUNT(@)"           // Count of all non-nil values in the entire table
+"COUNT(A)"           // Count of numbers and dates in column A
+"COUNTA(A)"          // Count of non-nil values in column A, text included
+"COUNTA(A, B)"       // Count of non-nil values in columns A and B
+"COUNTA(@.#)"        // Count of non-nil values in the current row
+"COUNTA(@)"          // Count of all non-nil values in the entire table
 ```
 
 ### MAX
@@ -982,7 +979,7 @@ To calculate the average of all columns for each row:
 To count non-nil values in each row:
 
 ```
-"NEW('row_count') = COUNT(@.#)"
+"NEW('row_count') = COUNTA(@.#)"
 ```
 
 ## Differences from Excel
@@ -992,14 +989,13 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | Excel | CCL | Difference |
 | --- | --- | --- |
 | `DAY(45000)` and the other date functions on a serial number | `DAY(d)` on a date | Excel counts dates as days since 1900; CCL reads a `time.Time` or a date string, and a number is an error |
-| `WEEKDAY(date)` | `WEEKDAY(d) + 1` | CCL counts Sunday as 0 through Saturday as 6; Excel's default counts Sunday as 1 through Saturday as 7 |
 | `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
 | `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |
 | `AVERAGE(...)` | `AVG(...)` | Different name |
-| `COUNT(...)` | `COUNT(...)` | CCL counts every value that is not `nil`, text included, like Excel's `COUNTA`. Excel's `COUNT` counts numbers only |
+| `COUNT(...)` | `COUNT(...)` | The same over a range: numbers and dates count, and text does not, even when it reads as a number. A `NaN` is skipped. `COUNTA` counts every value that is not `nil` |
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
 | `MOD(a, b)` | `MOD(a, b)` | CCL's result has the sign of `a`, Excel's the sign of `b`: `MOD(-7, 3)` is `-1` in CCL and `2` in Excel |
-| `TRIM(s)` | `TRIM(s)` | CCL strips the ends only; Excel also turns each run of spaces inside the text into one space |
+| `TRIM(s)` | `TRIM(s)` | CCL also strips tabs and line breaks from the ends; Excel strips only spaces. Inside the text both turn a run of spaces into one |
 | `FIND(find, within)` | `FIND(needle, haystack)` | Not found is `0` in CCL and an error in Excel. CCL has no start position argument |
 | `TEXT(value, format)` | `TEXT(x, fmt)` | The format is a Go `fmt` verb such as `'%.2f'`, not an Excel format code such as `"0.00"` |
 | Numbers | `int64` and `float64` | Excel stores every number as a double. CCL keeps integers as `int64` through `+`, `-`, `*`, `%`, `SUM`, `MIN` and `MAX`, so `7 % 3` is the integer `1`, an integer past 2^53 keeps every digit, and a result past the `int64` range is an error. `/` and `^` give a `float64` (see [Numeric Comparison and Arithmetic](#numeric-comparison-and-arithmetic)) |

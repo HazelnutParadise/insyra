@@ -77,7 +77,8 @@ func registerDateTimeFunctions() {
 		if !ok {
 			return nil, fmt.Errorf("WEEKDAY: cannot convert %T to date", args[0])
 		}
-		return float64(t.Weekday()), nil
+		// Sunday is 1 through Saturday 7, Excel's default.
+		return float64(t.Weekday()) + 1, nil
 	})
 
 	// DATEDIFF(d1, d2, unit) returns d1 - d2 expressed in the requested unit.

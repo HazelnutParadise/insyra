@@ -286,7 +286,7 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 
 For example, on a file whose column `A` holds 1 to 2,500, `FilterWithCCL(ctx, path, "A > AVG(A)")` keeps the 1,250 rows from 1,251 on, and `"# == 0"` keeps the first row only. In `ApplyCCL`, each statement sees the file as the statements before it leave it, so `NEW('c') = A - AVG(A); NEW('d') = ['c'] / SUM(['c'])` divides by the sum of the new column.
 
-The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
+The aggregates computed this way are `SUM`, `AVG`, `COUNT`, `COUNTA`, `MIN`, `MAX`, `VAR`, `VARP`, `STDEV` and `STDEVP`. Before any row is evaluated, the file is read again for them, keeping only running totals, so memory still holds one batch at a time:
 
 - each extra read feeds one argument of an aggregate, and each column of a range or of `@` is an argument of its own;
 - `VAR`, `VARP`, `STDEV` and `STDEVP` read each argument twice;
