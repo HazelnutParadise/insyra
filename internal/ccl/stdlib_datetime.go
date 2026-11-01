@@ -114,27 +114,11 @@ func registerDateTimeFunctions() {
 		}
 	})
 
-	// DATEPART(d, unit) returns one part of d, read in d's own time zone:
-	// "year", "month", "day", "hour", "minute" or "second" (singular or
-	// plural, any case). It is the third of the DATEADD / DATEDIFF / DATEPART
-	// family, and gives what YEAR, MONTH, DAY, HOUR, MINUTE and SECOND give.
+	// DATEPART was the only way to read the hour of a date while HOUR converted
+	// durations. HOUR and the others read dates now, so it was removed; a formula
+	// still using it is told what to write.
 	registerFunction("DATEPART", func(args ...any) (any, error) {
-		if len(args) != 2 {
-			return nil, fmt.Errorf("DATEPART requires 2 arguments (d, unit)")
-		}
-		t, ok := toTime(args[0])
-		if !ok {
-			return nil, fmt.Errorf("DATEPART: cannot convert first arg %T to date", args[0])
-		}
-		unit, ok := args[1].(string)
-		if !ok {
-			return nil, fmt.Errorf("DATEPART: unit must be a string, got %T", args[1])
-		}
-		v, ok := datePart(t, unit)
-		if !ok {
-			return nil, fmt.Errorf("DATEPART: unknown unit %q (expected year/month/day/hour/minute/second)", unit)
-		}
-		return v, nil
+		return nil, fmt.Errorf("DATEPART was removed; use YEAR(d), MONTH(d), DAY(d), HOUR(d), MINUTE(d) or SECOND(d)")
 	})
 
 	// DATEADD(d, n, unit) returns d shifted by n units. Supports the same

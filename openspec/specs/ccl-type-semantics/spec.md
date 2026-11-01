@@ -2,7 +2,9 @@
 
 ## Purpose
 CCL never produces a value for an operation it cannot perform. Values that have no common ordering are an error rather than a silent false, an index that is not a whole number is an error rather than a truncation, a cell of every Go numeric type is a number, and the evaluator's internal representations never reach a cell.
+
 ## Requirements
+
 ### Requirement: Strings have an ordering
 
 When neither operand of `<`, `>`, `<=` or `>=` converts to a number and both are strings, CCL SHALL compare them lexicographically. When one operand converts to a number and the other is a string that does not, CCL SHALL return an error. `nil` compared for size against any value SHALL remain false, as documented.
@@ -50,6 +52,7 @@ No internal representation SHALL become a cell value. A column range used as a w
 #### Scenario: A sequence function that needs numbers
 - **WHEN** 求值 `CUMSUM(@)`
 - **THEN** 回傳錯誤說明整列不是數字
+
 ### Requirement: AND and OR check their arguments
 
 `AND()` and `OR()` SHALL require at least two arguments, and SHALL return an error for an argument that cannot be converted to a boolean, matching `&&` and `||`.
@@ -233,6 +236,7 @@ Every numeric operation not covered by the integer rules SHALL compute in `float
 #### Scenario: Division and powers stay float64
 - **WHEN** 求值 `7 / 2`、`6 / 3`、`2 ^ 3`
 - **THEN** 分別得到 `float64` 的 3.5、2、8
+
 ### Requirement: A computed column holds one kind of number
 
 A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL` or a statement of `ExecuteCCL` SHALL hold one kind of number: when the numbers among its values include a `float64` or `float32`, every value of a Go integer type whose magnitude is at most 2^53 SHALL become the `float64` of the same value. An integer of larger magnitude SHALL keep its type and value. A column whose numbers are all integers, and every value that is not a number, SHALL be left as computed.
@@ -257,22 +261,6 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 - **WHEN** 欄 `A` 為 `int16` 的 `[1, 2]`，`AddColUsingCCL("b", "A")`
 - **THEN** `b` 仍是 `int16` 的 `[1, 2]`
 
-### Requirement: DATEPART gives one part of a date
-
-`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, singular or plural and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
-
-#### Scenario: Each part
-- **WHEN** 欄 `A` 存 `'2024-03-09T06:07:08Z'`，求值 `DATEPART(A, 'year')`、`'month'`、`'day'`、`'hour'`、`'minute'`、`'second'`
-- **THEN** 分別得到 2024、3、9、6、7、8
-
-#### Scenario: The date's own time zone
-- **WHEN** 欄 `B` 存 UTC+8 的 2024-12-31 23:59:58.999，求值 `DATEPART(B, 'hour')` 與 `DATEPART(B, 'second')`
-- **THEN** 分別得到 23 與 58
-
-#### Scenario: An unknown unit
-- **WHEN** 求值 `DATEPART(A, 'week')`
-- **THEN** 回傳錯誤
-
 ### Requirement: DAY, HOUR, MINUTE and SECOND take a part of a date
 
 `DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
@@ -296,3 +284,11 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: What the error points to
 - **WHEN** A 為 2024-01-03 12:00、B 為 2024-01-02 00:00，求值 `DATEDIFF(A, B, 'day')` 與 `(A - B) / 3600`
 - **THEN** 分別得到 1.5 與 36
+
+### Requirement: A formula using DATEPART is told what to write
+
+`DATEPART`, with any arguments, SHALL be an error that says it was removed and names `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE` and `SECOND`.
+
+#### Scenario: A formula still using it
+- **WHEN** `DATEPART(A, 'hour')` is evaluated
+- **THEN** the error says it was removed and names `HOUR(d)`
