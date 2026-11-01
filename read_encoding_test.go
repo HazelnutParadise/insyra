@@ -8,6 +8,38 @@ import (
 	"unicode/utf8"
 )
 
+func TestDetectEncodingBoundary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "b.txt")
+	body := append([]byte(strings.Repeat("a", 8191)), []byte("中文字再多一些內容")...)
+	if err := os.WriteFile(p, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	enc, err := DetectEncoding(p)
+	if err != nil || enc != "utf-8" {
+		t.Fatalf("got %q err=%v", enc, err)
+	}
+}
+
+// A file shorter than the sample holds every byte of itself, so an invalid tail
+// is invalid, not cut off: a Latin-1 file must not be judged UTF-8 by trimming
+// its last non-UTF-8 bytes away. The text is long enough for the detector to
+// name a charset, so the UTF-8 fallback for an undetectable sample does not
+// hide the answer.
+func TestDetectEncodingKeepsAnInvalidTailOfAShortFile(t *testing.T) {
+	text := strings.Repeat("The quick brown fox jumps over the lazy dog near the river bank.\n", 13) + "Jos\xe9\n"
+	p := filepath.Join(t.TempDir(), "latin1.csv")
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	enc, err := DetectEncoding(p)
+	if err != nil {
+		t.Fatalf("DetectEncoding: %v", err)
+	}
+	if enc == "utf-8" {
+		t.Fatalf("a Latin-1 file of %d bytes was reported as utf-8", len(text))
+	}
+}
+
 // SEC-5 (a): a detected encoding that no decoder handles must be an error,
 // not a silent fall-through that copies the raw bytes into the table.
 func TestReadCSVRejectsUndecodableEncoding(t *testing.T) {

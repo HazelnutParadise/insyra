@@ -170,3 +170,13 @@ func TestStructuralMissesRecordErrors(t *testing.T) {
 		t.Fatalf("error message should name the column: %q", err.Message)
 	}
 }
+
+func TestUpdateErrNamesItself(t *testing.T) {
+	SetDefaultConfig()
+	Config.SetLogLevel(LogLevelFatal)
+	dl := NewDataList(1)
+	dl.Update(5, 2)
+	if dl.Err() == nil || dl.Err().FuncName != "Update" {
+		t.Fatalf("got %v", dl.Err())
+	}
+}

@@ -836,3 +836,56 @@ func TestFlattenSlicesNotArrays(t *testing.T) {
 		t.Errorf("Expected slices flattened but arrays not %v, got %v", expected4, dl4.Data())
 	}
 }
+
+func TestIsEqualToNaN(t *testing.T) {
+	dl := NewDataList(1.0, math.NaN(), "x")
+	if !dl.IsEqualTo(dl.Clone()) {
+		t.Fatal("list with NaN should equal its clone")
+	}
+	if dl.IsEqualTo(NewDataList(1.0, 2.0, "x")) {
+		t.Fatal("different lists should not be equal")
+	}
+}
+
+func TestClearNilsAndNaNsSinglePass(t *testing.T) {
+	dl := NewDataList(1.0, math.NaN(), nil, 2.0, nil, math.NaN())
+	dl.ClearNilsAndNaNs()
+	if !reflect.DeepEqual(dl.Data(), []any{1.0, 2.0}) {
+		t.Fatalf("got %v", dl.Data())
+	}
+}
+
+// IN-2: Close() must not silently swallow an operation that was already
+// waiting for the lock — the caller has no way to learn it never ran.
+func TestCloseDoesNotDropWaitingOperations(t *testing.T) {
+	restoreConfig(t)
+	Config.SetLogLevel(LogLevelFatal)
+
+	dl := NewDataList(1)
+	started := make(chan struct{})
+	appended := make(chan struct{})
+
+	go func() {
+		dl.AtomicDo(func(inner *DataList) {
+			close(started)
+			// Give the other goroutine time to queue up on the mutex.
+			time.Sleep(100 * time.Millisecond)
+			inner.Close()
+		})
+	}()
+
+	<-started
+	go func() {
+		dl.Append(2)
+		close(appended)
+	}()
+
+	select {
+	case <-appended:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Append never returned")
+	}
+	if n := dl.Len(); n != 2 {
+		t.Fatalf("Len() = %d, want 2: Close() dropped the queued Append", n)
+	}
+}

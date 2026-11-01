@@ -157,3 +157,27 @@ func TestSimpleImputerDoesNotClaimReversibility(t *testing.T) {
 		t.Fatal("SimpleImputer must satisfy the transformer shape a pipeline needs")
 	}
 }
+
+func TestSimpleImputerTakesOptions(t *testing.T) {
+	train := NewDataTable(NewDataList(10.0, 30.0, nil).SetName("v"))
+
+	out, err := NewSimpleImputer().FitTransform(train, Name("v"))
+	if err != nil || out.GetColByName("v").Get(2) != 20.0 {
+		t.Fatalf("default strategy: %v, %v; want the mean, 20", err, out.GetColByName("v").Data())
+	}
+	out, err = NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeConstant, FillValue: 7.0}).FitTransform(train, Name("v"))
+	if err != nil || out.GetColByName("v").Get(2) != 7.0 {
+		t.Fatalf("constant: %v, %v", err, out.GetColByName("v").Data())
+	}
+	refused := map[string]*SimpleImputer{
+		"a fill value with the mean":     NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean, FillValue: 7.0}),
+		"the constant without a value":   NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeConstant}),
+		"two options structs":            NewSimpleImputer(SimpleImputerOptions{}, SimpleImputerOptions{}),
+		"a strategy that does not exist": NewSimpleImputer(SimpleImputerOptions{Strategy: "mystery"}),
+	}
+	for name, imputer := range refused {
+		if err := imputer.Fit(train, Name("v")); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}
