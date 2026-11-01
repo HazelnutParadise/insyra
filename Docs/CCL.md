@@ -400,7 +400,7 @@ The `&` operator always performs string concatenation by converting all operands
 "Value: " & 45.67           // "Value: 45.67"
 ```
 
-**How a number becomes text.** `&`, `CONCAT`, `TOSTR` without a format, `LEN`,
+**How a number becomes text.** `&`, `CONCAT`, `TEXT` without a format, `LEN`,
 `UPPER` and the other string functions write a `float64` or `float32` as plain
 decimal digits: the shortest decimal that reads back as the same number, with no
 exponent. A value of 1e21 or more, `NaN` and the infinities keep Go's default
@@ -414,7 +414,7 @@ LEN(1000000)                // 7, the same as an integer column holding 1000000
 
 `ToCSV`, `ToJSON` and `Show` do not follow this rule: a number in a CSV or JSON
 number cell reads back as the same value in exponent form, so they keep it. Use
-`TOSTR(x, fmt)` when the exact text matters.
+`TEXT(x, fmt)` when the exact text matters.
 
 ### Handling `nil` Values
 
@@ -759,7 +759,7 @@ dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
 
 ### String Functions
 
-All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID` slice by rune. A count or position past the end of the string means "to the end", so `MID('abc', 2, 10^300)` is `"bc"`, and a `NaN` count is an error.
 
 | Function | Description |
 | --- | --- |
@@ -797,8 +797,8 @@ dt.ExecuteCCL(`
 `IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
 
 ```go
-dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
-dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+dt.AddColUsingCCL("price_num", "COALESCE(VALUE(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TEXT(['price'], '$%.2f')")
 ```
 
 ### Date Component & Arithmetic Functions
