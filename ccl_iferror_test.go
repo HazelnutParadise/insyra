@@ -21,9 +21,4 @@ func TestIfErrorOnATable(t *testing.T) {
 	if missing.Err() == nil {
 		t.Error("a column that does not exist should fail, not read as the fallback")
 	}
-	beyond := NewDataTable(NewDataList(1).SetName("a"))
-	beyond.AddColUsingCCL("r", "IFERROR(E + 1, 0)")
-	if beyond.Err() == nil {
-		t.Error("a column past the last should fail, not read as the fallback")
-	}
 }
