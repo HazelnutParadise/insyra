@@ -63,8 +63,8 @@ func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) floa
 
 	// Create the function plot using plotter.NewFunction
 	functionPlot := plotter.NewFunction(function)
-	functionPlot.Color = seriesStroke(0)
-	functionPlot.Width = vg.Points(1.5)
+	functionPlot.Color = seriesColor(0)
+	functionPlot.Width = vg.Points(2)
 
 	// Set X-axis range for the function
 	functionPlot.XMin = config.XMin

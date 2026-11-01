@@ -8,7 +8,7 @@
 - **BREAKING** Both scatter charts refuse a cell that is not a Go number, naming the series and row; `gplot` used to draw it as 0.
 - `gplot.CreateScatterPlot`/`ScatterPlotConfig` become `CreateScatterChart`/`ScatterChartConfig`; `plot.CreateHeatMap` and its types become `CreateHeatmapChart`, `HeatmapChartConfig`, `HeatmapPoint`, `HeatmapAxis`, `NewHeatmapPoint`, `NewHeatmapMissingPoint`. The old names stay one release as Deprecated wrappers and aliases.
 - `gplot.CreateBarChart` takes `...insyra.IDataList` and draws grouped bars; `ErrorBars` is allowed with one list only.
-- Every `gplot` chart colours its series from one palette (gonum's paired soft and dark colours); lines and steps, black before, are coloured and keep their dash patterns.
+- Every `gplot` chart colours its series from the palette `plot` uses, which opens with Insyra's brand blue, orange and red; lines and steps, black before, are coloured and keep their dash patterns.
 - **BREAKING** `plot.CreateRadarChart` takes `...RadarSeries`.
 - **BREAKING** `plot.CreateBarChart` and `CreateLineChart` refuse an empty list, naming its position among the arguments, before reading anything.
 - Positions in `plot`'s errors count the caller's arguments, nil ones included.

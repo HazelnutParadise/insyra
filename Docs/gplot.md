@@ -454,7 +454,7 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ## Series colours
 
-Every chart colours series *i* from one palette, gonum's paired soft and dark colours, so the first series is the same red whether it is drawn as bars, a line or points. Bars and histograms take the soft colour; lines, steps, function curves and scatter markers take the dark one, which stays readable at a line's width. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette opens with Insyra's brand colours, blue `#1F449B`, orange `#F9AC41` and red `#D73E3E`, and continues through 64 colours in all. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
 
 ## A series that cannot be drawn fails the chart
 

@@ -123,8 +123,8 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
 
-	line.Color = seriesStroke(index)
-	line.Width = vg.Points(1.5)
+	line.Color = seriesColor(index)
+	line.Width = vg.Points(2)
 
 	plt.Add(line)
 	plt.Legend.Add(seriesName, line)

@@ -160,8 +160,8 @@ func TestANilListInsideAWrapperIsDropped(t *testing.T) {
 	}
 }
 
-// Every chart colours series i from one palette: series 1 is the same red
-// whether it is a bar, a line, a step or a set of points.
+// Every chart colours series i from the palette plot uses: series 1 is the
+// same Insyra blue whether it is a bar, a line, a step or a set of points.
 func TestEveryChartSharesOnePalette(t *testing.T) {
 	quietFatal(t)
 	a := insyra.NewDataList(1.0, 2.0, 3.0).SetName("a")
@@ -183,12 +183,12 @@ func TestEveryChartSharesOnePalette(t *testing.T) {
 		},
 	}
 	want := map[string][]color.Color{
-		"bar":       {seriesFill(0), seriesFill(1)},
-		"line":      {seriesStroke(0), seriesStroke(1)},
-		"step":      {seriesStroke(0), seriesStroke(1)},
-		"scatter":   {seriesStroke(0), seriesStroke(1)},
-		"histogram": {seriesFill(0)},
-		"function":  {seriesStroke(0)},
+		"bar":       {seriesColor(0), seriesColor(1)},
+		"line":      {seriesColor(0), seriesColor(1)},
+		"step":      {seriesColor(0), seriesColor(1)},
+		"scatter":   {seriesColor(0), seriesColor(1)},
+		"histogram": {seriesColor(0)},
+		"function":  {seriesColor(0)},
 	}
 	for name, build := range charts {
 		t.Run(name, func(t *testing.T) {
@@ -203,9 +203,6 @@ func TestEveryChartSharesOnePalette(t *testing.T) {
 				}
 			}
 		})
-	}
-	if rgb(seriesFill(0)) == rgb(seriesStroke(0)) {
-		t.Error("the fill and stroke palettes are the same colour; a bar's outline would vanish into a line's colour")
 	}
 }
 

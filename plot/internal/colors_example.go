@@ -13,8 +13,8 @@ func PrintColorPalette() {
 
 	colorNames := []string{
 		// Round 1
-		"Bright sky blue", "Emerald", "Amethyst", "Vibrant red",
-		"Golden orange", "Turquoise", "Slate gray", "Pumpkin",
+		"Insyra blue", "Insyra orange", "Insyra red", "Emerald",
+		"Amethyst", "Turquoise", "Slate gray", "Pumpkin",
 		// Round 2
 		"Soft azure", "Soft jade", "Lavender purple", "Rose pink",
 		"Tangerine", "Bright cyan", "Mocha brown", "Dark turquoise",
@@ -350,8 +350,8 @@ func GenerateHTMLColorPreview() string {
 
 	colorNames := []string{
 		// Round 1
-		"Bright sky blue", "Emerald", "Amethyst", "Vibrant red",
-		"Golden orange", "Turquoise", "Slate gray", "Pumpkin",
+		"Insyra blue", "Insyra orange", "Insyra red", "Emerald",
+		"Amethyst", "Turquoise", "Slate gray", "Pumpkin",
 		// Round 2
 		"Soft azure", "Soft jade", "Lavender purple", "Rose pink",
 		"Tangerine", "Bright cyan", "Mocha brown", "Dark turquoise",

@@ -131,7 +131,7 @@ func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index
 		return fmt.Errorf("series %q cannot be drawn: %w", seriesName, err)
 	}
 
-	scatter.Color = seriesStroke(index)
+	scatter.Color = seriesColor(index)
 
 	// Set different shapes for each series
 	shapes := []draw.GlyphDrawer{

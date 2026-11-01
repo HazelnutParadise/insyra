@@ -9,7 +9,7 @@
 ## 3. gplot bar
 - [x] 3.1 `CreateBarChart(config, ...insyra.IDataList)` with grouped bars and a legend
 - [x] 3.2 `ErrorBars` refused with more than one list
-- [x] 3.3 One palette for every gplot chart; lines keep their dash patterns
+- [x] 3.3 One palette for every plot and gplot chart, opening with Insyra's brand colours; lines keep their dash patterns
 
 ## 4. plot rules
 - [x] 4.1 `CreateRadarChart(config, ...RadarSeries)`

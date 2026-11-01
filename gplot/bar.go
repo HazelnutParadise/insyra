@@ -66,7 +66,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot
 		if err != nil {
 			return nil, chartError("CreateBarChart", "cannot draw list %d: %w", pos[i]+1, err)
 		}
-		bars.Color = seriesFill(i)
+		bars.Color = seriesColor(i)
 		bars.LineStyle.Width = 0
 		if len(values) > 1 {
 			// Centre the group on its category: bar i sits i widths right of
