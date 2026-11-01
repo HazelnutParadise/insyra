@@ -807,7 +807,7 @@ dt.ExecuteCCL(`
 | --- | --- |
 | `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. Text may be written the way a spreadsheet displays a number: `'10%'` is 0.1 and `'1,234.5'` is 1234.5. Commas must group digits in threes, so `'1,23'` is `nil`, and a currency sign such as `'$12'` is `nil` `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TEXT(x, fmt?)` | Convert to string. With a second argument, formats by either kind of format, as described under **Formats** below: a Go `fmt` verb (e.g. `"%.2f"`), an Excel number code (`"0.00"`), or a date format (`"yyyy-mm-dd"`, `"2006-01-02"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
-| `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
+| `BOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil`. `TOBOOL(x)` is deprecated, logs a warning, and is removed in 0.4 |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
 

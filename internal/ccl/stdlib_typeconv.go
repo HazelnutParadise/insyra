@@ -39,7 +39,7 @@ func displayedNumber(text string) (value float64, ok bool, displayed bool) {
 }
 
 // registerTypeConversionFunctions registers value coercion and null-handling
-// helpers (TONUM/VALUE, TOSTR/TEXT, TOBOOL, COALESCE, IFNULL).
+// helpers (TONUM/VALUE, TOSTR/TEXT, BOOL, COALESCE, IFNULL).
 //
 // IFNULL differs from IFNA: IFNA only triggers on float NaN or the string
 // "#N/A", while IFNULL replaces actual nil values.
@@ -133,9 +133,9 @@ func registerTypeConversionFunctions() {
 		return v, nil
 	})
 
-	registerFunction("TOBOOL", func(args ...any) (any, error) {
+	boolOf := func(args ...any) (any, error) {
 		if len(args) != 1 {
-			return nil, fmt.Errorf("TOBOOL requires 1 argument")
+			return nil, fmt.Errorf("requires 1 argument")
 		}
 		if args[0] == nil {
 			return nil, nil
@@ -145,6 +145,20 @@ func registerTypeConversionFunctions() {
 			return nil, nil
 		}
 		return b, nil
+	}
+	registerFunction("BOOL", func(args ...any) (any, error) {
+		v, err := boolOf(args...)
+		if err != nil {
+			return nil, fmt.Errorf("BOOL %w", err)
+		}
+		return v, nil
+	})
+	registerDeprecatedName("TOBOOL", "BOOL", func(args ...any) (any, error) {
+		v, err := boolOf(args...)
+		if err != nil {
+			return nil, fmt.Errorf("TOBOOL %w", err)
+		}
+		return v, nil
 	})
 
 	// COALESCE returns the first non-nil, non-NaN argument; otherwise nil.
