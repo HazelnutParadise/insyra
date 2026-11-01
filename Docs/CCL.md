@@ -903,6 +903,22 @@ Calculates the count of non-nil (non-empty) values in the input.
 "COUNT(@)"           // Count of all non-nil values in the entire table
 ```
 
+### COUNTIF, SUMIF, AVGIF
+
+Count, add up or average the rows where a condition holds. The condition is an expression, written without quotes: quoted text in CCL is the text itself, so `'>0'` is not a condition.
+
+```
+"COUNTIF(A > 0)"                       // Rows where A is above 0
+"COUNTIF(A == 'apple')"                // Rows where A is apple
+"COUNTIF(A > 0 && B < 5)"              // Several conditions
+"COUNTIF(REGEX_MATCH(A, '^ap'))"       // A regular expression
+"SUMIF(A > 0, B)"                      // Add up B on the rows where A is above 0
+"SUMIF(A > 0, A)"                      // Add up the positive values of A
+"AVGIF(STARTSWITH(C, 'a'), B)"         // Average B on the rows where C starts with a
+```
+
+A condition reads each row the way `IF` does, so an empty cell is neither above 0 nor equal to `'apple'`, and it is different from `'apple'`: `COUNTIF(A != 'apple')` counts it. A condition that is empty on a row does not hold there. `SUMIF` and `AVGIF` read their values the way `SUM` and `AVG` do, and give 0 when no row holds. A condition that does not depend on the row holds for every row or none, so `COUNTIF(TRUE)` is the number of rows. A condition that is neither true nor false on a row, such as a column of words, is an error naming the row.
+
 ### MAX
 
 Calculates the maximum value among all numeric values in the input: an `int64` when every value it uses is an integer, otherwise a `float64`.

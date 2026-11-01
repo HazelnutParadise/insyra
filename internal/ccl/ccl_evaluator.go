@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -579,6 +580,11 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, fmt.Errorf("aggregate function %s: %w", t.name, err)
+				}
+				// A condition that does not depend on the row holds for every row
+				// or none, so COUNTIF(TRUE) counts the rows.
+				if i == 0 && isConditionalAggregate(t.name) && !IsRowDependent(arg) && len(colData) == 1 {
+					colData = slices.Repeat(colData, ctx.GetRowCount())
 				}
 				aggArgs[i] = colData
 			}
