@@ -706,6 +706,19 @@ Example:
 
 > **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
+### Type Checks
+
+Each takes one value and gives `true` or `false`.
+
+| Function | True when the value is | Excel |
+| --- | --- | --- |
+| `ISBLANK(x)` | Empty: `nil` or `''`. A blank in a numeric column reads as `NaN`, which `ISNA` reports, so write `ISBLANK(A) \|\| ISNA(A)` to catch both | `ISBLANK` |
+| `ISNUM(x)` | A number. `NaN` and text such as `'12'` are not | `ISNUMBER` |
+| `ISTEXT(x)` | Text, `''` included | `ISTEXT` |
+| `ISBOOL(x)` | `true` or `false` | `ISLOGICAL` |
+| `ISDATE(x)` | A date, or text that reads as one such as `'2024-01-02'`. A number is not | none |
+| `ISERROR(x)` | Something that cannot be computed on that row, by the rule `IFERROR` follows: a misspelt function or a column that does not exist still fails | `ISERROR` |
+
 ### IFERROR Function
 
 ```
