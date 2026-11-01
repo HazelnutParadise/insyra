@@ -110,7 +110,8 @@ type BarChartConfig struct {
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
     BarWidth  float64   // Optional: width of each bar, in points (default: 20)
-    ErrorBars []float64 // Optional: error bar values; one list only, and the same length as it
+    ErrorBars []float64 // Optional: error bar values; one list only, and the same length as it. They stay black whatever Colors says.
+    Colors    []string  // Optional: series colours in place of the palette (see Series colours)
 }
 ```
 
@@ -226,6 +227,7 @@ type LineChartConfig struct {
     XAxis     []float64 // X-axis data
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
+    Colors    []string  // Optional: series colours in place of the palette (see Series colours)
 }
 ```
 
@@ -262,6 +264,7 @@ type ScatterChartConfig struct {
     Title     string // Chart title
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
+    Colors    []string // Optional: series colours in place of the palette (see Series colours)
 }
 
 // ScatterSeries is one set of points: point i is (X[i], Y[i]).
@@ -315,6 +318,7 @@ type StepChartConfig struct {
     XAxisName string    // Optional: X-axis label
     YAxisName string    // Optional: Y-axis label
     StepStyle string    // Optional: "pre", "mid", or "post" (default: "post")
+    Colors    []string  // Optional: series colours in place of the palette (see Series colours)
 }
 ```
 
@@ -454,7 +458,16 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ## Series colours
 
-Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette is nine colours from the Insyra website: blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The gray is for a ninth series that folds the rest into "Other". A tenth series starts again from the first colour, so past that the dash pattern or marker shape is what tells two series apart; draw several charts instead. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+Every chart colours series *i* from the palette `plot` uses, so a series is the same colour in a static chart and its interactive counterpart. The palette is nine colours from the Insyra website: blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50`, bright blue `#2196F3` and gray `#7F8C8D`. The gray is for a ninth series that folds the rest into "Other". A tenth series starts again from the first colour, so past that the dash pattern or marker shape is what tells two series apart; draw several charts instead.
+
+The bar, line, step and scatter configs have a `Colors` field that replaces the palette, series *i* taking value *i*; a short list repeats, as in `plot`. Use it to give an "Other" series the gray when it is not the ninth:
+
+```go
+config := gplot.BarChartConfig{Colors: []string{"#2550B0", "#EE9A2C", "#7F8C8D"}}
+plt, err := gplot.CreateBarChart(config, north, south, other)
+```
+
+A value is `#RGB`, `#RRGGBB`, `#RRGGBBAA` or a CSS colour name such as `green`, in any case; anything else is an error naming the value. `rgb()` and `hsl()` strings, which `plot` passes through to the browser, are not read here. Error bars stay black. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
 
 ## A series that cannot be drawn fails the chart
 

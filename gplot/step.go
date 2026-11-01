@@ -15,6 +15,7 @@ type StepChartConfig struct {
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
 	StepStyle string    // Optional: Step style - "pre", "mid", "post". Default is "post".
+	Colors    []string  // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // CreateStepChart draws one step line per list, named after the list. A plain
@@ -43,5 +44,5 @@ func CreateStepChart(config StepChartConfig, data ...insyra.IDataList) (*plot.Pl
 	default:
 		return nil, chartError("CreateStepChart", "unknown StepStyle %q; use \"pre\", \"mid\" or \"post\"", config.StepStyle)
 	}
-	return drawLines("CreateStepChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, stepKind, data)
+	return drawLines("CreateStepChart", config.Title, config.XAxis, config.XAxisName, config.YAxisName, config.Colors, stepKind, data)
 }

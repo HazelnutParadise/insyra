@@ -98,7 +98,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
-	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
@@ -144,6 +143,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/wnjoon/go-yfinance v1.7.0
 	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
+	golang.org/x/image v0.45.0
 	golang.org/x/term v0.46.0
 	gonum.org/v1/gonum v0.17.0
 	gonum.org/v1/plot v0.17.0

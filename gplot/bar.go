@@ -18,7 +18,8 @@ type BarChartConfig struct {
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
 	BarWidth  float64   // Optional: Width of each bar, in points. Default is 20.
-	ErrorBars []float64 // Optional: Error bar values for each bar. Only with one list, and its length must match the list's.
+	ErrorBars []float64 // Optional: Error bar values for each bar. Only with one list, and its length must match the list's. They stay black whatever Colors says.
+	Colors    []string  // Optional: Series colours in place of the shared palette, as #RGB, #RRGGBB, #RRGGBBAA or a CSS name. A short list repeats.
 }
 
 // CreateBarChart draws one bar per value in each list. Several lists are
@@ -37,6 +38,10 @@ type BarChartConfig struct {
 // arguments, counting from one. A nil list among real ones is skipped with a
 // warning.
 func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot, error) {
+	colors, err := readColors("CreateBarChart", config.Colors)
+	if err != nil {
+		return nil, err
+	}
 	data, pos, dropped := nonNilLists(data)
 	if len(data) == 0 {
 		return nil, chartError("CreateBarChart", "no data to draw")
@@ -66,7 +71,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot
 		if err != nil {
 			return nil, chartError("CreateBarChart", "cannot draw list %d: %w", pos[i]+1, err)
 		}
-		bars.Color = seriesColor(i)
+		bars.Color = colors.at(i)
 		bars.LineStyle.Width = 0
 		if len(values) > 1 {
 			// Centre the group on its category: bar i sits i widths right of
