@@ -19,7 +19,7 @@ import (
 //   - anything else with letters is a date format, in Excel's codes or Go's names.
 
 // goVerb matches a Go fmt verb that takes a value.
-var goVerb = regexp.MustCompile(`%[-+# 0]*\d*(\.\d+)?[a-zA-Z]`)
+var goVerb = regexp.MustCompile(`%[-+# 0]*(\[\d+\])?(\d+|\*)?(\.(\d+|\*)?)?(\[\d+\])?[a-zA-Z]`)
 
 // goLayoutDigit is what only a Go date layout holds.
 var goLayoutDigit = regexp.MustCompile(`[1-9]`)
@@ -39,7 +39,7 @@ func kindOfFormat(format string) formatKind {
 	switch {
 	case goVerb.MatchString(format):
 		return kindGoVerb
-	case goLayoutDigit.MatchString(format):
+	case goLayoutDigit.MatchString(unquote(format)):
 		return kindDate
 	case hasUnquotedLetter(format):
 		return kindDate
@@ -82,7 +82,7 @@ func isASCIILetter(c byte) bool {
 
 // formatDateValue formats t by a date format of either kind, in t's own zone.
 func formatDateValue(t time.Time, format string) (string, error) {
-	if goLayoutDigit.MatchString(format) {
+	if goLayoutDigit.MatchString(unquote(format)) {
 		return t.Format(format), nil
 	}
 	return formatExcelDate(t, format)
@@ -168,7 +168,7 @@ scan:
 			}
 		}
 		if rest[:min(2, len(rest))] == "PM" || rest[:min(2, len(rest))] == "pm" {
-			tokens = append(tokens, dateToken{code: "ampm", literal: "AM/PM"})
+			tokens = append(tokens, dateToken{code: "ampm", literal: rest[:2]})
 			seenCode = true
 			i += 2
 			continue
@@ -271,7 +271,7 @@ func dateCodeText(t time.Time, tok dateToken, tokens []dateToken, i int, twelveH
 		if t.Hour() >= 12 {
 			upper, lower = "PM", "pm"
 		}
-		if strings.HasPrefix(tok.literal, "a") {
+		if tok.literal[0] >= 'a' {
 			return lower
 		}
 		return upper
@@ -400,14 +400,22 @@ func parseNumberFormat(format string) (numberFormat, error) {
 // zero on the shortest decimal text of f, so 1.005 under 0.00 is 1.01 as in Excel,
 // where Go's %.2f gives 1.00 from the binary value.
 func formatExcelNumber(f float64, format string) (string, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return "", fmt.Errorf("number format %q cannot write %v", format, f)
+	}
+	return formatExcelDecimal(strconv.FormatFloat(f, 'f', -1, 64), format)
+}
+
+// formatExcelDecimal writes a number given as plain decimal text by an Excel
+// number code. Working on the text keeps every digit of an integer past 2^53.
+func formatExcelDecimal(text, format string) (string, error) {
 	nf, err := parseNumberFormat(format)
 	if err != nil {
 		return "", err
 	}
-	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return "", fmt.Errorf("number format %q cannot write %v", format, f)
-	}
-	intPart, fracPart := roundDecimal(math.Abs(f), nf.percents*2, nf.maxFrac)
+	negative := strings.HasPrefix(text, "-")
+	text = strings.TrimLeft(text, "+-")
+	intPart, fracPart := roundDecimal(text, nf.percents*2, nf.maxFrac)
 	fracPart = strings.TrimRight(fracPart, "0")
 	for len(fracPart) < nf.minFrac {
 		fracPart += "0"
@@ -424,16 +432,15 @@ func formatExcelNumber(f float64, format string) (string, error) {
 		body += "." + fracPart
 	}
 	sign := ""
-	if f < 0 && strings.Trim(intPart+fracPart, "0,") != "" {
+	if negative && strings.Trim(intPart+fracPart, "0,") != "" {
 		sign = "-"
 	}
 	return sign + nf.prefix + body + nf.suffix, nil
 }
 
-// roundDecimal gives |f|, moved shift places left of the point, rounded half up
-// to places decimals, as whole and fractional digits.
-func roundDecimal(f float64, shift, places int) (string, string) {
-	text := strconv.FormatFloat(f, 'f', -1, 64)
+// roundDecimal gives the unsigned decimal text, moved shift places left of the
+// point, rounded half up to places decimals, as whole and fractional digits.
+func roundDecimal(text string, shift, places int) (string, string) {
 	whole, frac, _ := strings.Cut(text, ".")
 	for range shift {
 		if frac == "" {
@@ -484,6 +491,9 @@ func groupThousands(digits string) string {
 	return b.String()
 }
 
+// plainDecimal is text a number format can write digit for digit.
+var plainDecimal = regexp.MustCompile(`^[+-]?\d+(\.\d+)?$`)
+
 // textWithFormat is TEXT with a format that is not a Go fmt verb. A nil stays
 // nil, as VALUE and DUR leave it.
 func textWithFormat(val any, format string, kind formatKind) (any, error) {
@@ -502,8 +512,14 @@ func textWithFormat(val any, format string, kind formatKind) (any, error) {
 		switch x := val.(type) {
 		case bool, time.Time:
 			return nil, fmt.Errorf("format %q is a number format, and %v (%T) is not a number", format, x, x)
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			return formatExcelDecimal(fmt.Sprint(x), format)
 		case string:
-			parsed, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+			text := strings.TrimSpace(x)
+			if plainDecimal.MatchString(text) {
+				return formatExcelDecimal(text, format)
+			}
+			parsed, err := strconv.ParseFloat(text, 64)
 			if err != nil {
 				return nil, fmt.Errorf("format %q is a number format, and %q is not a number", format, x)
 			}
