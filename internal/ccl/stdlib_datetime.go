@@ -256,13 +256,22 @@ func registerDateTimeFunctions() {
 
 // dayWeekTerm matches the days and weeks of a duration string, which
 // time.ParseDuration does not read.
-var dayWeekTerm = regexp.MustCompile(`(\d*\.?\d+)([dw])`)
+var dayWeekTerm = regexp.MustCompile(`(\d+\.?\d*|\.\d+)[dw]`)
+
+// durationText matches a whole duration string, each term a number and a unit,
+// the way time.ParseDuration reads one, with d and w added. It is checked first:
+// a replacement inside malformed text such as "1.2.5d" could otherwise leave
+// text that parses to an unrelated duration.
+var durationText = regexp.MustCompile(`^[+-]?((\d+\.?\d*|\.\d+)(ns|us|µs|ms|s|m|h|d|w))+$`)
 
 // readDuration reads what DUR takes: a time.Duration, or a string
 // time.ParseDuration reads, with d and w also accepted as 24 and 168 hours. A
 // string is rewritten in hours rather than added up afterwards, so a term out of
 // range fails in ParseDuration like any other.
 func readDuration(s string) (time.Duration, bool) {
+	if !durationText.MatchString(s) {
+		return 0, false
+	}
 	rewritten := dayWeekTerm.ReplaceAllStringFunc(s, func(term string) string {
 		n, err := strconv.ParseFloat(term[:len(term)-1], 64)
 		if err != nil {
