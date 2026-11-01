@@ -38,6 +38,7 @@ func TestDUR(t *testing.T) {
 		{"DUR('1.d', 'hour')", 24},
 		{"DUR('+1w', 'day')", 7},
 		{"DUR('1µs', 'second')", 1e-6},
+		{"DUR('1μs', 'second')", 1e-6},
 		{"DUR('500ms', 'second')", 0.5},
 		{"DUR(C, 'hour')", 36},
 		{"DUR(D, 'minute')", 90},
