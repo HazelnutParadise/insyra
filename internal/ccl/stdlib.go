@@ -80,7 +80,7 @@ func valuesWhere(name string, args [][]any) ([]any, error) {
 //     TOBOOL, COALESCE, IFNULL
 //   - Date components (stdlib_datetime.go): YEAR, MONTH, DAY, HOUR,
 //     MINUTE, SECOND, WEEKDAY, DATEDIFF, DUR, DATEADD,
-//     FORMAT_DATE
+//     FORMAT_DATE, and DATE, TODAY, NOW (clock.go)
 //   - Aggregates: SUM, AVG, COUNT, COUNTA, COUNTIF, SUMIF, AVGIF, MAX, MIN (this file) and
 //     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {

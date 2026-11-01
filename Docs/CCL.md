@@ -815,6 +815,9 @@ These operate on `time.Time` values (or strings parseable by Insyra's date parse
 | `DAY(d)` | Day of the month, 1–31 |
 | `HOUR(d)` / `MINUTE(d)` / `SECOND(d)` | Hour 0–23, minute 0–59, second 0–59; a fraction of a second is dropped |
 | `WEEKDAY(d)` | 1 (Sunday) – 7 (Saturday), Excel's default |
+| `DATE(year, month, day)` | The date with those numbers. Fractions are dropped, and numbers past the end carry over as in Excel: `DATE(2024, 13, 1)` is 2025-01-01 and `DATE(2024, 1, 0)` is 2023-12-31. An empty cell in any argument gives an empty result |
+| `TODAY()` | Today's date on the local clock, at midnight |
+| `NOW()` | The date and time on the local clock |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
 | `DUR(x, unit)` | A duration in `'day'` / `'hour'` / `'minute'` / `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`. An empty cell stays empty |
 | `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year`. A `month` or `year` shift keeps the day of the month, and stops at the last day of a month that does not have it, as Excel's `EDATE` does: `DATEADD('2024-01-31', 1, 'month')` is `2024-02-29` and `DATEADD('2024-02-29', 1, 'year')` is `2025-02-28`. The time of day and the time zone are kept. A fractional `n` truncates for `day`, `month` and `year`. More than 2,147,483,647 days, months or years, or more than about 292 years in hours, minutes or seconds, is an error |
@@ -1225,6 +1228,8 @@ dt.AddColUsingCCL("average", "(A + B + C) / 3")
 dt.AddColUsingCCL("square", "A ^ 2")
 dt.AddColUsingCCL("cube", "A ^ 3")
 ```
+
+`TODAY()` and `NOW()` read the clock once per call, so every row of one `AddColUsingCCL`, every statement of one `ExecuteCCL`, and every batch of one `ApplyCCL` or `FilterWithCCL` read the same moment. Through `engine/ccl`, each evaluation reads the clock anew. They hold the local clock's date and time with no zone, the way CCL holds a date read from text without a zone, so `DATEDIFF(TODAY(), '2024-01-02', 'day')` is a whole number wherever the program runs. Compared with a date that has a real zone, such as `2024-01-02T00:00:00+08:00`, they are read as UTC.
 
 ### Date & Duration Examples
 

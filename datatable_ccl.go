@@ -159,6 +159,10 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 			dt.failErr("ExecuteCCL", err)
 			return
 		}
+		now := ccl.ClockNow()
+		for i := range stmts {
+			stmts[i].Node = ccl.FreezeClock(stmts[i].Node, now)
+		}
 
 		// Run the whole script against a private working copy and write it
 		// back only when every statement succeeds. Applying the statements to

@@ -204,6 +204,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	ast = ccl.FreezeClock(ast, ccl.ClockNow())
 
 	table.AtomicDo(func(table *DataTable) {
 		numRow, numCol := table.getMaxColLength(), len(table.columns)
