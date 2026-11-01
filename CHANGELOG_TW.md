@@ -37,7 +37,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `stats`
 
-- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬。每一階還附上第 1 階到該階的 Ljung-Box 統計量 `Q`，與 R 的 `Box.test` 一致，以及穩健版本 `QRobust`，也就是各階穩健統計量的平方和（Lobato、Nankervis 與 Savin 2001），並有卡方 p 值 `PQ` 與 `PQRobust`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。

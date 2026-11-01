@@ -20,6 +20,17 @@ type AutocorrelationResult struct {
 	// variance changes over time, as stock returns do; PRobust is its
 	// two-tailed normal p-value.
 	TRobust, PRobust float64
+	// Q is the Ljung-Box (1978) statistic over lags 1 to Lag,
+	// n(n+2) * sum of Rho_j^2/(n-j), and PQ its chi-squared p-value on Lag
+	// degrees of freedom: it asks whether any of the first Lag
+	// autocorrelations differs from zero, where T asks about one lag.
+	Q, PQ float64
+	// QRobust is the sum of TRobust_j^2 over lags 1 to Lag, the robust
+	// Box-Pierce statistic of Lobato, Nankervis and Savin (2001) as written by
+	// Escanciano and Lobato (2009), and PQRobust its chi-squared p-value on
+	// Lag degrees of freedom. It weights each lag as Box-Pierce does; it is
+	// not Ljung-Box with a robust variance.
+	QRobust, PQRobust float64
 }
 
 // AutocorrelationResults is the result of Autocorrelation, one entry per lag
@@ -36,7 +47,10 @@ type AutocorrelationResults []AutocorrelationResult
 // noise. Volatility that comes in clusters makes T reject too often, so TRobust
 // and PRobust use Lo and MacKinlay's heteroskedasticity-robust variance, the
 // same one VarianceRatio uses. The p-values are asymptotic and need a long
-// series. maxLag must be between 1 and n-1, and the series must not be
+// series. Q and QRobust add up the first Lag lags into one test; their
+// p-values hold for a series observed as it is, not for the residuals of a
+// fitted model, whose degrees of freedom would have to be reduced by the
+// number of fitted parameters. maxLag must be between 1 and n-1, and the series must not be
 // constant. It fails when the robust variance at a lag is zero, which happens
 // when every lagged product of deviations is zero, as in a sparse series.
 func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResults, error) {
@@ -72,6 +86,7 @@ func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResult
 	}
 
 	out := make(AutocorrelationResults, maxLag)
+	var lb, qr float64
 	for j := 1; j <= maxLag; j++ {
 		var cross, sq float64
 		for t := j; t < n; t++ {
@@ -85,10 +100,16 @@ func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResult
 			return nil, fmt.Errorf("the robust variance is zero at lag %d: every lagged product of deviations is zero, so TRobust is undefined", j)
 		}
 		tr := t / math.Sqrt(delta)
+		lb += rho * rho / float64(n-j)
+		qr += tr * tr
+		q := nf * (nf + 2) * lb
+		df := float64(j)
 		out[j-1] = AutocorrelationResult{
 			Lag: j, Rho: rho,
 			T: t, P: zPValue(t, TwoSided),
 			TRobust: tr, PRobust: zPValue(tr, TwoSided),
+			Q: q, PQ: chiSquaredPValue(q, df),
+			QRobust: qr, PQRobust: chiSquaredPValue(qr, df),
 		}
 	}
 	return out, nil
