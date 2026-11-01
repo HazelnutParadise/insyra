@@ -37,7 +37,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `stats`
 
-- `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `stats.Autocorrelation(series, maxLag)` estimates the autocorrelation at each lag from 1 to `maxLag`, matching R's `acf`, with a white-noise test and a heteroskedasticity-robust test (Lo and MacKinlay 1988) for series whose volatility changes, such as daily returns. Each lag also carries the Ljung-Box statistic `Q` over lags 1 to that lag, equal to R's `Box.test`, and its robust counterpart `QRobust`, the sum of the robust statistics squared (Lobato, Nankervis and Savin 2001), with chi-squared p-values `PQ` and `PQRobust` ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 - `stats.RunsTest(series, opts...)` tests whether the order of up and down moves is random (Wald-Wolfowitz): it counts the runs above and below a threshold, 0 by default, and returns the expected number, `Z` and the p-value ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 - `stats.Autocorrelation` and `stats.VarianceRatio` now refuse a constant series whose values are decimals such as 0.1: the mean of 100 copies of 0.1 is not exactly 0.1, so they reported `Rho` 0.99 and a tiny p-value for a series with no variance.
 - `stats.WrightVarianceRatio(returns, qs, opts...)` tests for a random walk with Wright's (2000) rank and sign variance ratios `R1`, `R2` and `S1`, whose p-values come from simulating the null and so hold for any sample size; the statistics match R's `vrtest::Wright` ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
@@ -51,7 +51,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant`
 
 - **Behavior change**: `quant.BacktestSignal` now accepts a position from -1 (fully short) to 1; a signal or `InitialPosition` below 0 used to be an error. A short earns `-assetReturn + 2 * cashReturn` (the capital and the sale proceeds both earn the cash return), and the new `BacktestOptions.BorrowFee` charges a per-row fee on the short position. Every call that succeeded before gives the same result ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
-- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` builds Jegadeesh and Titman's momentum portfolios: each month it ranks stocks by their past `formation`-month return, holds the groups for `Hold` months with the overlapping portfolios averaged, and returns the groups' returns and the winners-minus-losers spread ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` builds Jegadeesh and Titman's momentum portfolios: each month it ranks stocks by their past `formation`-month return, holds the groups for `Hold` months with the overlapping portfolios averaged, and returns the groups' returns and the winners-minus-losers spread, with each group's monthly turnover after the weights drift with the returns (DeMiguel, Garlappi and Uppal 2009) and the spread's, for charging a trading cost ([#499](https://github.com/HazelnutParadise/insyra/issues/499)).
 
 ### `quant/ta`
 

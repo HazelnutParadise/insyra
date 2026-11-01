@@ -1133,6 +1133,8 @@ func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResult
 
 **Description:** Asks whether a value is related to the one before it, or two, or `k` before it. For daily stock returns, a positive lag-1 value means a rise tends to follow a rise. `Rho` is the sample autocorrelation as R's `acf` computes it. `T` and `P` test each lag against white noise (independent values with a constant variance). Volatility that comes in clusters makes that test reject too often, so `TRobust` and `PRobust` use Lo and MacKinlay's (1988) heteroskedasticity-robust variance, the same one `VarianceRatio` uses. The p-values are asymptotic and need a long series. The series can be any numbers in time order, not only returns.
 
+`T` asks about one lag at a time. To ask whether any of the first `m` lags is nonzero, read the entry for lag `m`: `Q` is the Ljung-Box (1978) statistic `n(n+2) * sum of Rho_j^2/(n-j)` over lags 1 to `m`, the value R's `Box.test(x, lag = m, type = "Ljung-Box")` and statsmodels' `acorr_ljungbox` give, with its chi-squared p-value `PQ` on `m` degrees of freedom. `QRobust` is the sum of `TRobust^2` over the same lags, the robust Box-Pierce statistic of Lobato, Nankervis and Savin (2001) in the form Escanciano and Lobato (2009) write it, with its chi-squared p-value `PQRobust`. It weights every lag equally, as Box-Pierce does, so it is not Ljung-Box with a robust variance; under clustered volatility read `QRobust`, otherwise `Q`. Both p-values hold for a series observed as it is. For the residuals of a fitted model, such as an ARMA, the degrees of freedom should be reduced by the number of fitted parameters, which these p-values do not do.
+
 **Parameters:**
 
 - `series`: The values in time order, at least two, not all equal.
@@ -1140,7 +1142,7 @@ func Autocorrelation(series insyra.IDataList, maxLag int) (AutocorrelationResult
 
 **Returns:**
 
-- `AutocorrelationResults`, a `[]AutocorrelationResult` with one entry per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`.
+- `AutocorrelationResults`, a `[]AutocorrelationResult` with one entry per lag: `Lag`, `Rho`, `T` (`sqrt(n) * Rho`) and `P`, `TRobust` and `PRobust`, and over lags 1 to `Lag` the Ljung-Box `Q` and `PQ` and the robust `QRobust` and `PQRobust`.
 - `error`: a nil or empty list, a value that is not a finite number, a constant series, or a `maxLag` out of range.
 
 ```go
@@ -1149,6 +1151,7 @@ res.Show() // one row per lag
 for _, a := range res {
     fmt.Println(a.Lag, a.Rho, a.PRobust)
 }
+fmt.Println(res[9].Q, res[9].PQ, res[9].PQRobust) // any of the first 10 lags nonzero?
 ```
 
 ### Runs Test

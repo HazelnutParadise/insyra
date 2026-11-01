@@ -2,6 +2,9 @@ package stats
 
 import (
 	"math"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -134,11 +137,121 @@ func TestAutocorrelationDoesNotDependOnTheScale(t *testing.T) {
 			t.Fatalf("scale %g: %v", scale, err)
 		}
 		for j := range want {
-			for label, pair := range map[string][2]float64{"Rho": {got[j].Rho, want[j].Rho}, "T": {got[j].T, want[j].T}, "TRobust": {got[j].TRobust, want[j].TRobust}, "PRobust": {got[j].PRobust, want[j].PRobust}} {
+			for label, pair := range map[string][2]float64{"Rho": {got[j].Rho, want[j].Rho}, "T": {got[j].T, want[j].T}, "TRobust": {got[j].TRobust, want[j].TRobust}, "PRobust": {got[j].PRobust, want[j].PRobust}, "Q": {got[j].Q, want[j].Q}, "QRobust": {got[j].QRobust, want[j].QRobust}} {
 				if math.IsNaN(pair[0]) || math.Abs(pair[0]-pair[1]) > 1e-9*math.Max(1, math.Abs(pair[1])) {
 					t.Errorf("scale %g lag %d: %s = %v, want %v", scale, j+1, label, pair[0], pair[1])
 				}
 			}
 		}
+	}
+}
+
+const (
+	acfPortmanteauR  = "testdata/autocorrelation_reference.txt"
+	acfPortmanteauPy = "testdata/autocorrelation_reference_py.txt"
+)
+
+// acfReference reads the key=value lines a reference script printed.
+func acfReference(t *testing.T, path string) map[string]float64 {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	out := map[string]float64{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			t.Fatalf("%s: %q: %v", path, line, err)
+		}
+		out[strings.TrimSpace(k)] = f
+	}
+	return out
+}
+
+func acfRef(t *testing.T, ref map[string]float64, key string) float64 {
+	t.Helper()
+	v, ok := ref[key]
+	if !ok {
+		t.Fatalf("reference has no %s", key)
+	}
+	return v
+}
+
+func acfClusteredSeries(t *testing.T) []float64 {
+	t.Helper()
+	ref := acfReference(t, acfPortmanteauR)
+	x := make([]float64, 200)
+	for i := range x {
+		x[i] = acfRef(t, ref, "clustered.x["+strconv.Itoa(i+1)+"]")
+	}
+	return x
+}
+
+func TestAutocorrelationPortmanteauMatchesRAndStatsmodels(t *testing.T) {
+	refR, refPy := acfReference(t, acfPortmanteauR), acfReference(t, acfPortmanteauPy)
+	for _, c := range []struct {
+		prefix string
+		x      []float64
+		maxLag int
+	}{
+		{"short", acfRSeries, 4},
+		{"clustered", acfClusteredSeries(t), 10},
+	} {
+		got, err := Autocorrelation(acfList(c.x), c.maxLag)
+		if err != nil {
+			t.Fatalf("%s: %v", c.prefix, err)
+		}
+		for m := 1; m <= c.maxLag; m++ {
+			r := got[m-1]
+			key := func(f string) string { return c.prefix + "." + f + "[" + strconv.Itoa(m) + "]" }
+			for name, ref := range map[string]map[string]float64{"R": refR, "statsmodels": refPy} {
+				if w := acfRef(t, ref, key("Q")); math.Abs(r.Q-w) > 1e-10*math.Max(1, w) {
+					t.Errorf("%s lag %d: Q %v, %s says %v", c.prefix, m, r.Q, name, w)
+				}
+				if w := acfRef(t, ref, key("PQ")); math.Abs(r.PQ-w) > 1e-12 {
+					t.Errorf("%s lag %d: PQ %v, %s says %v", c.prefix, m, r.PQ, name, w)
+				}
+			}
+			if w := acfRef(t, refR, key("QRobust")); math.Abs(r.QRobust-w) > 1e-10*math.Max(1, w) {
+				t.Errorf("%s lag %d: QRobust %v, R says %v", c.prefix, m, r.QRobust, w)
+			}
+			if w := acfRef(t, refR, key("PQRobust")); math.Abs(r.PQRobust-w) > 1e-12 {
+				t.Errorf("%s lag %d: PQRobust %v, R says %v", c.prefix, m, r.PQRobust, w)
+			}
+		}
+	}
+}
+
+func TestAutocorrelationQRobustIsTheSumOfSquaredTRobust(t *testing.T) {
+	got, err := Autocorrelation(acfList(acfClusteredSeries(t)), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sum float64
+	for m, r := range got {
+		sum += r.TRobust * r.TRobust
+		if math.Abs(r.QRobust-sum) > 1e-12*math.Max(1, sum) {
+			t.Errorf("lag %d: QRobust %v, sum of TRobust^2 %v", m+1, r.QRobust, sum)
+		}
+		if p := chiSquaredPValue(sum, float64(m+1)); math.Abs(r.PQRobust-p) > 1e-15 {
+			t.Errorf("lag %d: PQRobust %v, want %v", m+1, r.PQRobust, p)
+		}
+	}
+}
+
+func TestAutocorrelationShowsThePortmanteauColumns(t *testing.T) {
+	got, err := Autocorrelation(acfList(acfRSeries), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := strings.Fields(strings.Split(got.String(), "\n")[1])
+	want := []string{"Lag", "Rho", "T", "P", "TRobust", "PRobust", "Q", "PQ", "QRobust", "PQRobust"}
+	if strings.Join(header, " ") != strings.Join(want, " ") {
+		t.Errorf("header %v, want %v", header, want)
 	}
 }

@@ -37,7 +37,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `stats`
 
-- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬。每一階還附上第 1 階到該階的 Ljung-Box 統計量 `Q`，與 R 的 `Box.test` 一致，以及穩健版本 `QRobust`，也就是各階穩健統計量的平方和（Lobato、Nankervis 與 Savin 2001），並有卡方 p 值 `PQ` 與 `PQRobust`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.Autocorrelation` 與 `stats.VarianceRatio` 現在會拒絕由小數（例如 0.1）組成的常數序列：100 個 0.1 的平均值不是剛好 0.1，以前會對沒有變異的序列回報 `Rho` 0.99 和極小的 p 值。
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
@@ -51,7 +51,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `quant`
 
 - **行為改變**：`quant.BacktestSignal` 現在接受從 -1（完全放空）到 1 的部位；訊號或 `InitialPosition` 小於 0 以前會報錯。放空的報酬是 `-資產報酬 + 2 * 現金報酬`（本金與賣空所得都賺現金利率），新的 `BacktestOptions.BorrowFee` 對放空部位每列收一筆借券費。以前成功的呼叫結果不變（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
-- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` 建立 Jegadeesh 與 Titman 的動能組合：每月依過去 `formation` 個月的報酬把股票排名分組，持有 `Hold` 個月並平均重疊的組合，回傳各組報酬與贏家減輸家的價差（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
+- `quant.MomentumPortfolios(table, dateCol, stockCol, returnCol, formation, groups, opts...)` 建立 Jegadeesh 與 Titman 的動能組合：每月依過去 `formation` 個月的報酬把股票排名分組，持有 `Hold` 個月並平均重疊的組合，回傳各組報酬與贏家減輸家的價差，以及各組與價差每月的週轉率（權重先隨報酬漂移再比較，DeMiguel、Garlappi 與 Uppal 2009），可用來扣交易成本（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 
 ### `quant/ta`
 
