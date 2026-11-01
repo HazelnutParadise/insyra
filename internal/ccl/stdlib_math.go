@@ -7,11 +7,32 @@ import (
 	"strings"
 )
 
-// roundWritten rounds f half away from zero to digits decimal places, reading f
-// as its shortest decimal text. Multiplying instead would see the binary value:
-// the float64 closest to 1.005 lies just below it, and 1.005 would round to 1.
-func roundWritten(f float64, digits int) float64 {
-	if math.IsNaN(f) || math.IsInf(f, 0) {
+// roundRule says which way roundWritten goes.
+type roundRule int
+
+const (
+	roundNearest roundRule = iota // half away from zero
+	roundAway                     // away from zero, as ROUNDUP
+	roundToward                   // toward zero, as ROUNDDOWN
+)
+
+func (r roundRule) String() string {
+	switch r {
+	case roundNearest:
+		return "roundNearest"
+	case roundAway:
+		return "roundAway"
+	case roundToward:
+		return "roundToward"
+	}
+	return fmt.Sprintf("roundRule(%d)", int(r))
+}
+
+// roundWritten rounds f to digits decimal places by rule, reading f as its
+// shortest decimal text. Multiplying instead would see the binary value: the
+// float64 closest to 1.005 lies just below it, and 1.005 would round to 1.
+func roundWritten(f float64, digits int, rule roundRule) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f == 0 {
 		return f
 	}
 	text := strconv.FormatFloat(math.Abs(f), 'f', -1, 64)
@@ -21,11 +42,23 @@ func roundWritten(f float64, digits int) float64 {
 	if keep >= len(all) {
 		return f
 	}
-	if keep < 0 {
+	if keep < 0 && rule != roundAway {
 		return 0
 	}
-	kept := []byte(all[:keep])
-	if all[keep] >= '5' {
+	var kept []byte
+	carry := false
+	if keep < 0 {
+		carry = true
+	} else {
+		kept = []byte(all[:keep])
+		switch rule {
+		case roundNearest:
+			carry = all[keep] >= '5'
+		case roundAway:
+			carry = strings.Trim(all[keep:], "0") != ""
+		}
+	}
+	if carry {
 		i := len(kept) - 1
 		for i >= 0 && kept[i] == '9' {
 			kept[i] = '0'
@@ -50,6 +83,26 @@ func roundWritten(f float64, digits int) float64 {
 	return result
 }
 
+// roundArgs reads the number and the optional digits of a ROUND function.
+func roundArgs(name string, args []any) (float64, int, error) {
+	f, ok := toFloat64(args[0])
+	if !ok {
+		return 0, 0, fmt.Errorf("%s: cannot convert %T to number", name, args[0])
+	}
+	if len(args) < 2 {
+		return f, 0, nil
+	}
+	d, ok := toFloat64(args[1])
+	if !ok {
+		return 0, 0, fmt.Errorf("%s: digits arg must be a number, got %T", name, args[1])
+	}
+	digits, err := clampedInt(d, name+": digits")
+	if err != nil {
+		return 0, 0, err
+	}
+	return f, digits, nil
+}
+
 // registerMathFunctions registers Excel/SQL-style scalar math functions.
 // All functions accept any value coercible to float64 via toFloat64; on
 // failure they return a typed error so the evaluator can surface it.
@@ -69,23 +122,37 @@ func registerMathFunctions() {
 		if len(args) < 1 || len(args) > 2 {
 			return nil, fmt.Errorf("ROUND requires 1 or 2 arguments")
 		}
-		f, ok := toFloat64(args[0])
-		if !ok {
-			return nil, fmt.Errorf("ROUND: cannot convert %T to number", args[0])
+		f, digits, err := roundArgs("ROUND", args)
+		if err != nil {
+			return nil, err
 		}
-		digits := 0
-		if len(args) == 2 {
-			d, ok := toFloat64(args[1])
-			if !ok {
-				return nil, fmt.Errorf("ROUND: digits arg must be a number, got %T", args[1])
+		return roundWritten(f, digits, roundNearest), nil
+	})
+
+	// ROUNDUP and ROUNDDOWN take the digits as a required argument, as in Excel.
+	for name, rule := range map[string]roundRule{"ROUNDUP": roundAway, "ROUNDDOWN": roundToward} {
+		registerFunction(name, func(args ...any) (any, error) {
+			if len(args) != 2 {
+				return nil, fmt.Errorf("%s requires 2 arguments (x, digits)", name)
 			}
-			n, err := clampedInt(d, "ROUND: digits")
+			f, digits, err := roundArgs(name, args)
 			if err != nil {
 				return nil, err
 			}
-			digits = n
+			return roundWritten(f, digits, rule), nil
+		})
+	}
+
+	// INT gives what FLOOR gives, as Excel's INT rounds down.
+	registerFunction("INT", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("INT requires 1 argument")
 		}
-		return roundWritten(f, digits), nil
+		f, ok := toFloat64(args[0])
+		if !ok {
+			return nil, fmt.Errorf("INT: cannot convert %T to number", args[0])
+		}
+		return math.Floor(f), nil
 	})
 
 	registerFunction("FLOOR", func(args ...any) (any, error) {

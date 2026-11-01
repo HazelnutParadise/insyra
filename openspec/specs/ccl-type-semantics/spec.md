@@ -225,6 +225,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 #### Scenario: The wrong kind of value
 - **WHEN** `TEXT(1.5, 'yyyy')` is evaluated
 - **THEN** it is an error saying the value is not a date
+
 ### Requirement: VALUE reads numbers as a spreadsheet displays them
 
 `VALUE` and `TONUM` SHALL read text with a trailing percent sign as that number divided by 100, and SHALL read commas that group digits in threes as thousands separators, with or without decimals. Text with misplaced commas, or a percent sign on anything but a plain decimal, SHALL give an empty result.
@@ -238,6 +239,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** the text is `1,23` or `1234,567`
 - **THEN** `VALUE` gives an empty result
+
 ### Requirement: ROUND reads a number as it is written
 
 `ROUND` SHALL round half away from zero on the shortest decimal text of its number, not on the binary value, and SHALL keep `NaN` and infinities as they are. A result of zero SHALL NOT be negative.
@@ -251,3 +253,22 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** an expression is `ROUND(1250, -2)`
 - **THEN** the result is 1300
+
+### Requirement: CCL rounds in a chosen direction
+
+`ROUNDUP(x, n)` SHALL round away from zero and `ROUNDDOWN(x, n)` toward zero, each to `n` decimal places with `n` required and possibly negative, reading `x` as it is written. `INT(x)` SHALL round down to an integer, as `FLOOR` does.
+
+#### Scenario: Away from and toward zero
+
+- **WHEN** the number is -3.14159 and `n` is 1
+- **THEN** `ROUNDUP` gives -3.2 and `ROUNDDOWN` gives -3.1
+
+#### Scenario: Written value
+
+- **WHEN** an expression is `ROUNDUP(1.1, 1)`
+- **THEN** the result is 1.1
+
+#### Scenario: INT of a negative number
+
+- **WHEN** an expression is `INT(-8.9)`
+- **THEN** the result is -9
