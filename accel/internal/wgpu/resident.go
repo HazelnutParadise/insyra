@@ -70,6 +70,7 @@ func newBufferLocked(length int) (*Buffer, error) {
 	}
 	b := &Buffer{buffer: buffer, length: length}
 	liveBuffers[b] = struct{}{}
+	startWarmupLocked(h)
 	return b, nil
 }
 

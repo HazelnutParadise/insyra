@@ -437,6 +437,9 @@ type handle struct {
 	info     gputypes.AdapterInfo
 	limits   gputypes.Limits
 	retired  bool // the device was lost; see retireLocked
+	// warmStarted is set once warmup has been started for this device; see
+	// startWarmupLocked. Guarded by submitMu.
+	warmStarted bool
 	// retained holds the shader modules and pipeline layouts behind the
 	// cached pipelines below, released only when the device is retired.
 	retained []interface{ Release() }
