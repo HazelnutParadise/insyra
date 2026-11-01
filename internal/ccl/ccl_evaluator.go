@@ -621,7 +621,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 		// first, so an argument that fails cannot hide a misspelt function from
 		// IFERROR.
 		if _, known := lookupFunction(t.name); !known {
-			return nil, fmt.Errorf("%w: %s", errUnknownName, t.name)
+			return nil, undefinedFunctionError(t.name)
 		}
 		functionDepth := callDepth + 1
 		args := []any{}

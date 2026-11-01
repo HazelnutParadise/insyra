@@ -215,15 +215,16 @@ func registerStringFunctions() {
 		return strings.HasSuffix(toString(args[0]), toString(args[1])), nil
 	})
 
-	registerFunction("REGEX_MATCH", func(args ...any) (any, error) {
+	registerRemovedName("REGEX_MATCH", "REGEXTEST")
+	registerFunction("REGEXTEST", func(args ...any) (any, error) {
 		if len(args) != 2 {
-			return nil, fmt.Errorf("REGEX_MATCH requires 2 arguments (string, pattern)")
+			return nil, fmt.Errorf("REGEXTEST requires 2 arguments (string, pattern)")
 		}
 		s := toString(args[0])
 		pat := toString(args[1])
 		re, err := compiledPattern(pat)
 		if err != nil {
-			return nil, fmt.Errorf("REGEX_MATCH: invalid pattern: %w", err)
+			return nil, fmt.Errorf("REGEXTEST: invalid pattern: %w", err)
 		}
 		return re.MatchString(s), nil
 	})
@@ -263,7 +264,7 @@ var (
 )
 
 // compiledPattern returns the compiled form of pat, compiling it at most once.
-// REGEX_MATCH used to compile per row: 106ms against CONTAINS's 15ms over
+// REGEXTEST used to compile per row: 106ms against CONTAINS's 15ms over
 // 100,000 rows.
 func compiledPattern(pat string) (*regexp.Regexp, error) {
 	patternMu.Lock()

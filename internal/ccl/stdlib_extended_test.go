@@ -186,10 +186,10 @@ func TestStringFunctions(t *testing.T) {
 	got, _ = callFn(t, "ENDSWITH", "hello world", "world")
 	wantBool(t, got, true)
 
-	got, _ = callFn(t, "REGEX_MATCH", "abc123", `\d+`)
+	got, _ = callFn(t, "REGEXTEST", "abc123", `\d+`)
 	wantBool(t, got, true)
 
-	got, _ = callFn(t, "REGEX_MATCH", "abc", `\d+`)
+	got, _ = callFn(t, "REGEXTEST", "abc", `\d+`)
 	wantBool(t, got, false)
 
 	got, _ = callFn(t, "REPEAT", "ab", 3.0)
@@ -220,8 +220,8 @@ func TestStringEdgeCases(t *testing.T) {
 	}
 
 	// Bad regex pattern errors.
-	if _, err := callFn(t, "REGEX_MATCH", "abc", "(["); err == nil {
-		t.Fatal("REGEX_MATCH with bad pattern should error")
+	if _, err := callFn(t, "REGEXTEST", "abc", "(["); err == nil {
+		t.Fatal("REGEXTEST with bad pattern should error")
 	}
 }
 

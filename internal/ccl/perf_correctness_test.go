@@ -243,9 +243,9 @@ func TestRegexCacheKeepsPatternsApart(t *testing.T) {
 		expr string
 		want []any
 	}{
-		{"REGEX_MATCH(A, '^item-[0-9]$')", []any{true, false}},
-		{"REGEX_MATCH(A, '^item-[0-9]+$')", []any{true, true}},
-		{"REGEX_MATCH(A, 'nope')", []any{false, false}},
+		{"REGEXTEST(A, '^item-[0-9]$')", []any{true, false}},
+		{"REGEXTEST(A, '^item-[0-9]+$')", []any{true, true}},
+		{"REGEXTEST(A, 'nope')", []any{false, false}},
 	} {
 		got := evalRows(t, ctx, tc.expr, true)
 		if !reflect.DeepEqual(got, tc.want) {
@@ -253,7 +253,7 @@ func TestRegexCacheKeepsPatternsApart(t *testing.T) {
 		}
 	}
 
-	node, err := CompileExpression("REGEX_MATCH(A, '[')")
+	node, err := CompileExpression("REGEXTEST(A, '[')")
 	if err != nil {
 		t.Fatal(err)
 	}

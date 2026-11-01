@@ -428,6 +428,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** an expression is `BOOL('maybe')`
 - **THEN** the result is empty
+
 ### Requirement: CCL reports what kind of value a cell holds
 
 `ISBLANK` SHALL be true for `nil` and empty text and false for `NaN`. `ISNUM` SHALL be true for a value of a number type other than `NaN`, and false for text. `ISTEXT` and `ISBOOL` SHALL follow the value's type. `ISDATE` SHALL be true for a date and for text that reads as one. `ISERROR` SHALL be true when its argument cannot be computed on that row, and an undefined function or a missing column SHALL still be an error.
@@ -446,6 +447,7 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** column B holds 0
 - **THEN** `ISERROR(A / B)` is true
+
 ### Requirement: CCL rounds in a chosen direction
 
 `ROUNDUP(x, n)` SHALL round away from zero and `ROUNDDOWN(x, n)` toward zero, each to `n` decimal places with `n` required and possibly negative, reading `x` as it is written. `INT(x)` SHALL round down to an integer, as `FLOOR` does.
@@ -464,4 +466,27 @@ A date format holding an ASCII letter that is not a code, or no code at all, SHA
 
 - **WHEN** an expression is `INT(-8.9)`
 - **THEN** the result is -9
+
+### Requirement: A long Excel name says which name to write
+
+A function name from Excel that CCL has under another name SHALL stay an undefined function error, and the error SHALL name what to write.
+
+#### Scenario: AVERAGE
+
+- **WHEN** an expression is `AVERAGE(A)`
+- **THEN** it fails, and the error says to use `AVG`
+
+### Requirement: CEIL and FLOOR round to a multiple
+
+`CEIL(x, m)` SHALL give the smallest multiple of `m` at or above `x`, and `FLOOR(x, m)` the largest at or below, reading both numbers as written. A multiple that is not a positive number SHALL be an error.
+
+#### Scenario: A multiple
+
+- **WHEN** an expression is `CEIL(12, 5)` or `FLOOR(12, 5)`
+- **THEN** the result is 15 or 10
+
+#### Scenario: A decimal multiple
+
+- **WHEN** an expression is `CEIL(1.1, 0.1)`
+- **THEN** the result is 1.1
 

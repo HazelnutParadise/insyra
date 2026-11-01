@@ -131,7 +131,7 @@ func BenchmarkStringOperand(b *testing.B) {
 }
 
 func BenchmarkRegexMatch(b *testing.B) {
-	benchPerRow(b, benchPerfContext(b, 5000), "REGEX_MATCH(B, 'item-[a-z]')", true)
+	benchPerRow(b, benchPerfContext(b, 5000), "REGEXTEST(B, 'item-[a-z]')", true)
 }
 
 func BenchmarkRollingMean(b *testing.B) {

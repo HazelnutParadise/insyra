@@ -776,8 +776,8 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `ROUNDUP(x, n)` | Round away from zero to `n` decimal places. `n` is required, and may be negative | `ROUNDUP(3.141, 2)` → `3.15`, `ROUNDUP(-3.141, 1)` → `-3.2` |
 | `ROUNDDOWN(x, n)` | Round toward zero to `n` decimal places. `n` is required, and may be negative | `ROUNDDOWN(3.149, 2)` → `3.14`, `ROUNDDOWN(-3.14, 1)` → `-3.1` |
 | `INT(x)` | The same as `FLOOR(x)`, under Excel's name | `INT(-8.9)` → `-9` |
-| `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
-| `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
+| `FLOOR(x, m?)` | Largest integer ≤ x, or with `m`, the largest multiple of `m` ≤ x. `m` must be positive | `FLOOR(3.7)` → `3`, `FLOOR(12, 5)` → `10` |
+| `CEIL(x, m?)` | Smallest integer ≥ x, or with `m`, the smallest multiple of `m` ≥ x. `m` must be positive | `CEIL(3.2)` → `4`, `CEIL(12, 5)` → `15` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
 | `MOD(a, b)` | Remainder of `a / b`, with the sign of `b`, as in Excel: `MOD(-7, 3)` is `2`; an `int64` when both are integers, otherwise a `float64` | `MOD(10, 3)` → `1`, `MOD(7.5, 2)` → `1.5` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
@@ -808,7 +808,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
-| `REGEX_MATCH(s, pattern)` | Go regexp match |
+| `REGEXTEST(s, pattern)` | Whether `pattern`, a Go regular expression, matches any part of `s`. Write `(?i)` in the pattern to ignore case |
 | `REPEAT(s, n)` | Repeat `s` `n` times |
 
 ```go
@@ -962,7 +962,7 @@ Count, add up or average the rows where a condition holds. The condition is an e
 "COUNTIF(A > 0)"                       // Rows where A is above 0
 "COUNTIF(A == 'apple')"                // Rows where A is apple
 "COUNTIF(A > 0 && B < 5)"              // Several conditions
-"COUNTIF(REGEX_MATCH(A, '^ap'))"       // A regular expression
+"COUNTIF(REGEXTEST(A, '^ap'))"       // A regular expression
 "SUMIF(A > 0, B)"                      // Add up B on the rows where A is above 0
 "SUMIF(A > 0, A)"                      // Add up the positive values of A
 "AVGIF(STARTSWITH(C, 'a'), B)"         // Average B on the rows where C starts with a
@@ -1061,7 +1061,9 @@ CCL looks like an Excel formula, and most functions that share a name with an Ex
 | `DAY(45000)` and the other date functions on a serial number | `DAY(d)` on a date | Excel counts dates as days since 1900; CCL reads a `time.Time` or a date string, and a number is an error |
 | `EDATE(date, months)` | `DATEADD(d, n, 'month')` | Same month-end rule. CCL keeps the time of day, and returns a date rather than a serial number |
 | `DATEDIF(start, end, unit)` | `DATEDIFF(d1, d2, unit)` | CCL gives `d1 - d2`, with a fraction and a sign, in `'day'`, `'hour'`, `'minute'` or `'second'`. Excel gives whole units from `start` to `end` and is an error when `start` is later |
-| `AVERAGE(...)` | `AVG(...)` | Different name |
+| `AVERAGE(...)` | `AVG(...)` | Different name. `AVERAGE` is an error that says to use `AVG`; so are `AVERAGEIF`, `POWER`, `CEILING`, `REPT`, `ISNUMBER`, `ISLOGICAL`, `CONCATENATE` and `SUBSTITUTE`, each naming CCL's |
+| `CEILING(x, m)`, `FLOOR(x, m)` | `CEIL(x, m?)`, `FLOOR(x, m?)` | The multiple can be left out in CCL, and must be positive: Excel also takes a negative one |
+| `REGEXTEST(text, pattern, [case])` | `REGEXTEST(s, pattern)` | No third argument: write `(?i)` in the pattern. CCL's patterns are Go regular expressions, Excel's PCRE2 |
 | `COUNT(...)` | `COUNT(...)` | The same over a range: numbers and dates count, and text does not, even when it reads as a number. A `NaN` is skipped. `COUNTA` counts every value that is not `nil` |
 | `MAX(...)` / `MIN(...)` | `MAX(...)` / `MIN(...)` | With no number to compare, CCL gives `nil`; Excel gives `0` |
 | `TRIM(s)` | `TRIM(s)` | CCL also strips tabs and line breaks from the ends; Excel strips only spaces. Inside the text both turn a run of spaces into one |
@@ -1427,7 +1429,7 @@ compute it with `DataList` methods rather than in CCL.
 2. **Minimize function nesting**: Each function call adds overhead
 3. **Use bracket syntax when needed**: `[A]` and `['name']` have minimal overhead compared to direct references
 4. **Batch operations**: Process all rows at once using `AddColUsingCCL` rather than row-by-row operations
-5. **A repeated pattern is compiled once**: `REGEX_MATCH` caches compiled patterns, so a literal pattern costs one compilation for the whole column
+5. **A repeated pattern is compiled once**: `REGEXTEST` caches compiled patterns, so a literal pattern costs one compilation for the whole column
 
 ## Limits
 
