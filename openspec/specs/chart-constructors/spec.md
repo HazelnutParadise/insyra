@@ -28,6 +28,7 @@ An outcome that still yields a chart SHALL stay a logged warning with a nil erro
 #### Scenario: A gauge
 - **WHEN** `plot.CreateGaugeChart(cfg, 42)`
 - **THEN** a chart comes back with a nil error
+
 ### Requirement: gplot takes insyra's types
 
 `gplot` SHALL take its data as insyra's own types, checked by the compiler:
@@ -51,6 +52,7 @@ A nil list or table given as the only data SHALL be an error. A nil list among r
 #### Scenario: X and Y of different lengths
 - **WHEN** a `ScatterSeries` has 3 values in `X` and 2 in `Y`
 - **THEN** the chart is nil and the error names the series and both lengths
+
 ### Requirement: gplot refuses a value it cannot draw
 
 A `gplot` constructor SHALL return a nil chart and an error, and SHALL NOT panic or hang, when a value would leave it unable to draw or save the chart: `CreateHistogram` for a NaN or an infinity in its data, `CreateHeatmapChart` for an infinity in its table or a table of NaN alone, and `CreateFunctionPlot` for an `XMin`, `XMax`, `YMin` or `YMax` that is a NaN or an infinity. The error SHALL say which value. A NaN among numbers in a heat map SHALL be drawn as an empty cell.
@@ -86,6 +88,7 @@ Each chart SHALL draw a cell that is not a Go number as documented in its packag
 #### Scenario: A plot bar chart with one text cell
 - **WHEN** `plot.CreateBarChart` is given `NewDataList(1, "abc", 3)`
 - **THEN** the Y axis is a category axis labelled `1`, `abc`, `3`
+
 ### Requirement: A gplot chart that cannot draw every series returns an error
 
 `gplot`'s line, step and scatter charts SHALL return a nil chart and an error when any series they were given cannot be drawn: a line or step series whose length differs from `XAxis`, an empty series, or a series holding a NaN or an infinity. The error SHALL name every such series and why, and nothing SHALL be logged for them. A nil list among real ones in a line or step chart SHALL still be dropped with a warning.
@@ -117,3 +120,22 @@ A `gplot` constructor SHALL return a nil chart and an error, and SHALL NOT fall 
 #### Scenario: An error bar that is NaN
 - **WHEN** `ErrorBars` is `{0.1, NaN, 0.3}` for three bars
 - **THEN** the chart is nil and the error says the error bars cannot be drawn
+
+### Requirement: plot refuses a value it cannot draw
+The system SHALL return a non-nil error naming the value from every `plot` constructor whose data holds a `NaN` or an infinity, and from `CreateBoxPlot` for a list with no numeric value, instead of returning a chart that renders blank.
+
+#### Scenario: NaN in a bar chart
+- **WHEN** `plot.CreateBarChart` is given `NewDataList(1.0, math.NaN())`
+- **THEN** it returns a nil chart and an error naming the list (counted from one, as the arguments are) and the row index (counted from zero, as Get(i) takes it)
+
+#### Scenario: Infinity in a gauge
+- **WHEN** `plot.CreateGaugeChart` is given `math.Inf(1)`
+- **THEN** it returns an error
+
+#### Scenario: A box plot list with no number
+- **WHEN** `plot.CreateBoxPlot` is given a series holding an all-text list
+- **THEN** it returns an error naming the series
+
+#### Scenario: Finite data still draws
+- **WHEN** every value is finite
+- **THEN** the chart comes back with a nil error
