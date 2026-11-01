@@ -133,6 +133,10 @@ const (
 )
 ```
 
+## Series colours
+
+When a config's `Colors` is left empty, the bar, line, pie and scatter charts colour series *i* from one palette, the same one `gplot` uses: eight colours from the Insyra website, blue `#2550B0`, orange `#EE9A2C`, red `#D73E3E`, teal `#2A9D8F`, purple `#764BA2`, pink `#FF69B4`, green `#4CAF50` and bright blue `#2196F3`. The order is checked so neighbouring series stay apart for colour-blind readers. A ninth series starts again from the first colour; past eight series, fold the rest into "Other" or draw several charts. Set `Colors` to use your own.
+
 ## Things to be careful about
 
 ### A chart that cannot be built is an error

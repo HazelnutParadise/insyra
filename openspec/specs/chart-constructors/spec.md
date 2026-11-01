@@ -59,11 +59,11 @@ An outcome that still yields a chart SHALL stay a logged warning with a nil erro
 
 ### Requirement: gplot colours every chart from one palette
 
-Every `gplot` chart SHALL colour series *i* with colour *i* of the palette `plot` uses, which opens with Insyra's brand colours `#1F449B`, `#F9AC41` and `#D73E3E`. Line and step series SHALL also keep their dash patterns.
+Every `gplot` chart SHALL colour series *i* with colour *i* of the palette `plot` uses, eight colours from the Insyra website opening with `#2550B0`, `#EE9A2C` and `#D73E3E`. Line and step series SHALL also keep their dash patterns.
 
 #### Scenario: The first series of each chart
 - **WHEN** a bar chart, a line chart and a scatter chart are each drawn with two series
-- **THEN** the first series of each is drawn in `#1F449B` and the second in `#F9AC41`
+- **THEN** the first series of each is drawn in `#2550B0` and the second in `#EE9A2C`
 
 ### Requirement: gplot refuses data it cannot pair or draw
 

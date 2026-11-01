@@ -7,7 +7,10 @@ import (
 
 func TestColorMatchesHexAndWraps(t *testing.T) {
 	hex := Hex()
-	if hex[0] != "#1F449B" || hex[1] != "#F9AC41" || hex[2] != "#D73E3E" {
+	if len(hex) != 8 || len(Names()) != len(hex) {
+		t.Fatalf("%d colours and %d names; want 8 of each", len(hex), len(Names()))
+	}
+	if hex[0] != "#2550B0" || hex[1] != "#EE9A2C" || hex[2] != "#D73E3E" {
 		t.Fatalf("the palette opens with %v; want Insyra's blue, orange and red", hex[:3])
 	}
 	for _, i := range []int{0, 1, 2, len(hex) - 1, len(hex), len(hex) + 1} {
@@ -18,7 +21,7 @@ func TestColorMatchesHexAndWraps(t *testing.T) {
 		}
 	}
 	hex[0] = "#000000"
-	if Hex()[0] != "#1F449B" {
+	if Hex()[0] != "#2550B0" {
 		t.Error("Hex returned the palette itself, so a caller could change it")
 	}
 }
