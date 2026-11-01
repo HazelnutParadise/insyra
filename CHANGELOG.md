@@ -31,6 +31,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL's `TEXT` and `FORMAT_DATE` read a format written the Go way or the Excel way: `TEXT(x, '0.00')` and `TEXT(x, '%.2f')` both give `1.50`, and `FORMAT_DATE(d, 'yyyy-mm-dd')` and `FORMAT_DATE(d, '2006-01-02')` both give `2024-03-09`. `TEXT` handles dates too. Excel number codes round half away from zero, as Excel does, so `TEXT(2.5, '0')` is `3` where `TEXT(2.5, '%.0f')` is `2`. A date format holding a letter that is no code is now an error, where `FORMAT_DATE(d, 'yyyy-qq')` gave back its own text. `Docs/CCL.md` has the codes.
 - CCL: `COUNTIF(condition)`, `SUMIF(condition, values)` and `AVGIF(condition, values)` count, add up or average the rows where a condition holds. The condition is an expression without quotes, such as `COUNTIF(A > 0)`, so `&&`, `||` and functions such as `REGEX_MATCH` work inside it.
 - CCL: `DATE(year, month, day)`, `TODAY()` and `NOW()`. `TODAY` and `NOW` read the local clock once per call, so every row gets the same moment, and hold it with no zone, so `DATEDIFF(TODAY(), '2024-01-02', 'day')` is a whole number.
+- CCL: `VALUE` reads a percent sign and thousands commas: `VALUE('10%')` is 0.1 and `VALUE('1,234.5')` is 1234.5, where both used to be empty.
 
 ### `ml` and `nn`
 

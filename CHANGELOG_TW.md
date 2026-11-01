@@ -31,6 +31,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 的 `TEXT` 和 `FORMAT_DATE` 同時認 Go 和 Excel 兩種格式寫法：`TEXT(x, '0.00')` 和 `TEXT(x, '%.2f')` 都得到 `1.50`，`FORMAT_DATE(d, 'yyyy-mm-dd')` 和 `FORMAT_DATE(d, '2006-01-02')` 都得到 `2024-03-09`。`TEXT` 也能處理日期。Excel 的數字格式跟 Excel 一樣四捨五入，所以 `TEXT(2.5, '0')` 是 `3`，`TEXT(2.5, '%.0f')` 是 `2`。日期格式裡有不是代碼的字母時，現在會回傳錯誤；以前 `FORMAT_DATE(d, 'yyyy-qq')` 會把格式字串原樣傳回。代碼清單在 `Docs/CCL.md`。
 - CCL：新增 `COUNTIF(條件)`、`SUMIF(條件, 值)`、`AVGIF(條件, 值)`，計算條件成立的列數、總和與平均。條件是不加引號的運算式，例如 `COUNTIF(A > 0)`，所以裡面可以用 `&&`、`||` 和 `REGEX_MATCH` 這類函式。
 - CCL：新增 `DATE(年, 月, 日)`、`TODAY()`、`NOW()`。`TODAY` 和 `NOW` 每次呼叫只讀一次本機時鐘，所以每一列拿到同一個時間；它們不帶時區，所以 `DATEDIFF(TODAY(), '2024-01-02', 'day')` 會是整數。
+- CCL：`VALUE` 看得懂百分比和千分位逗號：`VALUE('10%')` 是 0.1，`VALUE('1,234.5')` 是 1234.5，以前這兩個都是空值。
 
 ### `ml` 與 `nn`
 
