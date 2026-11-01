@@ -27,6 +27,8 @@ func toTime(val any) (time.Time, bool) {
 // helpers. These complement the existing DAY/HOUR/MINUTE/SECOND duration
 // functions in stdlib.go, which operate on time.Duration values.
 func registerDateTimeFunctions() {
+	registerClockFunctions()
+
 	registerFunction("YEAR", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("YEAR requires 1 argument")

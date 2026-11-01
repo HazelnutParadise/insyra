@@ -168,6 +168,10 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 			resultDtChan <- dt
 			return
 		}
+		now := ccl.ClockNow()
+		for i := range stmts {
+			stmts[i].Node = ccl.FreezeClock(stmts[i].Node, now)
+		}
 
 		numRow, numCol := dt.getMaxColLength(), len(dt.columns)
 

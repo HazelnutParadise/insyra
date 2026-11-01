@@ -2376,6 +2376,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile CCL expression: %w", err)
 	}
+	compiledExpr = ccl.FreezeClock(compiledExpr, ccl.ClockNow())
 
 	// The whole-file parts are settled before any row is kept, so a filter is
 	// answered or fails before the file is read into a result. The file's shape
@@ -2632,6 +2633,10 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 	compiledNodes, err := ccl.CompileMultiline(cclScript)
 	if err != nil {
 		return fmt.Errorf("failed to compile CCL script: %w", err)
+	}
+	now := ccl.ClockNow()
+	for i := range compiledNodes {
+		compiledNodes[i] = ccl.FreezeClock(compiledNodes[i], now)
 	}
 
 	// Every statement is resolved against the file as the statements before it
