@@ -262,7 +262,7 @@ var dayWeekTerm = regexp.MustCompile(`(\d+\.?\d*|\.\d+)[dw]`)
 // the way time.ParseDuration reads one, with d and w added. It is checked first:
 // a replacement inside malformed text such as "1.2.5d" could otherwise leave
 // text that parses to an unrelated duration.
-var durationText = regexp.MustCompile(`^[+-]?((\d+\.?\d*|\.\d+)(ns|us|µs|ms|s|m|h|d|w))+$`)
+var durationText = regexp.MustCompile(`^[+-]?(0|((\d+\.?\d*|\.\d+)(ns|us|µs|ms|s|m|h|d|w))+)$`)
 
 // readDuration reads what DUR takes: a time.Duration, or a string
 // time.ParseDuration reads, with d and w also accepted as 24 and 168 hours. A
