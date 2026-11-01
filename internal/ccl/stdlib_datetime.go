@@ -289,9 +289,9 @@ func readDuration(s string) (time.Duration, bool) {
 	return d, err == nil
 }
 
-// warnedDurationParts holds the functions that have warned already: DAY, HOUR,
-// MINUTE and SECOND, and the deprecated names.
-var warnedDurationParts sync.Map
+// warnedOnce holds what has warned already: DAY, HOUR, MINUTE and SECOND, the
+// deprecated names, and MOD.
+var warnedOnce sync.Map
 
 // registerDurationPart registers DAY, HOUR, MINUTE or SECOND, which convert a
 // duration here and read a date in 0.4. It warns once per process per function:
@@ -299,18 +299,31 @@ var warnedDurationParts sync.Map
 func registerDurationPart(name string, fn Func) {
 	unit := strings.ToLower(name)
 	registerFunction(name, func(args ...any) (any, error) {
-		if _, warned := warnedDurationParts.LoadOrStore(name, true); !warned {
+		if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
 			Warn(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
 		}
 		return fn(args...)
 	})
 }
 
+// modulo is a % b with the sign of a, as MOD and % give it here. From 0.4 the
+// remainder has the sign of b, so it warns once the first time the two differ:
+// only then does the answer change.
+func modulo(a, b float64) float64 {
+	r := math.Mod(a, b)
+	if r != 0 && (r < 0) != (b < 0) {
+		if _, warned := warnedOnce.LoadOrStore("MOD", true); !warned {
+			Warn("MOD", "MOD(%v, %v) and %% give %v here, and from 0.4 they give %v: the remainder takes the sign of the second number, as in Excel", a, b, r, r+b)
+		}
+	}
+	return r
+}
+
 // registerDeprecatedName registers a function name removed in 0.4 that has a
 // replacement here. It warns once per process, since the function runs per row.
 func registerDeprecatedName(name, use string, fn Func) {
 	registerFunction(name, func(args ...any) (any, error) {
-		if _, warned := warnedDurationParts.LoadOrStore(name, true); !warned {
+		if _, warned := warnedOnce.LoadOrStore(name, true); !warned {
 			Warn(name, "%s is deprecated and removed in 0.4; use %s, which does the same", name, use)
 		}
 		return fn(args...)

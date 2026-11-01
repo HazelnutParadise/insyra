@@ -16,6 +16,14 @@
 - **WHEN** `TONUM(A)` is evaluated on many rows
 - **THEN** one warning is logged, and every result is what it was
 
+### Requirement: MOD and % warn where their answer changes in 0.4
+
+`MOD` and `%` SHALL log one warning per process the first time a non-zero remainder's sign differs from the second number's, naming 0.4 and both answers. Their results SHALL NOT change, and other inputs SHALL NOT warn.
+
+#### Scenario: Signs that differ
+- **WHEN** `MOD(7, 3)` and then `MOD(-7, 3)` are evaluated
+- **THEN** only the second warns, saying -1 becomes 2, and it still gives -1
+
 ### Requirement: DUR expresses a duration in a unit
 
 `DUR(x, unit)` SHALL return `x` in `unit` as a number. `x` SHALL be a `time.Duration` or a string `time.ParseDuration` reads, with `d` and `w` also read as 24 and 168 hours. `unit` SHALL be required and be one of `day`, `hour`, `minute` or `second`, singular or plural, in any case.

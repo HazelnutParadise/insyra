@@ -182,3 +182,11 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 #### Scenario: Many rows
 - **WHEN** `TONUM(A)` is evaluated on many rows
 - **THEN** one warning is logged, and every result is what it was
+
+### Requirement: MOD and % warn where their answer changes in 0.4
+
+`MOD` and `%` SHALL log one warning per process the first time a non-zero remainder's sign differs from the second number's, naming 0.4 and both answers. Their results SHALL NOT change, and other inputs SHALL NOT warn.
+
+#### Scenario: Signs that differ
+- **WHEN** `MOD(7, 3)` and then `MOD(-7, 3)` are evaluated
+- **THEN** only the second warns, saying -1 becomes 2, and it still gives -1

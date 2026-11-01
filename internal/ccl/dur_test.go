@@ -101,7 +101,7 @@ func TestDURRefusesWhatItCannotRead(t *testing.T) {
 // process per function, not once per row, and name what stays the same.
 func TestDurationPartsWarnOnce(t *testing.T) {
 	for _, name := range []string{"DAY", "HOUR", "MINUTE", "SECOND"} {
-		warnedDurationParts.Delete(name)
+		warnedOnce.Delete(name)
 	}
 	var mu sync.Mutex
 	var got []string
@@ -144,7 +144,7 @@ func TestDurationPartsWarnOnce(t *testing.T) {
 func TestDeprecatedNamesWarnOnce(t *testing.T) {
 	names := map[string]string{"TONUM('1')": "use VALUE", "TOSTR(1)": "use TEXT", "SUBSTR('abc', 1, 2)": "use MID"}
 	for _, n := range []string{"TONUM", "TOSTR", "SUBSTR"} {
-		warnedDurationParts.Delete(n)
+		warnedOnce.Delete(n)
 	}
 	var mu sync.Mutex
 	var got []string
@@ -176,9 +176,50 @@ func TestDeprecatedNamesWarnOnce(t *testing.T) {
 		}
 	}
 	// DAYOFMONTH has no replacement here, since DAY converts a duration.
-	warnedDurationParts.Delete("DAYOFMONTH")
+	warnedOnce.Delete("DAYOFMONTH")
 	got = nil
 	if _, err := evalOne(t, ctx, "DAYOFMONTH('2024-03-09')"); err != nil || len(got) != 0 {
 		t.Errorf("DAYOFMONTH: %v, warnings %v; want no error and no warning", err, got)
+	}
+}
+
+// MOD and % change in 0.4 only where the signs differ, so only that warns.
+func TestModuloWarnsOnlyWhereTheAnswerChanges(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	SetWarnHook(func(funcName, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, fmt.Sprintf(format, args...))
+	})
+	t.Cleanup(func() { SetWarnHook(nil) })
+	ctx := mapCtx(t, map[string][]any{"A": {1}})
+
+	warnedOnce.Delete("MOD")
+	for _, expr := range []string{"MOD(7, 3)", "7 % 3", "MOD(-7, -3)", "MOD(-6, 3)", "-6 % 3", "MOD(0, -3)"} {
+		if _, err := evalOne(t, ctx, expr); err != nil {
+			t.Fatalf("%s: %v", expr, err)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("warned where nothing changes: %v", got)
+	}
+	for _, c := range []struct {
+		expr string
+		want float64
+	}{{"MOD(-7, 3)", -1}, {"-7 % 3", -1}, {"MOD(7, -3)", 1}} {
+		v, err := evalOne(t, ctx, c.expr)
+		if err != nil || v != c.want {
+			t.Errorf("%s = %v, %v; want %v, unchanged here", c.expr, v, err, c.want)
+		}
+	}
+	if len(got) != 1 || !strings.Contains(got[0], "0.4") || !strings.Contains(got[0], "give -1 here") || !strings.Contains(got[0], "give 2") {
+		t.Errorf("warnings %v; want one saying -1 becomes 2 from 0.4", got)
+	}
+
+	warnedOnce.Delete("MOD")
+	got = nil
+	if _, err := evalOne(t, ctx, "-7 % 3"); err != nil || len(got) != 1 {
+		t.Errorf("-7 %% 3: %v, warnings %v; want one", err, got)
 	}
 }

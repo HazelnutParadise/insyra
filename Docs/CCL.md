@@ -743,7 +743,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
 | `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
 | `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
-| `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
+| `MOD(a, b)` | Floating-point remainder of `a / b`, with the sign of `a`. **Changes in 0.4**: the remainder takes the sign of `b`, as in Excel, so `MOD(-7, 3)` goes from `-1` to `2`. `%` changes with it. The first call whose answer will change logs a warning | `MOD(10, 3)` → `1` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
 | `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
