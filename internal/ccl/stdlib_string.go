@@ -49,6 +49,9 @@ func runeSlice(s string, start, length int) string {
 
 // registerStringFunctions registers Excel/SQL-style scalar string functions.
 // All functions are rune-aware; LEN counts runes, LEFT/RIGHT/MID slice by rune.
+// spaceRun matches a run of the space character.
+var spaceRun = regexp.MustCompile(` {2,}`)
+
 func registerStringFunctions() {
 	registerFunction("LEN", func(args ...any) (any, error) {
 		if len(args) != 1 {
@@ -75,7 +78,9 @@ func registerStringFunctions() {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TRIM requires 1 argument")
 		}
-		return strings.TrimSpace(toString(args[0])), nil
+		// The ends lose any white space. Inside, a run of spaces becomes one, as in
+		// Excel, which touches only the space character, so a tab inside stays.
+		return spaceRun.ReplaceAllString(strings.TrimSpace(toString(args[0])), " "), nil
 	})
 
 	registerFunction("LTRIM", func(args ...any) (any, error) {

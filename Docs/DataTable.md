@@ -3465,7 +3465,7 @@ dt.AddColUsingCCL("total_sum", "SUM(A)")
 dt.AddColUsingCCL("row_sum", "SUM(@.#)") // Row-wise sum
 dt.AddColUsingCCL("table_sum", "SUM(@)") // Total table sum
 dt.AddColUsingCCL("avg_val", "AVG(A + B)")
-dt.AddColUsingCCL("count_val", "COUNT(@)") // Count non-nil cells
+dt.AddColUsingCCL("count_val", "COUNTA(@)") // Count non-nil cells
 ```
 
 **Notes:**
