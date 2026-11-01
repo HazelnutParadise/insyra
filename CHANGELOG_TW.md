@@ -422,6 +422,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 與 DirectX 12 上，裝置端 `MatMul`（`nn` 的大型矩陣乘法）與最近鄰候選清單會先等輸入資料上傳完成，kernel 才讀取。gogpu 對儲存緩衝區的佇列寫入不保證排在後續指令之前，kernel 可能讀到舊資料；Metal 不受影響（[#572](https://github.com/HazelnutParadise/insyra/issues/572)）。
 - GPU 裝置遺失現在會明確回報。在 Windows 上，單次 dispatch 跑到約兩秒以上會被系統中止並造成裝置遺失；以前之後每次呼叫都只回一段 `vkQueueSubmit failed: -4` 文字。現在遇到遺失的那次呼叫會回傳 `accel.ErrDeviceLost`（用 `errors.Is` 判斷，fallback 理由是新的 `device-lost`），遺失之前建立的 `DeviceBuffer` 或 binding 會持續回傳它。下一次需要裝置的呼叫會嘗試開新裝置，成功的話重新建立緩衝區與 binding 就能繼續。在 NVIDIA GT 1030 上，驅動不肯在同一個程序裡給新裝置（不管重試多久 `vkCreateDevice` 都失敗），所以常駐運算會回報 `no-accelerator`，直到程式重啟。Insyra 自己的運算（最近列搜尋、裝置 `MatMul`）兩種情況都會回傳 CPU 算出的結果。
 - 在 Vulkan 上，使用者自訂的 kernel 會加上越界檢查後再編譯：讀超過緩衝區尾端回傳 0、寫超過尾端不做事，跟 Metal 一樣，不會再蓋到權重、優化器狀態等其他常駐緩衝區（[#555](https://github.com/HazelnutParadise/insyra/issues/555)）。
+- 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。

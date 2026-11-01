@@ -70,6 +70,7 @@ func newBufferLocked(length int) (*Buffer, error) {
 	}
 	b := &Buffer{buffer: buffer, length: length}
 	liveBuffers[b] = struct{}{}
+	startWarmupLocked(h)
 	return b, nil
 }
 
@@ -308,56 +309,90 @@ func (k *kernel) build(h *handle) {
 		// Registered before anything can fail, so a build that failed with
 		// the device is reset by retireLocked and tried again on the next one.
 		builtKernels[k] = struct{}{}
-		desc, err := shaderModuleDescriptor(h, "accel-"+k.name, k.source(), k.bounded)
+		c, err := k.compile(h)
 		if err != nil {
-			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
+			k.err = err
 			return
 		}
-		shader, err := h.device.CreateShaderModule(desc)
-		if err != nil {
-			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
-			return
-		}
-		entries := make([]gputypes.BindGroupLayoutEntry, 0, k.nRead+k.nWrite+1)
-		for i := 0; i < k.nRead; i++ {
-			entries = append(entries, gputypes.BindGroupLayoutEntry{
-				Binding: uint32(i), Visibility: gowgpu.ShaderStageCompute,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage},
-			})
-		}
-		for i := 0; i < k.nWrite; i++ {
-			entries = append(entries, gputypes.BindGroupLayoutEntry{
-				Binding: uint32(k.nRead + i), Visibility: gowgpu.ShaderStageCompute,
-				Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeStorage},
-			})
-		}
-		entries = append(entries, gputypes.BindGroupLayoutEntry{
-			Binding: uint32(k.nRead + k.nWrite), Visibility: gowgpu.ShaderStageCompute,
-			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform, HasDynamicOffset: k.dynamicUniform},
-		})
-		layout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
-			Label: "accel-" + k.name + "-bgl", Entries: entries,
-		})
-		if err != nil {
-			k.err = fmt.Errorf("wgpu: %s bind group layout: %w", k.name, err)
-			return
-		}
-		pipelineLayout, err := h.device.CreatePipelineLayout(&gowgpu.PipelineLayoutDescriptor{
-			Label: "accel-" + k.name + "-pl", BindGroupLayouts: []*gowgpu.BindGroupLayout{layout},
-		})
-		if err != nil {
-			k.err = fmt.Errorf("wgpu: %s pipeline layout: %w", k.name, err)
-			return
-		}
-		pipeline, err := h.device.CreateComputePipeline(&gowgpu.ComputePipelineDescriptor{
-			Label: "accel-" + k.name + "-pipeline", Layout: pipelineLayout, Module: shader, EntryPoint: "main",
-		})
-		if err != nil {
-			k.err = fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
-			return
-		}
-		k.pipe, k.layout, k.module, k.plLayout = pipeline, layout, shader, pipelineLayout
+		k.install(c)
 	})
+}
+
+// compiledKernel is what compile makes on a device.
+type compiledKernel struct {
+	pipe     *gowgpu.ComputePipeline
+	layout   *gowgpu.BindGroupLayout
+	module   *gowgpu.ShaderModule
+	plLayout *gowgpu.PipelineLayout
+}
+
+func (c *compiledKernel) release() {
+	if c.pipe != nil {
+		releaseQuietly(c.pipe)
+	}
+	if c.plLayout != nil {
+		releaseQuietly(c.plLayout)
+	}
+	if c.layout != nil {
+		releaseQuietly(c.layout)
+	}
+	if c.module != nil {
+		releaseQuietly(c.module)
+	}
+}
+
+func (k *kernel) install(c *compiledKernel) {
+	k.pipe, k.layout, k.module, k.plLayout = c.pipe, c.layout, c.module, c.plLayout
+}
+
+// compile creates the kernel's shader module, layouts and pipeline on h. It
+// touches nothing shared, so warmup runs it without submitMu.
+func (k *kernel) compile(h *handle) (*compiledKernel, error) {
+	desc, err := shaderModuleDescriptor(h, "accel-"+k.name, k.source(), k.bounded)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
+	}
+	shader, err := h.device.CreateShaderModule(desc)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
+	}
+	c := &compiledKernel{module: shader}
+	entries := make([]gputypes.BindGroupLayoutEntry, 0, k.nRead+k.nWrite+1)
+	for i := 0; i < k.nRead; i++ {
+		entries = append(entries, gputypes.BindGroupLayoutEntry{
+			Binding: uint32(i), Visibility: gowgpu.ShaderStageCompute,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage},
+		})
+	}
+	for i := 0; i < k.nWrite; i++ {
+		entries = append(entries, gputypes.BindGroupLayoutEntry{
+			Binding: uint32(k.nRead + i), Visibility: gowgpu.ShaderStageCompute,
+			Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeStorage},
+		})
+	}
+	entries = append(entries, gputypes.BindGroupLayoutEntry{
+		Binding: uint32(k.nRead + k.nWrite), Visibility: gowgpu.ShaderStageCompute,
+		Buffer: &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform, HasDynamicOffset: k.dynamicUniform},
+	})
+	if c.layout, err = h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
+		Label: "accel-" + k.name + "-bgl", Entries: entries,
+	}); err != nil {
+		c.release()
+		return nil, fmt.Errorf("wgpu: %s bind group layout: %w", k.name, err)
+	}
+	if c.plLayout, err = h.device.CreatePipelineLayout(&gowgpu.PipelineLayoutDescriptor{
+		Label: "accel-" + k.name + "-pl", BindGroupLayouts: []*gowgpu.BindGroupLayout{c.layout},
+	}); err != nil {
+		c.release()
+		return nil, fmt.Errorf("wgpu: %s pipeline layout: %w", k.name, err)
+	}
+	if c.pipe, err = h.device.CreateComputePipeline(&gowgpu.ComputePipelineDescriptor{
+		Label: "accel-" + k.name + "-pipeline", Layout: c.plLayout, Module: shader, EntryPoint: "main",
+	}); err != nil {
+		c.release()
+		return nil, fmt.Errorf("%w: %s: %w", ErrShaderCompile, k.name, err)
+	}
+	return c, nil
 }
 
 // run submits the kernel and returns without waiting for it to finish.
