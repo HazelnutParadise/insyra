@@ -703,6 +703,23 @@ Example:
 
 > **Note:** `ISNA` handles numeric `NaN`, `float64` or `float32`, and the string `"#N/A"`. It does **not** return true for `nil` values.
 
+### IFERROR Function
+
+```
+"IFERROR(value, valueIfError)"
+```
+
+Gives `value`, or `valueIfError` when computing `value` fails on that row, such as dividing by zero, adding to a word, or `SQRT` of a negative number. `valueIfError` is computed only when it is needed.
+
+```
+"IFERROR(A / B, 0)"          // 0 on the rows where B is 0
+"IFERROR(SQRT(A), -1)"       // -1 on the rows where A is negative
+```
+
+An empty result is not an error, so `IFERROR(A, 0)` on an empty cell stays empty: use `IFNULL` for that. `NaN` is not an error either: use `IFNA`. A misspelt function or a column that does not exist still fails, because that is a mistake in the formula and not in the data.
+
+IFERROR also hides a mistake you did not expect. When you know which failure to allow, naming it says more: `IF(B != 0, A / B, 0)` only allows B being 0.
+
 ### IFNA Function
 
 ```

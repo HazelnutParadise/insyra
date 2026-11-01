@@ -145,6 +145,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`ReadExcelSheet` 和 `ReadExcel` 改成像讀 CSV 一樣判斷欄位型別，不再把每格都讀成文字：`1` 變成 `int64`，`1.5` 變成 `float64`，`007` 這類代碼會變成 `7`。在最後加上 `rawStrings` 參數並設為 `true` 可以還原舊結果，`isr.Excel_inOpts.RawStrings` 和 CLI `load` 的 `infer false` 也可以。
 - CCL：新增 `DATE(年, 月, 日)`、`TODAY()`、`NOW()`。`TODAY` 和 `NOW` 每次呼叫只讀一次本機時鐘，所以每一列拿到同一個時間；它們不帶時區，所以 `DATEDIFF(TODAY(), '2024-01-02', 'day')` 會是整數。
 - CCL：`VALUE` 看得懂百分比和千分位逗號：`VALUE('10%')` 是 0.1，`VALUE('1,234.5')` 是 1234.5，以前這兩個都是空值。
+- CCL：新增 `IFERROR(值, 出錯時的值)`，`值` 算不出來的列會改用 `出錯時的值`，所以 `IFERROR(A / B, 0)` 在 B 是 0 時不會讓整欄失敗。函式打錯或欄位不存在還是會報錯。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。

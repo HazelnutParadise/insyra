@@ -1,6 +1,7 @@
 package ccl
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -100,6 +101,10 @@ func registerSequenceFunction(name string, fn SeqFunc) {
 	delete(userSequences, key)
 }
 
+// errUnknownName is a mistake in the formula rather than in the data, so
+// IFERROR does not cover it.
+var errUnknownName = errors.New("undefined function")
+
 func lookupFunction(name string) (Func, bool) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
@@ -136,7 +141,7 @@ func callFunction(name string, args []any, callDepth int) (result any, err error
 
 	fn, ok := lookupFunction(name)
 	if !ok {
-		return nil, fmt.Errorf("undefined function: %s", name)
+		return nil, fmt.Errorf("%w: %s", errUnknownName, name)
 	}
 
 	// panic 恢復：以具名返回值將 panic 轉為錯誤回報給呼叫端，

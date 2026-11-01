@@ -143,6 +143,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - **BREAKING**: `ReadExcelSheet` and `ReadExcel` infer column types the way CSV reading does, instead of loading every cell as text: `1` is now `int64`, `1.5` is `float64`, and a code such as `007` becomes `7`. A trailing `rawStrings` argument set to `true` restores the old result, and so do `isr.Excel_inOpts.RawStrings` and `infer false` on the CLI's `load`.
 - CCL: `DATE(year, month, day)`, `TODAY()` and `NOW()`. `TODAY` and `NOW` read the local clock once per call, so every row gets the same moment, and hold it with no zone, so `DATEDIFF(TODAY(), '2024-01-02', 'day')` is a whole number.
 - CCL: `VALUE` reads a percent sign and thousands commas: `VALUE('10%')` is 0.1 and `VALUE('1,234.5')` is 1234.5, where both used to be empty.
+- CCL: `IFERROR(value, valueIfError)` gives `valueIfError` on the rows where `value` cannot be computed, so `IFERROR(A / B, 0)` no longer fails the whole column when B is 0. A misspelt function or a missing column still fails.
 
 ### CLI
 - **BREAKING**: an environment name may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. v0.3.3 refused only a name that resolved outside the environments directory and accepted any other, including names with spaces, non-ASCII letters or a `/`. The CLI can no longer open, rename or delete an environment created under such a name; rename its folder in the environments directory (`~/.insyra/envs/` by default) by hand.
