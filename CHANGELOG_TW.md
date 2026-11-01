@@ -136,6 +136,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CSV 檔案的編碼名稱現在接受 Windows 的 `cp950`、`cp936`，分別視為 Big5 與 GBK。
 - `engine/ring`：`PopFront`、`PopBack` 現在會把被移除的格子設回零值，所以放指標、字串或 slice 的 Ring 不會再讓已移除元素指向的資料無法回收；`Clear` 改成清空既有的底層陣列，不再配置新的（推 64 個再 `Clear`：修改前 188 ns、配置一次 512 位元組，修改後 138 ns、不配置；64 次推入與取出因為清格子多花約 7%）。先進先出與後進先出的順序、容量與零值 Ring 的行為不變（[#588](https://github.com/HazelnutParadise/insyra/issues/588)）。
 - `DataList` 與 `DataTable` 新增 `String()`，內容就是 `Show` 印的畫面，但不帶顏色、固定 80 字寬，所以 `fmt.Println(dt)`、`%v`、`%s` 會直接印出表格或清單，不再是一串內部欄位。格子裡裝的若是另一張表或清單，`Show` 與 `String` 都改顯示成 `<DataTable>` 或 `<DataList>`，表格裝著自己時也不會無窮遞迴。
+- CCL 新增 `DUR(x, unit)`，把時間長度換算成天、時、分或秒：`DUR('36h', 'day')` 是 `1.5`，`DUR('1h30m', 'minute')` 是 `90`，`DUR(A - B, 'hour')` 跟 `DATEDIFF(A, B, 'hour')` 一樣。自從 `DAY`、`HOUR`、`MINUTE`、`SECOND` 改成讀日期之後，時間長度字串就沒辦法換算了。除了 Go 的單位，也認得 `d` 和 `w`；空值維持空值；數字和看不懂的文字會回傳錯誤並指出是哪個值。這四個函式收到時間長度時，錯誤訊息改成指向 `DUR`；收到空值時會說明值是空的，以前會說那是數字。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
