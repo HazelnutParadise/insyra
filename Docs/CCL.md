@@ -839,12 +839,17 @@ CCL supports basic date and duration arithmetic and comparison. Key points:
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
 - If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
 
+### DUR
+
+`DUR(x, unit)` gives a duration in `'day'`, `'hour'`, `'minute'` or `'second'`. `x` is a `time.Duration`, such as `A - B`, or a string such as `'36h'`, `'1h30m'` or `'2d'`; `d` and `w` are read as 24 and 168 hours. An empty cell stays empty, and a number or text it cannot read is an error naming the value.
+
 ### DAY / HOUR / MINUTE / SECOND
 
 - `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
 - `HOUR(x)`: returns hours as `float64`.
 - `MINUTE(x)`: returns minutes as `float64`.
 - `SECOND(x)`: returns seconds as `float64`.
+- **These four change meaning in 0.4**, where they read a part of a date, as in Excel: `DAY('2024-01-02')` is `2`. The first call of each in a program logs a warning. Move duration conversions to `DUR(x, unit)` now, which gives the same answer on both: `DUR(x, 'day')` for `DAY(x)`. For a number of seconds, write `x / 86400`, since `DUR` refuses a number.
 - For all four, a numeric value of more than about 292 years of seconds, either way, is an error rather than a wrapped-around number.
 
 Examples:

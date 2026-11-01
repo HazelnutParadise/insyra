@@ -3,7 +3,10 @@ package ccl
 import (
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -106,6 +109,50 @@ func registerDateTimeFunctions() {
 		}
 	})
 
+	// DUR(x, unit) returns x in a unit, the units DATEDIFF takes. x is a duration,
+	// such as the difference of two dates, or a duration string such as "1h30m"
+	// or "2d". An empty cell stays empty. A number is refused, since it has no
+	// unit to convert from.
+	registerFunction("DUR", func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("DUR requires 2 arguments (x, unit)")
+		}
+		unit, ok := args[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("DUR: unit must be a string, got %T", args[1])
+		}
+		var d time.Duration
+		switch x := args[0].(type) {
+		case nil:
+			return nil, nil
+		case time.Duration:
+			d = x
+		case string:
+			if d, ok = readDuration(x); !ok {
+				return nil, fmt.Errorf("DUR: cannot read %q as a duration; write it like '36h', '1h30m' or '2d'", x)
+			}
+		default:
+			if _, isNumber := toFloat64(x); isNumber {
+				if _, isBool := x.(bool); !isBool {
+					return nil, fmt.Errorf("DUR: %v is a number, which has no unit; write a duration such as '36h'", x)
+				}
+			}
+			return nil, fmt.Errorf("DUR: cannot read %T as a duration", x)
+		}
+		switch strings.ToLower(unit) {
+		case "day", "days":
+			return d.Hours() / 24.0, nil
+		case "hour", "hours":
+			return d.Hours(), nil
+		case "minute", "minutes":
+			return d.Minutes(), nil
+		case "second", "seconds":
+			return d.Seconds(), nil
+		default:
+			return nil, fmt.Errorf("DUR: unknown unit %q (expected day/hour/minute/second)", unit)
+		}
+	})
+
 	// Deprecated: DATEPART is removed in 0.4, where HOUR, MINUTE, SECOND and DAY
 	// read dates. It stays the way to read those parts on 0.3.x.
 	//
@@ -204,6 +251,47 @@ func registerDateTimeFunctions() {
 			return nil, fmt.Errorf("FORMAT_DATE: layout must be a string, got %T", args[1])
 		}
 		return t.Format(layout), nil
+	})
+}
+
+// dayWeekTerm matches the days and weeks of a duration string, which
+// time.ParseDuration does not read.
+var dayWeekTerm = regexp.MustCompile(`(\d*\.?\d+)([dw])`)
+
+// readDuration reads what DUR takes: a time.Duration, or a string
+// time.ParseDuration reads, with d and w also accepted as 24 and 168 hours. A
+// string is rewritten in hours rather than added up afterwards, so a term out of
+// range fails in ParseDuration like any other.
+func readDuration(s string) (time.Duration, bool) {
+	rewritten := dayWeekTerm.ReplaceAllStringFunc(s, func(term string) string {
+		n, err := strconv.ParseFloat(term[:len(term)-1], 64)
+		if err != nil {
+			return term
+		}
+		hours := 24.0
+		if term[len(term)-1] == 'w' {
+			hours = 168
+		}
+		return strconv.FormatFloat(n*hours, 'f', -1, 64) + "h"
+	})
+	d, err := time.ParseDuration(rewritten)
+	return d, err == nil
+}
+
+// warnedDurationParts holds the DAY, HOUR, MINUTE and SECOND functions that have
+// warned already.
+var warnedDurationParts sync.Map
+
+// registerDurationPart registers DAY, HOUR, MINUTE or SECOND, which convert a
+// duration here and read a date in 0.4. It warns once per process per function:
+// the function runs once per row, and one line is enough to say what will change.
+func registerDurationPart(name string, fn Func) {
+	unit := strings.ToLower(name)
+	registerFunction(name, func(args ...any) (any, error) {
+		if _, warned := warnedDurationParts.LoadOrStore(name, true); !warned {
+			Warn(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
+		}
+		return fn(args...)
 	})
 }
 

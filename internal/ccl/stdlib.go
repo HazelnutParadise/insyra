@@ -194,7 +194,7 @@ func RegisterStandardFunctions() {
 	})
 
 	// Duration helpers: convert time.Duration (or parsable duration string / numeric seconds) to units
-	registerFunction("DAY", func(args ...any) (any, error) {
+	registerDurationPart("DAY", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("DAY requires 1 argument")
 		}
@@ -224,7 +224,7 @@ func RegisterStandardFunctions() {
 		return d.Hours() / 24.0, nil
 	})
 
-	registerFunction("HOUR", func(args ...any) (any, error) {
+	registerDurationPart("HOUR", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("HOUR requires 1 argument")
 		}
@@ -253,7 +253,7 @@ func RegisterStandardFunctions() {
 		return d.Hours(), nil
 	})
 
-	registerFunction("MINUTE", func(args ...any) (any, error) {
+	registerDurationPart("MINUTE", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("MINUTE requires 1 argument")
 		}
@@ -282,7 +282,7 @@ func RegisterStandardFunctions() {
 		return d.Minutes(), nil
 	})
 
-	registerFunction("SECOND", func(args ...any) (any, error) {
+	registerDurationPart("SECOND", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("SECOND requires 1 argument")
 		}
