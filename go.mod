@@ -49,7 +49,6 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/gogpu/gpucontext v0.31.3 // indirect
-	github.com/gogpu/naga v0.20.4 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
@@ -142,6 +141,7 @@ require (
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/goccy/go-json v0.11.2
 	github.com/gogpu/gputypes v0.8.0
+	github.com/gogpu/naga v0.20.4
 	github.com/gogpu/wgpu v0.34.5
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
