@@ -34,10 +34,24 @@ const (
 	kindUnknown
 )
 
+func (k formatKind) String() string {
+	switch k {
+	case kindGoVerb:
+		return "kindGoVerb"
+	case kindDate:
+		return "kindDate"
+	case kindExcelNumber:
+		return "kindExcelNumber"
+	case kindUnknown:
+		return "kindUnknown"
+	}
+	return fmt.Sprintf("formatKind(%d)", int(k))
+}
+
 // kindOfFormat decides how a format reads, without looking at the value.
 func kindOfFormat(format string) formatKind {
 	switch {
-	case goVerb.MatchString(format):
+	case goVerb.MatchString(unquote(format)):
 		return kindGoVerb
 	case goLayoutDigit.MatchString(unquote(format)):
 		return kindDate
@@ -45,6 +59,10 @@ func kindOfFormat(format string) formatKind {
 		return kindDate
 	case strings.ContainsAny(unquote(format), "0#"):
 		return kindExcelNumber
+	case goVerb.MatchString(format):
+		// Nothing outside the quotes reads as a format, so the quotes are
+		// characters of a Go format: '"%.2f"'.
+		return kindGoVerb
 	}
 	return kindUnknown
 }
