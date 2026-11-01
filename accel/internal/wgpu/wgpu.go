@@ -437,6 +437,9 @@ type handle struct {
 	info     gputypes.AdapterInfo
 	limits   gputypes.Limits
 	retired  bool // the device was lost; see retireLocked
+	// warmStarted is set once warmup has been started for this device; see
+	// startWarmupLocked. Guarded by submitMu.
+	warmStarted bool
 	// retained holds the shader modules and pipeline layouts behind the
 	// cached pipelines below, released only when the device is retired.
 	retained []interface{ Release() }
@@ -521,10 +524,7 @@ func acquire() (*handle, error) {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
 	if !sharedTried {
-		for _, resource := range teardown {
-			releaseQuietly(resource)
-		}
-		teardown = nil
+		releaseLostDevice()
 		shared, sharedErr = open()
 		sharedTried = true
 	}
@@ -574,4 +574,22 @@ func float32Bytes(values []float32) []byte {
 		return nil
 	}
 	return unsafe.Slice((*byte)(unsafe.Pointer(&values[0])), len(values)*4)
+}
+
+// releaseLostDevice releases what a lost device left: the kernel warmup
+// compiled and has not installed, then the teardown list, the device last.
+// warmMu makes a warmup compiling on the device finish first. sharedMu must
+// be held.
+func releaseLostDevice() {
+	warmMu.Lock()
+	defer warmMu.Unlock()
+	if warmInFlight != nil {
+		warmInFlight.release()
+		warmInFlight = nil
+	}
+	for _, resource := range teardown {
+		releaseQuietly(resource)
+	}
+	teardown = nil
+	releasedDevices++
 }

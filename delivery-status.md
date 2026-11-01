@@ -22,6 +22,10 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-11-01 Built-in kernels compile in the background (ported from `dev`, #624; change `accel-kernel-warmup`):
+  - **Decision.** The first resident buffer made on a device starts compiling the 28 built-in kernels without holding `submitMu`; a result is installed through the kernel's `sync.Once`, and one compiled for a device that was lost is released before the device.
+  - **Measured.** On `dev`: warm-cache first training steps equal the version without warmup on the Apple M3 (12 runs each) and on the NVIDIA GT 1030 (10 each, with one unexplained 2.2 s first run); the GPU suites passed on both. On this line, build, lint and the warmup and lost-device tests passed on the M3.
+  - **Not verified.** A cold-cache first step with and without warmup, which needs the driver's shader cache cleared. `delivery-status.md` changed; `AGENTS.md` did not.
 - 2026-11-01 A caller's kernel cannot write outside its buffers on Vulkan (ported from `dev`, #623; change `accel-custom-kernel-bounds`):
   - **Decision.** gogpu/wgpu v0.34.5 compiles WGSL for Vulkan with no bounds checks and no `robustBufferAccess` (gogpu/wgpu#370, open), so Insyra compiles a caller's kernel itself with gogpu/naga v0.20.4's bounds checks and passes SPIR-V: a read past a buffer gives zero and a write is skipped, as on Metal. Insyra's own kernels and other backends are unchanged.
   - **Measured.** On `dev`, on an NVIDIA GT 1030 over Vulkan, a 64-value write into a 4-value buffer left 8 neighbouring buffers unchanged and the `nn` and `accel` caller-kernel tests passed. On this line, build, lint and the caller-kernel GPU tests passed on the Apple M3 (Metal, which does not take the new path).
