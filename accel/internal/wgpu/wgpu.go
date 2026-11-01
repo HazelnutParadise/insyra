@@ -524,10 +524,15 @@ func acquire() (*handle, error) {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
 	if !sharedTried {
+		// A warmup compiling on the lost device must finish before the
+		// device it uses is released.
+		warmMu.Lock()
 		for _, resource := range teardown {
 			releaseQuietly(resource)
 		}
 		teardown = nil
+		deviceGeneration++
+		warmMu.Unlock()
 		shared, sharedErr = open()
 		sharedTried = true
 	}
