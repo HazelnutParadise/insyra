@@ -25,6 +25,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL 的 `DATEPART` 標為棄用，將在 0.4 移除。0.4 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 會讀日期，結果跟它相同。它在 0.3.x 的行為沒有改變：這四個函式在這裡還是換算時間長度，所以要取日期的這幾個部分仍然要用 `DATEPART`，也不會記警告。另外兩個部分已經可以用 `YEAR` 和 `MONTH`。
 - CCL 新增 `DUR(x, unit)`，把時間長度換算成天、時、分或秒：`DUR('36h', 'day')` 是 `1.5`，`DUR(A - B, 'hour')` 跟 `DATEDIFF(A, B, 'hour')` 一樣。除了 Go 的單位，也認得 `d` 和 `w`；空值維持空值；數字和看不懂的文字會回傳錯誤並指出是哪個值。
 - CCL 的 `DAY`、`HOUR`、`MINUTE`、`SECOND` 在程式裡第一次執行時會記一則警告：它們在這裡是換算時間長度，從 0.4 開始會改成讀日期的部分，所以 `DAY(x)` 的答案會變。現在的結果不變。請把換算時間長度的公式改成 `DUR(x, 'day')`，兩邊答案都一樣。
+- CCL 的 `TONUM`、`TOSTR`、`SUBSTR` 標為棄用，將在 0.4 移除：請改用功能相同的 `VALUE`、`TEXT`、`MID`。它們在程式裡第一次執行時會各記一則警告。`DAYOFMONTH` 也標為棄用，之後改用 0.4 的 `DAY`；它不會記警告，因為 `DAY` 在這裡還是換算時間長度。
 
 ### `ml` 與 `nn`
 

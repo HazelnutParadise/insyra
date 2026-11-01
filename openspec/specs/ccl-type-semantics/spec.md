@@ -174,3 +174,11 @@ A float of 1e21 or more in magnitude, NaN and the infinities SHALL keep Go's def
 #### Scenario: A number and unreadable text
 - **WHEN** `DUR(36, 'hour')` and `DUR('soon', 'hour')` are evaluated
 - **THEN** each is an error naming the value
+
+### Requirement: Names removed in 0.4 warn once
+
+`TONUM`, `TOSTR` and `SUBSTR` SHALL log one warning per process per name, naming 0.4 and `VALUE`, `TEXT` and `MID`. Their results SHALL NOT change. `DAYOFMONTH` SHALL log no warning, because it has no replacement on 0.3.x.
+
+#### Scenario: Many rows
+- **WHEN** `TONUM(A)` is evaluated on many rows
+- **THEN** one warning is logged, and every result is what it was

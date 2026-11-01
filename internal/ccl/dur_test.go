@@ -139,3 +139,46 @@ func TestDurationPartsWarnOnce(t *testing.T) {
 		}
 	}
 }
+
+// A name removed in 0.4 still works here and warns once, naming what to use.
+func TestDeprecatedNamesWarnOnce(t *testing.T) {
+	names := map[string]string{"TONUM('1')": "use VALUE", "TOSTR(1)": "use TEXT", "SUBSTR('abc', 1, 2)": "use MID"}
+	for _, n := range []string{"TONUM", "TOSTR", "SUBSTR"} {
+		warnedDurationParts.Delete(n)
+	}
+	var mu sync.Mutex
+	var got []string
+	SetWarnHook(func(funcName, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, fmt.Sprintf(format, args...))
+	})
+	t.Cleanup(func() { SetWarnHook(nil) })
+
+	ctx := mapCtx(t, map[string][]any{"A": {1}})
+	for expr, want := range names {
+		got = nil
+		for range 3 {
+			if _, err := evalOne(t, ctx, expr); err != nil {
+				t.Fatalf("%s: %v", expr, err)
+			}
+		}
+		if len(got) != 1 || !strings.Contains(got[0], "0.4") || !strings.Contains(got[0], want) {
+			t.Errorf("%s: warnings %v; want one naming 0.4 and %q", expr, got, want)
+		}
+	}
+	for _, c := range []struct {
+		expr string
+		want any
+	}{{"TONUM('2')", 2.0}, {"TOSTR(2)", "2"}, {"SUBSTR('abc', 2, 1)", "b"}} {
+		if v, err := evalOne(t, ctx, c.expr); err != nil || v != c.want {
+			t.Errorf("%s = %#v, %v; want %#v", c.expr, v, err, c.want)
+		}
+	}
+	// DAYOFMONTH has no replacement here, since DAY converts a duration.
+	warnedDurationParts.Delete("DAYOFMONTH")
+	got = nil
+	if _, err := evalOne(t, ctx, "DAYOFMONTH('2024-03-09')"); err != nil || len(got) != 0 {
+		t.Errorf("DAYOFMONTH: %v, warnings %v; want no error and no warning", err, got)
+	}
+}

@@ -8,6 +8,14 @@
 - **WHEN** `DAY(A)` is evaluated on many rows
 - **THEN** one warning is logged, and every result is what it was
 
+### Requirement: Names removed in 0.4 warn once
+
+`TONUM`, `TOSTR` and `SUBSTR` SHALL log one warning per process per name, naming 0.4 and `VALUE`, `TEXT` and `MID`. Their results SHALL NOT change. `DAYOFMONTH` SHALL log no warning, because it has no replacement on 0.3.x.
+
+#### Scenario: Many rows
+- **WHEN** `TONUM(A)` is evaluated on many rows
+- **THEN** one warning is logged, and every result is what it was
+
 ### Requirement: DUR expresses a duration in a unit
 
 `DUR(x, unit)` SHALL return `x` in `unit` as a number. `x` SHALL be a `time.Duration` or a string `time.ParseDuration` reads, with `d` and `w` also read as 24 and 168 hours. `unit` SHALL be required and be one of `day`, `hour`, `minute` or `second`, singular or plural, in any case.

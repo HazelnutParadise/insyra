@@ -52,6 +52,8 @@ func registerDateTimeFunctions() {
 		return float64(t.Month()), nil
 	})
 
+	// Deprecated: DAYOFMONTH is removed in 0.4, where DAY reads a date. It stays
+	// the way to read that part on 0.3.x, so it logs no warning.
 	registerFunction("DAYOFMONTH", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("DAYOFMONTH requires 1 argument")
@@ -287,8 +289,8 @@ func readDuration(s string) (time.Duration, bool) {
 	return d, err == nil
 }
 
-// warnedDurationParts holds the DAY, HOUR, MINUTE and SECOND functions that have
-// warned already.
+// warnedDurationParts holds the functions that have warned already: DAY, HOUR,
+// MINUTE and SECOND, and the deprecated names.
 var warnedDurationParts sync.Map
 
 // registerDurationPart registers DAY, HOUR, MINUTE or SECOND, which convert a
@@ -299,6 +301,17 @@ func registerDurationPart(name string, fn Func) {
 	registerFunction(name, func(args ...any) (any, error) {
 		if _, warned := warnedDurationParts.LoadOrStore(name, true); !warned {
 			Warn(name, "%s(x) converts a duration to %ss here, and from 0.4 it reads the %s of a date; for a duration use DUR(x, '%s'), which gives the same answer in both", name, unit, unit, unit)
+		}
+		return fn(args...)
+	})
+}
+
+// registerDeprecatedName registers a function name removed in 0.4 that has a
+// replacement here. It warns once per process, since the function runs per row.
+func registerDeprecatedName(name, use string, fn Func) {
+	registerFunction(name, func(args ...any) (any, error) {
+		if _, warned := warnedDurationParts.LoadOrStore(name, true); !warned {
+			Warn(name, "%s is deprecated and removed in 0.4; use %s, which does the same", name, use)
 		}
 		return fn(args...)
 	})

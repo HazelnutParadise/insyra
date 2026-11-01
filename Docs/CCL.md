@@ -768,7 +768,7 @@ All string functions are rune-aware (Unicode safe). `nil` is treated as the empt
 | `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
 | `LEFT(s, n)` | First `n` characters |
 | `RIGHT(s, n)` | Last `n` characters |
-| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `MID(s, start, length)` | Substring (1-based start, like Excel). `SUBSTR(...)` is deprecated, logs a warning, and is removed in 0.4 |
 | `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
 | `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
 | `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
@@ -788,8 +788,8 @@ dt.ExecuteCCL(`
 
 | Function | Description |
 | --- | --- |
-| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
-| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is |
+| `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails. `TONUM(x)` is deprecated, logs a warning, and is removed in 0.4 |
+| `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`). A verb that does not fit the value — `TOSTR(1.5, '%d')` — is an error, not a cell holding `%!d(float64=1.5)`; text that was already in the value or the format, such as `Item (MISSING)`, is written as it is. `TOSTR(x, fmt?)` is deprecated, logs a warning, and is removed in 0.4 |
 | `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
 | `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
 | `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
@@ -809,7 +809,7 @@ These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers an
 | --- | --- |
 | `YEAR(d)` | Year as number |
 | `MONTH(d)` | Month 1–12 |
-| `DAYOFMONTH(d)` | Day 1–31 |
+| `DAYOFMONTH(d)` | Day 1–31. **Deprecated**: removed in 0.4, where `DAY(d)` reads a date. Keep using it on 0.3.x |
 | `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
 | `DATEPART(d, unit)` | One part of `d` as a number: `'year'`, `'month'`, `'day'`, `'hour'`, `'minute'` or `'second'`, read in `d`'s own time zone. A fraction of a second is dropped. **Deprecated**: removed in 0.4, where `HOUR(d)`, `MINUTE(d)`, `SECOND(d)` and `DAY(d)` read dates. Keep using it for those parts on 0.3.x; `YEAR(d)`, `MONTH(d)` and `DAYOFMONTH(d)` already give the others |
 | `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |

@@ -185,7 +185,7 @@ func registerStringFunctions() {
 		}
 		return v, nil
 	})
-	registerFunction("SUBSTR", func(args ...any) (any, error) {
+	registerDeprecatedName("SUBSTR", "MID", func(args ...any) (any, error) {
 		v, err := mid(args...)
 		if err != nil {
 			return nil, fmt.Errorf("SUBSTR %w", err)
