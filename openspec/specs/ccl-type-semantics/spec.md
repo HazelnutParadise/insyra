@@ -261,22 +261,6 @@ A column written by `AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUs
 - **WHEN** 欄 `A` 為 `int16` 的 `[1, 2]`，`AddColUsingCCL("b", "A")`
 - **THEN** `b` 仍是 `int16` 的 `[1, 2]`
 
-### Requirement: DATEPART gives one part of a date
-
-`DATEPART(d, unit)` SHALL return, as a `float64`, the year, month, day of the month, hour, minute or second of `d` for a unit of `year`, `month`, `day`, `hour`, `minute` or `second`, singular or plural and in any letter case, read in `d`'s own time zone, dropping any fraction of a second. `d` SHALL be a `time.Time` or a string Insyra's date parser reads as a date. Any other unit, a `d` that is not a date, a unit that is not a string, or a number of arguments other than two SHALL be an error.
-
-#### Scenario: Each part
-- **WHEN** 欄 `A` 存 `'2024-03-09T06:07:08Z'`，求值 `DATEPART(A, 'year')`、`'month'`、`'day'`、`'hour'`、`'minute'`、`'second'`
-- **THEN** 分別得到 2024、3、9、6、7、8
-
-#### Scenario: The date's own time zone
-- **WHEN** 欄 `B` 存 UTC+8 的 2024-12-31 23:59:58.999，求值 `DATEPART(B, 'hour')` 與 `DATEPART(B, 'second')`
-- **THEN** 分別得到 23 與 58
-
-#### Scenario: An unknown unit
-- **WHEN** 求值 `DATEPART(A, 'week')`
-- **THEN** 回傳錯誤
-
 ### Requirement: DAY, HOUR, MINUTE and SECOND take a part of a date
 
 `DAY`, `HOUR`, `MINUTE` and `SECOND` SHALL return, as a `float64`, the day of the month, hour, minute or second of a `time.Time` or of a string Insyra's date parser reads as a date, read in the date's own time zone and dropping any fraction of a second, giving what `DATEPART(d, 'day')`, `'hour'`, `'minute'` and `'second'` give. `DAYOFMONTH` SHALL keep giving what `DAY` gives.
@@ -328,3 +312,10 @@ A `time.Duration`, a string `time.ParseDuration` accepts, or a number given to `
 #### Scenario: A number and unreadable text
 - **WHEN** `DUR(36, 'hour')` and `DUR('soon', 'hour')` are evaluated
 - **THEN** each is an error naming the value
+### Requirement: A formula using DATEPART is told what to write
+
+`DATEPART`, with any arguments, SHALL be an error that says it was removed and names `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE` and `SECOND`.
+
+#### Scenario: A formula still using it
+- **WHEN** `DATEPART(A, 'hour')` is evaluated
+- **THEN** the error says it was removed and names `HOUR(d)`
