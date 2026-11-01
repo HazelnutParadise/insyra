@@ -9,7 +9,7 @@ import (
 
 // TEXT and FORMAT_DATE read a format the Go way or the Excel way.
 func TestTextNumberFormats(t *testing.T) {
-	ctx := mapCtx(t, map[string][]any{"A": {1.5}, "B": {1234567.891}, "C": {-0.5}, "D": {int64(5)}, "E": {"1.5"}})
+	ctx := mapCtx(t, map[string][]any{"A": {1.5}, "B": {1234567.891}, "C": {-0.5}, "D": {int64(5)}, "E": {"1.5"}, "F": {int64(9007199254740993)}})
 	for _, c := range []struct{ expr, want string }{
 		{"TEXT(A, '%.2f')", "1.50"},
 		{"TEXT(A, '0.00')", "1.50"},
@@ -35,13 +35,13 @@ func TestTextNumberFormats(t *testing.T) {
 		{"TEXT(E, '0.00')", "1.50"},
 		{"TEXT(1e21, '0')", "1000000000000000000000"},
 		{"TEXT(A, '0.00 \"v2\"')", "1.50 v2"},
-		{"TEXT(9007199254740993, '0')", "9007199254740993"},
-		{"TEXT(9007199254740993, '#,##0')", "9,007,199,254,740,993"},
+		{"TEXT(F, '0')", "9007199254740993"},
+		{"TEXT(F, '#,##0')", "9,007,199,254,740,993"},
 		{"TEXT('9007199254740993', '0')", "9007199254740993"},
 		{"TEXT(-5, '0.0')", "-5.0"},
 		{"TEXT(A, '%[1]f')", "1.500000"},
 		{"TEXT(A, '%.f')", "2"},
-		{"TEXT(7, '%[1]d')", "7"},
+		{"TEXT(D, '%[1]d')", "5"},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err != nil || got != c.want {
