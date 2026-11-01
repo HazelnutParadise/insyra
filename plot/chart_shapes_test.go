@@ -143,3 +143,20 @@ func TestPositionsCountTheCallersArguments(t *testing.T) {
 		t.Errorf("no warning naming data list 1: %+v", insyra.GetAllErrors())
 	}
 }
+
+// A text cell from a file can carry terminal escape codes; the error quotes
+// it so they reach the terminal as text.
+func TestScatterChartQuotesTheCellItRefuses(t *testing.T) {
+	quiet(t)
+	s := ScatterSeries{Name: "s", X: insyra.NewDataList(1, "\x1b]52;c;cHduZWQ=\a", 3), Y: insyra.NewDataList(1, 2, 3)}
+	_, err := CreateScatterChart(ScatterChartConfig{}, s)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if strings.ContainsAny(err.Error(), "\x1b\a") {
+		t.Errorf("error %q carries raw control characters", err)
+	}
+	if !strings.Contains(err.Error(), `\x1b]52`) {
+		t.Errorf("error %q does not show the escaped cell", err)
+	}
+}

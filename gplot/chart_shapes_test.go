@@ -208,3 +208,20 @@ func TestEveryChartSharesOnePalette(t *testing.T) {
 		t.Error("the fill and stroke palettes are the same colour; a bar's outline would vanish into a line's colour")
 	}
 }
+
+// A text cell from a file can carry terminal escape codes; the error quotes
+// it so they reach the terminal as text.
+func TestScatterChartQuotesTheCellItRefuses(t *testing.T) {
+	quietFatal(t)
+	s := ScatterSeries{Name: "s", X: insyra.NewDataList(1, "\x1b]52;c;cHduZWQ=\a", 3), Y: insyra.NewDataList(1, 2, 3)}
+	_, err := CreateScatterChart(ScatterChartConfig{}, s)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if strings.ContainsAny(err.Error(), "\x1b\a") {
+		t.Errorf("error %q carries raw control characters", err)
+	}
+	if !strings.Contains(err.Error(), `\x1b]52`) {
+		t.Errorf("error %q does not show the escaped cell", err)
+	}
+}

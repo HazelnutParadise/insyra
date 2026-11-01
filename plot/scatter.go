@@ -156,22 +156,25 @@ func CreateScatterChart(config ScatterChartConfig, series ...ScatterSeries) (*ch
 }
 
 // readScatterSeries reads one series' X and Y, or says why it cannot be drawn.
-// i is the series' place among the arguments, counting from zero.
+// i is the series' place among the arguments, counting from zero. The lengths
+// are checked on the copies it reads, so a list changed by another goroutine
+// in between gives an error instead of a mismatched pair.
 func readScatterSeries(i int, s ScatterSeries) ([]float64, []float64, error) {
 	if isNilList(s.X) || isNilList(s.Y) {
 		return nil, nil, fmt.Errorf("series %d (%q) needs both X and Y", i+1, s.Name)
 	}
-	if s.X.Len() != s.Y.Len() {
-		return nil, nil, fmt.Errorf("series %d (%q) has %d X values and %d Y values", i+1, s.Name, s.X.Len(), s.Y.Len())
+	xCells, yCells := s.X.Data(), s.Y.Data()
+	if len(xCells) != len(yCells) {
+		return nil, nil, fmt.Errorf("series %d (%q) has %d X values and %d Y values", i+1, s.Name, len(xCells), len(yCells))
 	}
-	if s.X.Len() == 0 {
+	if len(xCells) == 0 {
 		return nil, nil, fmt.Errorf("series %d (%q) has no points", i+1, s.Name)
 	}
-	x, err := readScatterAxis(i, s.Name, "X", s.X)
+	x, err := readScatterAxis(i, s.Name, "X", xCells)
 	if err != nil {
 		return nil, nil, err
 	}
-	y, err := readScatterAxis(i, s.Name, "Y", s.Y)
+	y, err := readScatterAxis(i, s.Name, "Y", yCells)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -180,14 +183,15 @@ func readScatterSeries(i int, s ScatterSeries) ([]float64, []float64, error) {
 
 // readScatterAxis reads every cell of dl as a number. A scatter point has no
 // category axis to fall back on, so a cell that is not a Go number would be a
-// point drawn in the wrong place; it is refused instead.
-func readScatterAxis(i int, name, axis string, dl insyra.IDataList) ([]float64, error) {
-	cells := dl.Data()
+// point drawn in the wrong place; it is refused instead. The cell is quoted
+// in the error, so control characters in data from a file reach a terminal
+// escaped.
+func readScatterAxis(i int, name, axis string, cells []any) ([]float64, error) {
 	out := make([]float64, len(cells))
 	for row, cell := range cells {
 		f, ok := insyra.ToFloat64Safe(cell)
 		if !ok {
-			return nil, fmt.Errorf("series %d (%q): %s at row index %d is %v (%T), not a number", i+1, name, axis, row, cell, cell)
+			return nil, fmt.Errorf("series %d (%q): %s at row index %d is %q (%T), not a number", i+1, name, axis, row, fmt.Sprint(cell), cell)
 		}
 		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return nil, fmt.Errorf("series %d (%q): %s at row index %d is %v; a chart cannot draw NaN or an infinity", i+1, name, axis, row, f)
