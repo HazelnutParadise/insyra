@@ -22,6 +22,10 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- 2026-11-01 A caller's kernel cannot write outside its buffers on Vulkan (ported from `dev`, #623; change `accel-custom-kernel-bounds`):
+  - **Decision.** gogpu/wgpu v0.34.5 compiles WGSL for Vulkan with no bounds checks and no `robustBufferAccess` (gogpu/wgpu#370, open), so Insyra compiles a caller's kernel itself with gogpu/naga v0.20.4's bounds checks and passes SPIR-V: a read past a buffer gives zero and a write is skipped, as on Metal. Insyra's own kernels and other backends are unchanged.
+  - **Measured.** On `dev`, on an NVIDIA GT 1030 over Vulkan, a 64-value write into a 4-value buffer left 8 neighbouring buffers unchanged and the `nn` and `accel` caller-kernel tests passed. On this line, build, lint and the caller-kernel GPU tests passed on the Apple M3 (Metal, which does not take the new path).
+  - **Not verified.** The same tests on the GT 1030 on this line; DirectX 12. `delivery-status.md` changed; `AGENTS.md` did not.
 - 2026-10-31 The device compiler's upstream fixes are in (change `naga-upstream-fixes`):
   - **Decision.** Require gogpu/naga v0.20.4 and drop the workarounds for gogpu/naga#95 (an operand `select()` lost its parentheses in Metal, fixed in v0.19.1) and #133 (`countLeadingZeros` compiled to the bit index on Vulkan, DirectX 12 and OpenGL, fixed in v0.20.4). gogpu/wgpu stays at v0.34.5, its newest. This line's `ieee_decode` already used `countLeadingZeros`, so on Vulkan the upgrade alone fixes subnormal inputs to the correctly rounded division, square root, exp and log.
   - **Measured on the Apple M3.** `TestWGSLBuiltinsMatchTheHost` passes with v0.20.4 and fails with v0.19.0. gogpu/wgpu#280 was fixed in v0.30.31; the device tests passed under `-race` on `dev`, which has the same gogpu/wgpu v0.34.5, and were not rerun under `-race` here.
