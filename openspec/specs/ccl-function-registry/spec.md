@@ -4,7 +4,6 @@
 Defines how a program outside the module adds its own CCL functions through `engine/ccl`: the three kinds of function it can register, and how the one process-wide registry behaves.
 
 ## Requirements
-
 ### Requirement: engine/ccl registers every kind of CCL function
 
 `engine/ccl` SHALL let a caller register a scalar function (`RegisterFunction`), an aggregate function (`RegisterAggregateFunction`) and a sequence function (`RegisterSequenceFunction`, with the type `SeqFunc`), each into the registry the evaluator reads.
@@ -28,3 +27,17 @@ The documentation of `engine/ccl` SHALL state that there is one function registr
 #### Scenario: Reading the documentation
 - **WHEN** a caller reads the doc comment of `ResetEvalDepth` or `ResetFuncCallDepth`
 - **THEN** it contains `Deprecated: it does nothing`
+
+### Requirement: IFERROR replaces a failure on a row
+
+`IFERROR(value, valueIfError)` SHALL give `value`, and SHALL compute and give `valueIfError` only when computing `value` fails. An empty result or `NaN` SHALL NOT count as a failure. An undefined function and a column that does not exist SHALL still be errors.
+
+#### Scenario: Dividing by zero
+
+- **WHEN** column B holds 2 and 0 and column A holds 6 and 8
+- **THEN** `IFERROR(A / B, -1)` gives 3 and -1
+
+#### Scenario: A mistake in the formula
+
+- **WHEN** an expression is `IFERROR(NOSUCHFN(A), 0)`
+- **THEN** the expression fails with an undefined function error
