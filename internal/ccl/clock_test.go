@@ -135,3 +135,21 @@ func TestFreezeClockLeavesARegisteredNow(t *testing.T) {
 		t.Errorf("NOW() = %v, want the registered %v", got, fixed)
 	}
 }
+
+// Restoring the standard functions restores the clock's freezing too.
+func TestFreezeClockAfterTheStandardFunctionsAreRestored(t *testing.T) {
+	RegisterFunction("NOW", func(args ...any) (any, error) { return time.Time{}, nil })
+	RegisterStandardFunctions()
+	now := time.Date(2024, 3, 9, 0, 0, 0, 0, time.UTC)
+	node, err := CompileExpression("NOW()")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Evaluate(FreezeClock(node, now), mapCtx(t, map[string][]any{"A": {1.0}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != any(now) {
+		t.Errorf("NOW() = %v, want the frozen %v", got, now)
+	}
+}

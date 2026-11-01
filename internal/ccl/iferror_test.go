@@ -49,6 +49,7 @@ func TestIfErrorUsesTheFallbackOnlyOnAnError(t *testing.T) {
 		{"IFERROR(['nope'] + 1, 0)", "nope"},
 		{"IFERROR(1 + NOSUCHFN(A), 0)", "undefined function"},
 		{"IFERROR(NOSUCHFN(1 / 0), 0)", "undefined function"},
+		{"IFERROR(SUM(A:ZZ), 0)", "out of range"},
 	} {
 		got, err := evalOne(t, ctx, c.expr)
 		if err == nil || !strings.Contains(err.Error(), c.want) {

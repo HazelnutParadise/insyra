@@ -298,14 +298,14 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.name)
+			return nil, UnknownColumnError("invalid column index: %s", t.name)
 		}
 		return ctx.GetCol(idx), nil
 	case *cclColIndexNode:
 		// [A] 形式的欄位索引引用
 		idx, ok := utils.ParseColIndex(t.index)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.index)
+			return nil, UnknownColumnError("invalid column index: %s", t.index)
 		}
 		return ctx.GetCol(idx), nil
 	case *cclColNameNode:
@@ -431,7 +431,7 @@ func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, e
 				}
 				// A condition that does not depend on the row holds for every row
 				// or none, so COUNTIF(TRUE) counts the rows.
-				if i == 0 && isConditionalAggregate(t.name) && !IsRowDependent(arg) && len(colData) == 1 {
+				if i == 0 && isConditionalAggregate(t.name) && isBuiltinName(t.name) && !IsRowDependent(arg) && len(colData) == 1 {
 					colData = slices.Repeat(colData, ctx.GetRowCount())
 				}
 				aggArgs[i] = colData
@@ -1034,7 +1034,7 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	case *cclIdentifierNode:
 		idx, ok := utils.ParseColIndex(t.name)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.name)
+			return nil, UnknownColumnError("invalid column index: %s", t.name)
 		}
 		// Try index
 		col, err := ctx.GetColData(idx)
@@ -1046,7 +1046,7 @@ func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, erro
 	case *cclColIndexNode:
 		idx, ok := utils.ParseColIndex(t.index)
 		if !ok {
-			return nil, fmt.Errorf("invalid column index: %s", t.index)
+			return nil, UnknownColumnError("invalid column index: %s", t.index)
 		}
 		return ctx.GetColData(idx)
 	case *cclColNameNode:
@@ -1246,7 +1246,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
-					err = fmt.Errorf("invalid column index")
+					err = UnknownColumnError("invalid column index")
 				}
 
 				if err != nil {
@@ -1258,7 +1258,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (
 				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
-					err = fmt.Errorf("invalid column index")
+					err = UnknownColumnError("invalid column index")
 				}
 
 				if err != nil {
@@ -1342,23 +1342,23 @@ func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any,
 	if lIsCol && rIsCol {
 		// Check for invalid indices (-1) which resolveColumnIndex might return if not found but "looks like" a column
 		if lIdx == -1 {
-			return nil, fmt.Errorf("column not found: %s", describeNode(left))
+			return nil, UnknownColumnError("column not found: %s", describeNode(left))
 		}
 		if rIdx == -1 {
-			return nil, fmt.Errorf("column not found: %s", describeNode(right))
+			return nil, UnknownColumnError("column not found: %s", describeNode(right))
 		}
 
 		// Check bounds
 		colCount := ctx.GetColCount()
 		if lIdx < 0 || lIdx >= colCount {
-			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", lIdx, colCount)
+			return nil, UnknownColumnError("column index %d out of range (total columns: %d)", lIdx, colCount)
 		}
 		if rIdx < 0 || rIdx >= colCount {
-			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", rIdx, colCount)
+			return nil, UnknownColumnError("column index %d out of range (total columns: %d)", rIdx, colCount)
 		}
 
 		if lIdx > rIdx {
-			return nil, fmt.Errorf("invalid column range: start index %d > end index %d", lIdx, rIdx)
+			return nil, UnknownColumnError("invalid column range: start index %d > end index %d", lIdx, rIdx)
 		}
 		return ColumnRange{Start: lIdx, End: rIdx}, nil
 	}

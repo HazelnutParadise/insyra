@@ -788,7 +788,7 @@ func (c *tableInfoContext) GetColIndexByName(colName string) (int, error) {
 			return i, nil
 		}
 	}
-	return -1, fmt.Errorf("column name '%s' not found", colName)
+	return -1, UnknownColumnError("column name '%s' not found", colName)
 }
 
 func (c *tableInfoContext) GetColCount() int { return len(c.colNames) }
@@ -814,7 +814,7 @@ type capturedRowsContext struct {
 
 func (c *capturedRowsContext) GetCell(colIndex, rowIndex int) (any, error) {
 	if colIndex < 0 || colIndex >= len(c.colNames) {
-		return nil, fmt.Errorf("column index %d out of range", colIndex)
+		return nil, UnknownColumnError("column index %d out of range", colIndex)
 	}
 	row, ok := c.rows[rowIndex]
 	if !ok {
