@@ -64,6 +64,14 @@ Both scatter charts SHALL return a nil chart and an error when a cell of `X` or 
 - **WHEN** `gplot.CreateBarChart(cfg, a, b)` where `a` has 3 values and `b` has 2
 - **THEN** the chart is nil and the error names list 2 and both lengths
 
+### Requirement: gplot colours every chart from one palette
+
+Every `gplot` chart SHALL colour series *i* from one palette with the same order of hues: bars and histograms take its fill colour, and lines, steps, functions and scatter markers take its stroke colour. Line and step series SHALL also keep their dash patterns.
+
+#### Scenario: The first series of each chart
+- **WHEN** a bar chart, a line chart and a scatter chart are each drawn with two series
+- **THEN** the first series of each is drawn in the palette's first hue and the second in its second
+
 ## MODIFIED Requirements
 
 ### Requirement: gplot takes insyra's types

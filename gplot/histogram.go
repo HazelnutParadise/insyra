@@ -51,6 +51,7 @@ func CreateHistogram(config HistogramConfig, data insyra.IDataList) (*plot.Plot,
 	if err != nil {
 		return nil, chartError("CreateHistogram", "cannot draw the histogram: %w", err)
 	}
+	hist.FillColor = seriesFill(0)
 
 	// Create a new plot.
 	plt := plot.New()

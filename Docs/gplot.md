@@ -452,6 +452,10 @@ The table returned by `stats.CorrelationMatrix` can be passed as it is.
 
 ![heatmap_example](./img/gplot_heatmap_example.png)
 
+## Series colours
+
+Every chart colours series *i* from one palette, gonum's paired soft and dark colours, so the first series is the same red whether it is drawn as bars, a line or points. Bars and histograms take the soft colour; lines, steps, function curves and scatter markers take the dark one, which stays readable at a line's width. Line and step series also keep their dash patterns (solid, long dash, dotted, and so on), so they stay apart when printed in black and white, and scatter series keep their marker shapes.
+
 ## A series that cannot be drawn fails the chart
 
 `CreateBarChart`, `CreateLineChart`, `CreateStepChart` and `CreateScatterChart` draw every series they are given, or none. A line or step series whose length differs from `XAxis`, an empty series, and a series holding a `NaN` or an infinity each make the call return a `nil` chart and an error, so a chart never comes back missing a series you asked for. When `XAxis` is left out, it is generated from the first list's length, so every other list has to match the first. The error names every series that failed and why, for example `gplot: CreateLineChart: cannot draw every series: series "two" has 2 values but XAxis has 3`, and nothing is logged.

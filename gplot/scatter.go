@@ -4,7 +4,6 @@ package gplot
 
 import (
 	"fmt"
-	"image/color"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -129,18 +128,7 @@ func addScatterSeries(plt *plot.Plot, seriesName string, xs, ys []float64, index
 		return fmt.Errorf("series %q cannot be drawn: %w", seriesName, err)
 	}
 
-	// Set different colors and shapes for each series
-	colors := []color.Color{
-		color.RGBA{R: 255, G: 0, B: 0, A: 255},     // Red
-		color.RGBA{R: 0, G: 0, B: 255, A: 255},     // Blue
-		color.RGBA{R: 0, G: 128, B: 0, A: 255},     // Green
-		color.RGBA{R: 255, G: 165, B: 0, A: 255},   // Orange
-		color.RGBA{R: 128, G: 0, B: 128, A: 255},   // Purple
-		color.RGBA{R: 0, G: 128, B: 128, A: 255},   // Teal
-		color.RGBA{R: 255, G: 192, B: 203, A: 255}, // Pink
-	}
-
-	scatter.Color = colors[index%len(colors)]
+	scatter.Color = seriesStroke(index)
 
 	// Set different shapes for each series
 	shapes := []draw.GlyphDrawer{

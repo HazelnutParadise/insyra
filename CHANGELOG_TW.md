@@ -390,6 +390,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING（行為）**：散佈圖遇到 `X` 或 `Y` 裡不是 Go 數字的格子（`nil`、文字、`"2"` 這種數字字串，或 `bool`）時回傳錯誤，指出是哪個系列、哪一軸、第幾列；以前會把那個點畫在 0。系列用「從 1 開始的位置加名稱」來指稱，例如 `series 2 ("empty") has no points`。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - `CreateBarChart` 改收 `...insyra.IDataList`，可以把好幾個清單並排畫在每個類別上，每個清單一種顏色，圖例標出各清單的名稱：`gplot.CreateBarChart(cfg, sales2025, sales2026)`。只傳一個清單時畫法不變。清單長度不同會回傳錯誤並指出是哪一個；傳了不只一個清單時不能用 `ErrorBars`。每張長條圖的兩端都會留半個類別的空間，最左和最右的長條不再被邊框切掉。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 - `isr.DL` 這類包著 `nil` 清單的型別會被當成 `nil`，所以 `CreateLineChart(cfg, nilWrapper, list)` 會跳過它並發出警告，不再當掉（[#412](https://github.com/HazelnutParadise/insyra/issues/412)）。警告裡的位置從 1 開始算，呼叫失敗時也不會再記下這個警告。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
+- 每種圖都用同一組配色畫系列（gonum 成對的柔和色與深色），所以第 1 個系列不管畫成長條、折線、階梯還是散佈點，都是同一個紅色。長條圖和直方圖以前是黑色或灰色，現在改成彩色填色；折線、階梯和函式曲線以前是黑色，現在改成彩色，並保留原本的虛線樣式；散佈圖原本自己寫死的紅、藍、綠，也改用同一組配色。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
 
 ### `py`
 - `PipInstall` 與 `PipUninstall` 拒絕以 `-` 開頭的依賴名稱，並在名稱前加上 `--`。呼叫端的字串過去是以單一 argv 交給 `uv pip install`，所以 `--requirement=/path` 會讓 uv 去讀那個檔案並安裝裡面列的東西。

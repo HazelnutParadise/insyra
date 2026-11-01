@@ -99,7 +99,8 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	}
 	line.StepStyle = stepKind
 
-	// Set different line styles for each series
+	// Each series has its own colour and dash pattern, so the lines stay
+	// apart in black and white too.
 	switch index % 5 {
 	case 0:
 		// 實線
@@ -121,6 +122,9 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 		line.LineStyle = plotter.DefaultLineStyle
 		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
+
+	line.Color = seriesStroke(index)
+	line.Width = vg.Points(1.5)
 
 	plt.Add(line)
 	plt.Legend.Add(seriesName, line)

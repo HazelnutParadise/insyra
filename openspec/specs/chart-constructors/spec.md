@@ -57,6 +57,14 @@ An outcome that still yields a chart SHALL stay a logged warning with a nil erro
 - **WHEN** `gplot.CreateBarChart(cfg, a, b)` where `a` has 3 values and `b` has 2
 - **THEN** the chart is nil and the error names list 2 and both lengths
 
+### Requirement: gplot colours every chart from one palette
+
+Every `gplot` chart SHALL colour series *i* from one palette with the same order of hues: bars and histograms take its fill colour, and lines, steps, functions and scatter markers take its stroke colour. Line and step series SHALL also keep their dash patterns.
+
+#### Scenario: The first series of each chart
+- **WHEN** a bar chart, a line chart and a scatter chart are each drawn with two series
+- **THEN** the first series of each is drawn in the palette's first hue and the second in its second
+
 ### Requirement: gplot refuses data it cannot pair or draw
 
 A nil list or table given as the only data SHALL be an error. A nil list among real ones in a bar, line or step chart SHALL be dropped with a warning. A nil list SHALL be recognised through `insyra.IsNilList`, so a wrapper type that embeds a nil list counts as nil and does not panic. A scatter series whose `X` or `Y` is nil, or whose `X` and `Y` differ in length, SHALL be an error naming the series.

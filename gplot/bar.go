@@ -8,7 +8,6 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/plotutil"
 	"gonum.org/v1/plot/vg"
 )
 
@@ -67,12 +66,12 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) (*plot.Plot
 		if err != nil {
 			return nil, chartError("CreateBarChart", "cannot draw list %d: %w", pos[i]+1, err)
 		}
+		bars.Color = seriesFill(i)
+		bars.LineStyle.Width = 0
 		if len(values) > 1 {
 			// Centre the group on its category: bar i sits i widths right of
 			// the leftmost, and the group's middle sits on the tick.
 			bars.Offset = vg.Points((float64(i) - float64(len(values)-1)/2) * barWidth)
-			bars.Color = plotutil.Color(i)
-			bars.LineStyle.Width = 0
 		}
 		groups[i] = bars
 	}

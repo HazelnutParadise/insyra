@@ -1,10 +1,13 @@
 package gplot
 
 import (
+	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	gonumplot "gonum.org/v1/plot"
 )
 
 // chart-constructors: plot and gplot take the same shapes under the same
@@ -154,5 +157,54 @@ func TestANilListInsideAWrapperIsDropped(t *testing.T) {
 	}
 	if _, err := CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "s", X: wrapped{}, Y: real}); err == nil {
 		t.Error("a scatter series with a wrapped nil X did not fail")
+	}
+}
+
+// Every chart colours series i from one palette: series 1 is the same red
+// whether it is a bar, a line, a step or a set of points.
+func TestEveryChartSharesOnePalette(t *testing.T) {
+	quietFatal(t)
+	a := insyra.NewDataList(1.0, 2.0, 3.0).SetName("a")
+	b := insyra.NewDataList(3.0, 1.0, 2.0).SetName("b")
+	rgb := func(c color.Color) string {
+		r, g, bl, _ := c.RGBA()
+		return fmt.Sprintf("#%02X%02X%02X", r>>8, g>>8, bl>>8)
+	}
+	charts := map[string]func() (*gonumplot.Plot, error){
+		"bar":  func() (*gonumplot.Plot, error) { return CreateBarChart(BarChartConfig{}, a, b) },
+		"line": func() (*gonumplot.Plot, error) { return CreateLineChart(LineChartConfig{}, a, b) },
+		"step": func() (*gonumplot.Plot, error) { return CreateStepChart(StepChartConfig{}, a, b) },
+		"scatter": func() (*gonumplot.Plot, error) {
+			return CreateScatterChart(ScatterChartConfig{}, ScatterSeries{Name: "a", X: a, Y: b}, ScatterSeries{Name: "b", X: b, Y: a})
+		},
+		"histogram": func() (*gonumplot.Plot, error) { return CreateHistogram(HistogramConfig{}, a) },
+		"function": func() (*gonumplot.Plot, error) {
+			return CreateFunctionPlot(FunctionPlotConfig{XMax: 1}, func(x float64) float64 { return x })
+		},
+	}
+	want := map[string][]color.Color{
+		"bar":       {seriesFill(0), seriesFill(1)},
+		"line":      {seriesStroke(0), seriesStroke(1)},
+		"step":      {seriesStroke(0), seriesStroke(1)},
+		"scatter":   {seriesStroke(0), seriesStroke(1)},
+		"histogram": {seriesFill(0)},
+		"function":  {seriesStroke(0)},
+	}
+	for name, build := range charts {
+		t.Run(name, func(t *testing.T) {
+			plt, err := build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			svg := renderSVG(t, plt)
+			for i, c := range want[name] {
+				if !strings.Contains(svg, rgb(c)) {
+					t.Errorf("series %d is not drawn in %s", i+1, rgb(c))
+				}
+			}
+		})
+	}
+	if rgb(seriesFill(0)) == rgb(seriesStroke(0)) {
+		t.Error("the fill and stroke palettes are the same colour; a bar's outline would vanish into a line's colour")
 	}
 }
