@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
 	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
@@ -483,6 +484,12 @@ func inferCSVColumnTypes(dt *DataTable) {
 		}
 		allInt, allFloat, hasEmpty := true, true, false
 		for _, v := range col.data {
+			// Nil is a cell the file left out, which Excel does past a row's
+			// last value; CSV never has one.
+			if v == nil {
+				hasEmpty = true
+				continue
+			}
 			s, ok := v.(string)
 			if !ok {
 				allInt, allFloat = false, false
@@ -507,7 +514,7 @@ func inferCSVColumnTypes(dt *DataTable) {
 			}
 		case allFloat:
 			for i, v := range col.data {
-				s := v.(string)
+				s, _ := v.(string)
 				if s == "" {
 					col.data[i] = math.NaN()
 					continue
@@ -545,30 +552,57 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 
 // ----- excel -----
 
-// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
-func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a
+// DataTable. rawStrings says whether every cell stays text (true) or columns
+// are typed the way CSV reading types them (false). Left out, every cell stays
+// text with one warning, because from 0.4 columns are typed by default.
+func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error) {
+	raw, err := excelRawStrings("ReadExcelSheet", rawStrings)
+	if err != nil {
+		return nil, err
+	}
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", filePath, err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames, raw)
 }
 
 // ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
 // response body, a zip entry, bytes in memory — the same way ReadExcelSheet
 // reads a file.
-func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error) {
+	raw, err := excelRawStrings("ReadExcel", rawStrings)
+	if err != nil {
+		return nil, err
+	}
 	f, err := excelize.OpenReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel input: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames)
+	return readExcelSheetFrom(f, sheetName, setFirstColToRowNames, setFirstRowToColNames, raw)
+}
+
+var excelRawStringsWarning sync.Once
+
+// excelRawStrings reads the optional rawStrings argument of the Excel readers.
+func excelRawStrings(funcName string, rawStrings []bool) (bool, error) {
+	switch len(rawStrings) {
+	case 0:
+		excelRawStringsWarning.Do(func() {
+			LogWarning("", funcName, "every cell stays text here, and from 0.4 columns are typed the way CSV reading types them; pass rawStrings as true to keep text or false to type them now")
+		})
+		return true, nil
+	case 1:
+		return rawStrings[0], nil
+	}
+	return false, fmt.Errorf("rawStrings takes one value, got %d", len(rawStrings))
 }
 
 // readExcelSheetFrom is the sheet reader behind ReadExcelSheet and ReadExcel.
-func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings bool) (*DataTable, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
@@ -582,6 +616,9 @@ func readExcelSheetFrom(f *excelize.File, sheetName string, setFirstColToRowName
 	}
 	if setFirstRowToColNames {
 		dt.SetRowToColNames(0)
+	}
+	if !rawStrings {
+		inferCSVColumnTypes(dt)
 	}
 	return dt, nil
 }
