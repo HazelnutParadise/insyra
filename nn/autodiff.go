@@ -30,7 +30,8 @@ type Tape struct {
 	passOwned  []*Tensor
 	// releasers free device state that is not a tensor, such as the
 	// intermediates a cross-entropy gradient reuses.
-	releasers []func()
+	releasers    []func()
+	clearOptions ClearOptions
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -41,6 +42,7 @@ type Parameter struct {
 	adamM    []float32
 	adamV    []float32
 	adamStep uint64
+	frozen   bool
 
 	// adamMDev and adamVDev hold the Adam moments of a parameter on a device.
 	adamMDev, adamVDev *accel.DeviceBuffer
@@ -812,7 +814,7 @@ func (t *Tape) backwardFrom(output, seed *Tensor) (err error) {
 	defer func() {
 		t.inBackward = false
 		if err != nil {
-			releaseAll(t.passOwned)
+			t.releaseGradients(t.passOwned, t.owned, t.gradOwned)
 			t.passOwned = nil
 		}
 	}()
@@ -852,7 +854,7 @@ func (t *Tape) backwardFrom(output, seed *Tensor) (err error) {
 			}
 		}
 	}
-	releaseAll(t.gradOwned)
+	t.releaseGradients(t.gradOwned, t.owned, t.passOwned)
 	t.gradOwned, t.passOwned = t.passOwned, nil
 	t.grads = grads
 	for value, parameter := range t.marked {
@@ -885,6 +887,9 @@ func (t *Tape) SGD(rate float32) error {
 		return err
 	}
 	for _, param := range t.params {
+		if param.frozen {
+			continue
+		}
 		value := param.value
 		if err := requireFloat32Any(value, "sgd parameter"); err != nil {
 			return err
@@ -927,6 +932,9 @@ func (t *Tape) SGDMomentum(rate, momentum float32) error {
 		return fmt.Errorf("sgd momentum must be finite and non-negative")
 	}
 	for _, param := range t.params {
+		if param.frozen {
+			continue
+		}
 		value := param.value
 		if err := requireFloat32(value, "sgd momentum parameter"); err != nil {
 			return err
@@ -1021,6 +1029,9 @@ func (t *Tape) adamStep(rate, weightDecay float32) error {
 		eps   = float64(1e-8)
 	)
 	for _, param := range t.params {
+		if param.frozen {
+			continue
+		}
 		value := param.value
 		if err := requireFloat32(value, "adam parameter"); err != nil {
 			return err

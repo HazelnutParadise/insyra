@@ -114,11 +114,11 @@ func Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error) {
 	if aCols != bRows {
 		return nil, fmt.Errorf("gemm shapes %v and %v are incompatible after transpose", a.shape, b.shape)
 	}
-	result, err := newFloat32Tensor([]int{aRows, bCols}, make([]float32, aRows*bCols))
+	result, err := newZeroFloat32Tensor([]int{aRows, bCols})
 	if err != nil {
 		return nil, err
 	}
-	for row := 0; row < aRows; row++ {
+	for row := 0; row < aRows && bCols != 0; row++ {
 		for column := 0; column < bCols; column++ {
 			var sum float32
 			for inner := 0; inner < aCols; inner++ {
@@ -1016,6 +1016,27 @@ func matMulBatchedWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(a.shape) == 1 {
+		result.shape = append([]int(nil), batchShape...)
+		if len(b.shape) >= 2 {
+			result.shape = append(result.shape, bCols)
+		}
+		result.strides = stridesForShape(result.shape)
+	}
+	if len(b.shape) == 1 {
+		result.shape = append([]int(nil), batchShape...)
+		if len(a.shape) >= 2 {
+			result.shape = append(result.shape, aRows)
+		}
+		result.strides = stridesForShape(result.shape)
+	}
+	if len(a.shape) == 1 && len(b.shape) == 1 {
+		result.shape = nil
+		result.strides = nil
+	}
+	if len(result.data) == 0 || aCols == 0 {
+		return result, nil
+	}
 	aBatchAligned := alignedShapeStrides(aBatchShape, aBatchStrides, len(batchShape))
 	bBatchAligned := alignedShapeStrides(bBatchShape, bBatchStrides, len(batchShape))
 	_, _, batchCount, err := makeLayout(batchShape)
@@ -1066,24 +1087,6 @@ func matMulBatchedWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 			}
 		}
 	})
-	if len(a.shape) == 1 {
-		result.shape = append([]int(nil), batchShape...)
-		if len(b.shape) >= 2 {
-			result.shape = append(result.shape, bCols)
-		}
-		result.strides = stridesForShape(result.shape)
-	}
-	if len(b.shape) == 1 {
-		result.shape = append([]int(nil), batchShape...)
-		if len(a.shape) >= 2 {
-			result.shape = append(result.shape, aRows)
-		}
-		result.strides = stridesForShape(result.shape)
-	}
-	if len(a.shape) == 1 && len(b.shape) == 1 {
-		result.shape = nil
-		result.strides = nil
-	}
 	return result, nil
 }
 
@@ -1091,10 +1094,17 @@ func matMul2D(a, b *Tensor) (*Tensor, error) {
 	if a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
 	}
+	count, err := checkedProduct(a.shape[0], b.shape[1], "matmul output")
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 || a.shape[1] == 0 {
+		return newZeroFloat32Tensor([]int{a.shape[0], b.shape[1]})
+	}
 	if matMulMACsAtLeast(a.shape[0], b.shape[1], a.shape[1]) && insyra.Config.GetAccelerationEnabled() {
 		if hook := registeredDeviceMatMul(); hook != nil {
 			data, err := hook(a.data, a.shape[0], a.shape[1], b.data, b.shape[0], b.shape[1])
-			if err == nil && len(data) == a.shape[0]*b.shape[1] {
+			if err == nil && len(data) == count {
 				if result, resultErr := newFloat32Tensor([]int{a.shape[0], b.shape[1]}, data); resultErr == nil {
 					return result, nil
 				}
@@ -1108,9 +1118,12 @@ func matMul2DWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	if a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
 	}
-	result, err := newFloat32Tensor([]int{a.shape[0], b.shape[1]}, make([]float32, a.shape[0]*b.shape[1]))
+	result, err := newZeroFloat32Tensor([]int{a.shape[0], b.shape[1]})
 	if err != nil {
 		return nil, err
+	}
+	if len(result.data) == 0 || a.shape[1] == 0 {
+		return result, nil
 	}
 	if workers <= 0 {
 		workers = parallelWorkerCountForMACs(a.shape[0], b.shape[1], a.shape[1])

@@ -79,6 +79,9 @@ func adamRoundedElement(w, g, m, v float32, s accel.AdamScalars) (float32, float
 // device, in PrecisionFloat32Rounded.
 func (t *Tape) adamRounded(rate, weightDecay float32, decay bool) error {
 	for _, param := range t.params {
+		if param.frozen {
+			continue
+		}
 		value := param.value
 		gradient := t.grads[value]
 		if gradient == nil {

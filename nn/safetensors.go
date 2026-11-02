@@ -48,7 +48,12 @@ func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 		return nil, err
 	}
 
-	data := file[headerEnd:]
+	return loadSafeTensorData(entries, file[headerEnd:])
+}
+
+// loadSafeTensorData validates and decodes an already buffered data region.
+// The optimizer reader uses it after bounded, model-specific header checks.
+func loadSafeTensorData(entries []safeTensorEntry, data []byte) (tensors map[string]*Tensor, err error) {
 	regions := make([]safeTensorRegion, 0, len(entries))
 	unsupported := make([]string, 0)
 	for _, entry := range entries {
@@ -359,8 +364,8 @@ func parseSafeTensorEntry(name string, raw json.RawMessage) (safeTensorEntry, er
 			if count > uint64(maxInt())/uint64(dimension) {
 				return safeTensorEntry{}, fmt.Errorf("tensor %q shape %v overflows element count", name, rawShape)
 			}
-			count *= uint64(dimension)
 		}
+		count *= uint64(dimension)
 	}
 	if len(result.DataOffsets) == 0 || bytes.TrimSpace(result.DataOffsets)[0] != '[' {
 		return safeTensorEntry{}, fmt.Errorf("tensor %q has invalid data_offsets", name)

@@ -67,6 +67,9 @@ func matMulRoundedWithWorkers(a, b *Tensor, transA, transB bool, workers int) (*
 	if err != nil {
 		return nil, err
 	}
+	if len(result.data) == 0 || innerA == 0 {
+		return result, nil
+	}
 	if workers <= 0 {
 		workers = parallelWorkerCountForMACs(rows, columns, innerA)
 	}

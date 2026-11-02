@@ -65,6 +65,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `ml` and `nn`
 
 - `nn` matrix products, convolutions and edge sums now size their worker pool by `runtime.GOMAXPROCS(0)` instead of `runtime.NumCPU()`, so a program that lowers `GOMAXPROCS`, or runs several products at once, is no longer oversubscribed. Results are unchanged ([#537](https://github.com/HazelnutParadise/insyra/issues/537)).
+- `Tape.SaveOptimizerState` and `LoadOptimizerState` persist named Adam/AdamW moments, step counters and momentum velocity in a versioned binary SafeTensors file, including resident Adam state; imports bound reads by the registered parameters and validate all state before replacing anything. `LoadSafeTensors` also correctly counts zero dimensions, allowing scalar shape descriptors and empty tensors to round-trip. `SetClearOptions(ClearOptions{KeepGradients: true})` retains parameter gradients across the existing `Clear()`, and `Parameter.SetFrozen(true)` skips built-in updates and weight decay while keeping optimizer history ([#376](https://github.com/HazelnutParadise/insyra/issues/376)).
+- `nn.MatMul` and `Gemm` return errors for unrepresentable output sizes from empty inputs instead of panicking; default, rounded and batched MatMul also finish empty products without iterating huge empty dimensions or allocating batch offsets. Valid empty tensors and existing numerical results, including Gemm alpha/bias behavior, are preserved.
 
 ### `quant`
 
