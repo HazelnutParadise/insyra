@@ -26,9 +26,10 @@ func (t *Tensor) onDevice() bool { return t != nil && t.device != nil }
 // cross bit for bit. A tensor already on another device is moved through the
 // host with ToHost, which keeps every transfer explicit.
 //
-// The copy owns device memory until Release is called. A tape releases the
-// tensors it creates itself on Clear and Close, but not the ones a caller
-// hands it.
+// The copy owns device memory until Release is called. A tape owns its operation
+// outputs and gradients; Clear releases them according to ClearOptions. Close
+// also releases registered parameters and optimizer state. Other tensors the
+// caller supplies remain the caller's to release.
 func (t *Tensor) To(device accel.Device) (*Tensor, error) {
 	if t == nil {
 		return nil, fmt.Errorf("tensor is nil")
