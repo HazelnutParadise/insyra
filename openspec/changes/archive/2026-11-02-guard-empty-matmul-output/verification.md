@@ -29,3 +29,9 @@ Independent Astra consultation identified the default/Gemm, rounded/batched and 
 
 - Local Go 1.26.9 `runtime/slice.go:102-117` and `runtime/malloc.go:213-220`: slice allocation checks include multiplication and platform-dependent `maxAlloc`; the tests execute that refusal path. [Official versioned runtime source](https://github.com/golang/go/blob/go1.26.9/src/runtime/slice.go#L102).
 - [PR #674 finding](https://github.com/HazelnutParadise/insyra/pull/674#discussion_r4443593729).
+
+## 0.4 port and specification delivery
+
+The correction and regression file were ported to 0.4 without conflict. Every changed matrix/allocation function body is byte-identical between the two lines, while their pre-existing differences are retained. On 0.4, build, full nn tests, vet and lint pass (0 lint issues); the same targeted host/Metal acceptance/control suite, race detector and strict Python SafeTensors reference round trips pass. Strict main-spec validation passes on both lines (214 dev, 236 on 0.4).
+
+The change was validated strictly before implementation, then archived in the same PR with the existing nn-inference capability updated. No new capability or placeholder Purpose was created. All six local implementation/delivery tasks are complete. Both PR bodies describe this correction and link the checked runtime behavior; their live CI/review state remains the external merge gate.

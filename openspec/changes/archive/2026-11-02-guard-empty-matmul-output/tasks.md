@@ -11,4 +11,4 @@
 
 ## 3. Deliver
 
-- [ ] 3.1 Port the correction to 0.4, repeat verification and update both PRs before the authorized all-green CI/clean-review merge gate.
+- [x] 3.1 Port the correction to 0.4, repeat verification and update both PRs before the authorized all-green CI/clean-review merge gate.

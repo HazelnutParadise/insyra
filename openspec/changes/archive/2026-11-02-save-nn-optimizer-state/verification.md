@@ -82,3 +82,7 @@ Implementation/specification review covers all five requirements and the four is
 - The new reader, import integration, lifecycle implementation and regression files are byte-identical between lines. The 0.4 changelog conflict was resolved by preserving its existing content and changing only the optimizer import sentence. Its existing API and codec differences are retained.
 - An independent fresh-context security/compatibility review inspected the candidate and its callers, ran CPU and verbose real-device regressions, and found no remaining confirmed finding or documentation/specification readability gap. No public signature or wire version changed.
 - Checked read semantics with local `go doc io.ReadFull`; [official io.ReadFull documentation](https://pkg.go.dev/io#ReadFull).
+
+## Later empty-matrix review correction
+
+A subsequent PR #674 security review found unchecked matrix-output allocation reachable from valid empty SafeTensors. The independent [guard-empty-matmul-output change](../2026-11-02-guard-empty-matmul-output/verification.md) records its failing-first tests, correction, host/Metal controls, preserved arithmetic and verification on both lines. It leaves the optimizer API and file format unchanged.
