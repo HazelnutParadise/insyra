@@ -50,10 +50,11 @@ Ported from dev commit `4c9c3049` onto `87bf1afe`. All new implementation and te
 | --- | --- | --- |
 | Named binary persistence | `nn/optimizer_state.go`, SaveOptimizerState / LoadOptimizerState | Six host subprocess combinations, two Metal subprocess combinations, host/device transfer, mixed slots, name-order independence, signed zero/subnormals and counters above 2^53 |
 | Transactional validation | All validation and resident staging precede assignment-only commit | Valid-SafeTensors corruption matrix, malformed files, invalid mappings, late allocation failure with no mutation/leak |
+| Bounded checkpoint input | `nn/optimizer_state_reader.go`, shared SafeTensors data decoder | Counting poison readers, header-only rejection, one-byte tail probe, final-byte I/O error, long-name/high-rank empty writer output |
 | Explicit Clear policy | `nn/optimizer_lifecycle.go` and protected Backward cleanup | Repeated cycles, gradient replacement/retention, promoted/reused/shared gradients, failed reverse pass and resident bytes returning to baseline |
 | Frozen built-in updates | SGD, momentum, Adam and rounded Adam loops | Exact/rounded comparisons of values, velocity, moments and steps; device AdamW; explicit caller Update remains available |
 
-Implementation/specification review covers all four requirements and their scenarios. A fresh reader reviewed the complete nn documentation and change artifacts after corrections and found no remaining readability issue. An independent adversarial reviewer rechecked the ownership fix and ran the broader Metal regressions with no remaining confirmed finding. No public name or signature was replaced, so no deprecation/removal or BREAKING entry is needed. The nn documentation location and the principles taught by the distributed agent skill are unchanged; API details remain in Docs.
+Implementation/specification review covers all five requirements and the four issue acceptance conditions. A fresh reader reviewed the complete nn documentation and change artifacts after corrections and found no remaining readability issue. An independent adversarial reviewer rechecked the ownership fix and ran the broader Metal regressions with no remaining confirmed finding. No public name or signature was replaced, so no deprecation/removal or BREAKING entry is needed. The nn documentation location and the principles taught by the distributed agent skill are unchanged; API details remain in Docs.
 
 ## Specification baseline
 
@@ -70,4 +71,14 @@ Implementation/specification review covers all four requirements and their scena
 
 - [dev PR #674](https://github.com/HazelnutParadise/insyra/pull/674) targets `dev`.
 - [0.4 PR #673](https://github.com/HazelnutParadise/insyra/pull/673) targets `0.4`.
-- Both bodies include Before/After/How, the API and executable resume example, checked external references, and the statement that #376 can close once both merge. Both are left unmerged for owner review.
+- Both bodies include Before/After/How, the API and executable resume example, checked external references, and the statement that #376 can close once both merge. The owner has authorized merging once CI is all green and review findings are addressed; the PR links record the live gate and merge status.
+
+## PR review corrections (2026-11-02)
+
+- Tests were added before implementation. The original loader consumed the 1 MiB poison suffix for oversized headers, unknown keys, wrong slot shapes and trailing input; the ordinary whitespace/metadata/scalar/empty control passed. On Metal, the new live-graph-input case failed after the first reverse pass with `wgpu: buffer was released`.
+- Imports now bound header allocation from registered names/ranks, validate allowed wire descriptors and offsets before payload reads, then read the validated payload and one trailing byte at most. The existing decoder consumes the buffered payload directly. An observing reader preserves non-EOF errors even when ReadFull fills its destination on the same read. Long Unicode names and high-rank empty parameters still round-trip.
+- Backward cleanup transfers old gradient buffers still referenced by a live graph into graph ownership. Repeated reverse passes succeed, a later Clear releases the obsolete input, and Clear/Close return resident bytes to baseline.
+- On both lines, `go build ./...`, `go test ./nn/...`, `go vet ./...` and `golangci-lint run` pass; lint uses separate task caches and reports 0 issues. Targeted host/Metal persistence, lifecycle and freeze tests, the race-detector command above, and strict Python SafeTensors reference round trips pass. All main specs pass strictly (214 on dev, 236 on 0.4).
+- The new reader, import integration, lifecycle implementation and regression files are byte-identical between lines. The 0.4 changelog conflict was resolved by preserving its existing content and changing only the optimizer import sentence. Its existing API and codec differences are retained.
+- An independent fresh-context security/compatibility review inspected the candidate and its callers, ran CPU and verbose real-device regressions, and found no remaining confirmed finding or documentation/specification readability gap. No public signature or wire version changed.
+- Checked read semantics with local `go doc io.ReadFull`; [official io.ReadFull documentation](https://pkg.go.dev/io#ReadFull).
