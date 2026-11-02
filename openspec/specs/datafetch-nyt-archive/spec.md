@@ -29,7 +29,7 @@ Each client SHALL serialize requests and space starts at least 12.1 seconds apar
 - **THEN** the call returns an error matching ErrNYTThrottled without a day-reset sleep
 
 ### Requirement: Cancellation and credential safety
-The client SHALL stop queueing, pacing, retry waits and HTTP work when Context ends, preserving errors.Is compatibility. HTTP 401/403 SHALL match ErrNYTAuth without retries. No log or returned error SHALL contain the API key or server/transport text that could echo it; redirects SHALL be refused.
+The client SHALL stop queueing, pacing, retry waits and HTTP work when Context ends, preserving errors.Is compatibility. HTTP 401/403 SHALL match ErrNYTAuth without retries. No log or returned error SHALL contain the API key or server/transport text that could echo it; redirects SHALL be refused. Non-loopback endpoints SHALL use HTTPS.
 
 #### Scenario: Cancellation and refused key
 - **WHEN** Context ends during a wait/request or the server refuses the key

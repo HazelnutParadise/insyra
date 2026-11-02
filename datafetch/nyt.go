@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,7 +33,8 @@ const nytRetryWait = 61 * time.Second
 type NYTConfig struct {
 	// APIKey is required and sent as the api-key query parameter.
 	APIKey string
-	// BaseURL defaults to https://api.nytimes.com/svc/archive/v1.
+	// BaseURL defaults to https://api.nytimes.com/svc/archive/v1. HTTPS is
+	// required except for literal loopback IPs used by local test servers.
 	BaseURL string
 	// Timeout limits each HTTP attempt, excluding pacing. Default: 30 seconds.
 	Timeout time.Duration
@@ -82,6 +84,9 @@ func NYT(cfg NYTConfig) (*NYTClient, error) {
 	u, err := url.Parse(cfg.BaseURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("datafetch: NYT BaseURL must be an HTTP(S) root without credentials, query or fragment")
+	}
+	if u.Scheme == "http" && !net.ParseIP(u.Hostname()).IsLoopback() {
+		return nil, errors.New("datafetch: NYT BaseURL requires HTTPS outside a literal loopback IP")
 	}
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 	return &NYTClient{
