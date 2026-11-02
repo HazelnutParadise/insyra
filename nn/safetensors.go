@@ -48,7 +48,12 @@ func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 		return nil, err
 	}
 
-	data := file[headerEnd:]
+	return loadSafeTensorData(entries, file[headerEnd:])
+}
+
+// loadSafeTensorData validates and decodes an already buffered data region.
+// The optimizer reader uses it after bounded, model-specific header checks.
+func loadSafeTensorData(entries []safeTensorEntry, data []byte) (tensors map[string]*Tensor, err error) {
 	regions := make([]safeTensorRegion, 0, len(entries))
 	unsupported := make([]string, 0)
 	for _, entry := range entries {

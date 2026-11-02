@@ -78,9 +78,23 @@ func (t *Tape) releaseGradients(tensors []*Tensor, keep ...[]*Tensor) {
 			protected[tensor] = true
 		}
 	}
+	// An old gradient can become an input of a later graph. Its VJP still
+	// needs that buffer on repeated reverse passes, even after gradients are
+	// replaced. Transfer its ownership to the graph until Clear or Close.
+	referenced := make(map[*Tensor]bool)
+	for _, op := range t.ops {
+		referenced[op.output] = true
+		for _, input := range op.inputs {
+			referenced[input] = true
+		}
+	}
 	for _, tensor := range tensors {
 		if !protected[tensor] && t.marked[tensor] == nil {
-			tensor.Release()
+			if referenced[tensor] {
+				t.owned = append(t.owned, tensor)
+			} else {
+				tensor.Release()
+			}
 			protected[tensor] = true
 		}
 	}

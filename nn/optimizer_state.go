@@ -1,9 +1,7 @@
 package nn
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -324,27 +322,6 @@ func (t *Tape) SaveOptimizerState(w io.Writer, named map[string]*Parameter) erro
 	return nil
 }
 
-func optimizerStateReadRawHeader(file []byte) ([]safeTensorEntry, error) {
-	if len(file) < 8 {
-		return nil, fmt.Errorf("optimizer state: SafeTensors file is truncated")
-	}
-	headerLength := binary.LittleEndian.Uint64(file[:8])
-	if headerLength > uint64(len(file)-8) {
-		return nil, fmt.Errorf("optimizer state: SafeTensors header length %d exceeds file size", headerLength)
-	}
-	headerEnd := 8 + int(headerLength)
-	entries, err := parseSafeTensorHeader(file[8:headerEnd])
-	if err != nil {
-		return nil, fmt.Errorf("optimizer state: invalid SafeTensors header: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.dtype == "F16" || entry.dtype == "BF16" {
-			return nil, fmt.Errorf("optimizer state: tensor %q uses unsupported wire dtype %s", entry.name, entry.dtype)
-		}
-	}
-	return entries, nil
-}
-
 func optimizerStateDescriptor(tensors map[string]*Tensor, name string, shape []int) (*Tensor, error) {
 	tensor := tensors[name]
 	if tensor == nil {
@@ -467,23 +444,11 @@ func (t *Tape) LoadOptimizerState(r io.Reader, named map[string]*Parameter) erro
 		return err
 	}
 
-	file, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("optimizer state: read checkpoint: %w", err)
-	}
-	entries, err := optimizerStateReadRawHeader(file)
+	entries, data, err := optimizerStateReadCheckpoint(r, targets)
 	if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		if entry.name == "__metadata__" {
-			continue
-		}
-		if entry.dtype != "I64" && entry.dtype != "F32" {
-			return fmt.Errorf("optimizer state: tensor %q has unsupported wire dtype %s", entry.name, entry.dtype)
-		}
-	}
-	tensors, err := LoadSafeTensors(bytes.NewReader(file))
+	tensors, err := loadSafeTensorData(entries, data)
 	if err != nil {
 		return fmt.Errorf("optimizer state: decode SafeTensors: %w", err)
 	}

@@ -26,6 +26,17 @@ Load SHALL reject unsupported versions, invalid names, missing or extra slots, i
 - **WHEN** valid uninitialized state is loaded over previously used parameters
 - **THEN** their old optimizer slots are cleared without changing weights or gradients
 
+### Requirement: Bounded optimizer checkpoint input
+Load SHALL bound header allocation from registered names and ranks, allowing 64 KiB for metadata and whitespace. It SHALL reject unknown keys and incompatible wire descriptors before reading payload, read only the validated parameter-sized payload plus at most one trailing byte, and decode without a second whole-file copy. Invalid or oversized input SHALL leave all parameters unchanged.
+
+#### Scenario: Oversized or unknown header
+- **WHEN** the stream declares a header exceeding the model-derived budget or contains unknown keys or incompatible wire shapes
+- **THEN** Load rejects it before reading payload or changing parameter state
+
+#### Scenario: Unbounded trailing input
+- **WHEN** a valid optimizer checkpoint is followed by additional bytes
+- **THEN** Load rejects it after reading at most one byte beyond the checkpoint, with all parameter state unchanged
+
 ### Requirement: Explicit Clear gradient policy
 Clear SHALL preserve its existing signature and clear-all default. SetClearOptions SHALL select whether parameter gradients survive Clear. Clear SHALL release graph history and intermediate resources while preserving parameters and optimizer state. Retained gradients SHALL be replaced by the next successful Backward; Close SHALL release them regardless of policy.
 
@@ -36,6 +47,10 @@ Clear SHALL preserve its existing signature and clear-all default. SetClearOptio
 #### Scenario: Retain gradients
 - **WHEN** KeepGradients is true and Clear runs
 - **THEN** parameter gradients remain queryable and usable for updates while non-parameter gradients and graph resources are released
+
+#### Scenario: Retained gradient becomes a graph input
+- **WHEN** a retained resident gradient becomes an input to a later graph and that graph is differentiated repeatedly
+- **THEN** its buffer remains available until the graph and all parameter-gradient references are cleared, and Close releases every owned buffer
 
 ### Requirement: Frozen built-in updates
 A frozen parameter SHALL be skipped by SGD, momentum, Adam and AdamW without applying weight decay or advancing optimizer state. Unfreezing SHALL resume with its preserved state. Freeze SHALL not prevent explicit caller-managed Parameter.Update.

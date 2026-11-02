@@ -924,6 +924,15 @@ can leave a partial output stream, so publish a completed checkpoint only after
 both writes succeed. Do not train, move tensors or call Close concurrently with
 Save/Load.
 
+Before reading tensor data, Load checks the header's names, wire dtypes, shapes
+and offsets against the registered parameters. The header budget is derived
+from their encoded names and ranks, with a 64 KiB allowance for metadata and
+whitespace; headers exceeding that budget are refused before allocation. The
+payload length follows only from validated slots and parameter sizes. Load reads
+exactly that payload and at most one extra byte to reject trailing input, then
+decodes it without buffering a second copy of the whole file. Existing writer
+output fits these limits; unusually large extra metadata or padding may not.
+
 #### Optimizer-state format, version 1
 
 The file is a deterministic [SafeTensors file](https://github.com/safetensors/safetensors#format).
@@ -964,8 +973,10 @@ tape.SetClearOptions(nn.ClearOptions{}) // later Clear calls discard all gradien
 ```
 
 `GetClearOptions()` reports the policy. Retention does not accumulate gradients
-across Backward calls: the next successful Backward replaces them. Close always
-releases retained device gradients, regardless of policy.
+across Backward calls: the next successful Backward replaces them. A retained
+gradient reused as an input to a later graph stays alive through repeated
+Backward calls on that graph, and is released when Clear discards its last use.
+Close always releases retained device gradients, regardless of policy.
 
 `parameter.SetFrozen(true)` makes every built-in optimizer skip that parameter,
 including stale momentum and AdamW weight decay. `GetFrozen()` reports the flag.
