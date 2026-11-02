@@ -12,10 +12,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `accel.NewKernel`, `Kernel.Bind` and `accel.Submit` run your own WGSL compute shader on the resident `DeviceBuffer`s Insyra's tensors live in, with the same bindings Insyra's own kernels use: read-only buffers, then read-write buffers, then a 64-byte uniform. `Bind` builds the bind group once and `Submit` reuses it, reading each dispatch's parameters from a shared ring through a dynamic offset, so a launch allocates nothing. `Submit` sends all its dispatches in order as one submission and shares one queue with Insyra's resident operations, so the two need no synchronisation between them; on an Apple M3, 168 dispatches took 3.7 ms in one `Submit` and 23.8 ms as separate calls. `accel.ResidentLimits()` reports the device's buffer, workgroup and size limits, `accel.NewBitsBuffer` and `DeviceBuffer.BitsToHost` move 32-bit patterns such as indices unchanged, and `DeviceBuffer.Write`, `WriteBits` and `Zero` overwrite a buffer in place after waiting for earlier kernels. Insyra cannot check a kernel of your own, and the Vulkan backend does not clamp a write past the end of a buffer, so check your indices ([#546](https://github.com/HazelnutParadise/insyra/issues/546)).
 
-### `arrowipc`
-
-- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading record or dictionary bodies, and streams selected columns as bounded, cancellable DataTable batches. Integer IDs remain exact, nulls remain nil, dictionary values follow Parquet cell mappings, and unsupported selected types (including lists) return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
-
 ## Unreleased
 
 - `accel.RoundedLog1p` and `accel.RoundedExpm1` compute `log(1+x)` and `e^x - 1` on a resident array, correctly rounded and bit for bit equal to the host's on all 2^32 float32 inputs, like `RoundedExp` and `RoundedLog`.
@@ -108,6 +104,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### Container image
 
 - Every release now publishes a container image, `ghcr.io/hazelnutparadise/insyra:<version>`, for `linux/amd64` and `linux/arm64`: the release's `insyra` CLI on the official Go image, with the Vulkan loader and drivers that let `accel` use the host's GPU (`--gpus all` for NVIDIA, `--device /dev/dri` for AMD and Intel on Linux). `0.3` and `latest` follow the highest stable release by version number. See [Docs/container.md](Docs/container.md).
+
+### `arrowipc`
+
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading record or dictionary bodies, and streams selected columns as bounded, cancellable DataTable batches. Integer IDs remain exact, nulls remain nil, dictionary values follow Parquet cell mappings, and unsupported selected types (including lists) return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
 
 ## v0.3.5
 
