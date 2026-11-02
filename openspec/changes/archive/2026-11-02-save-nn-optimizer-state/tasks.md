@@ -14,4 +14,4 @@
 - [x] 3.1 Document API, wire format and a resume example in Docs/nn.md; add English and Taiwan Traditional-Chinese Unreleased entries.
 - [x] 3.2 Run CPU and available real-device acceptance checks, go build ./..., go test ./nn/..., go vet ./... and golangci-lint run; record evidence and limitations.
 - [x] 3.3 Verify specification coverage, archive this change in the same PR, replace the new capability Purpose and pass openspec validate --specs --strict.
-- [ ] 3.4 Port the addition to 0.4 and repeat required checks; open one reviewed API-example PR per line without merging.
+- [x] 3.4 Port the addition to 0.4 and repeat required checks; open one reviewed API-example PR per line without merging.

@@ -25,6 +25,7 @@ Three additional Metal tests first failed with `wgpu: buffer was released`: prom
 - `go test -json ./nn/...`: pass, with 573 test/subtest passes and 61 skips. The ordinary run skips optional hardware, Python/reference, data and exhaustive gates; the relevant gates below ran separately.
 - `INSYRA_ACCEL_GPU_TESTS=1 go test ./nn -run 'Test(RetainedGradient|FailedBackwardKeepsRetained)|OptimizerState|TestOptimizerClear|TestFrozenParameter' -count=1 -v`: pass, covering all four issue acceptance conditions on the supported host/device paths.
 - A broader Metal regression covering existing Custom/Resident paths, failed Backward and new persistence/lifecycle paths: pass.
+- The same targeted host/Metal race-detector command recorded under the 0.4 checks also passes on dev.
 - With the existing cross-language venv on PATH and `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1`, `TestSafeTensorsEmptyPythonReference` and `TestLoadSafeTensorsReferenceRoundTrip`: pass. Python writes and reads the empty/scalar F32/I64/BOOL round trip.
 - The extracted Docs/nn.md resume example builds, runs, resumes and compares both weight/state byte streams successfully.
 - `golangci-lint run`, using a task-specific cache: 0 issues. The first shared-cache run reported stale paths from another worktree; an isolated run exposed two local findings (the reflect.Ptr alias and an unused release helper), both corrected before the clean run.
@@ -64,3 +65,9 @@ Implementation/specification review covers all four requirements and their scena
 - [`math.Float32bits`](https://pkg.go.dev/math#Float32bits): binary representation and inverse conversion; also checked with local `go doc math.Float32bits`.
 - [`base64.RawURLEncoding`](https://pkg.go.dev/encoding/base64#RawURLEncoding): unpadded alternate encoding; also checked with local `go doc encoding/base64.RawURLEncoding`.
 - Local `openspec archive --help`: `--yes` archives and syncs specs without prompting, as requested for this PR.
+
+## PR delivery
+
+- [dev PR #674](https://github.com/HazelnutParadise/insyra/pull/674) targets `dev`.
+- [0.4 PR #673](https://github.com/HazelnutParadise/insyra/pull/673) targets `0.4`.
+- Both bodies include Before/After/How, the API and executable resume example, checked external references, and the statement that #376 can close once both merge. Both are left unmerged for owner review.
