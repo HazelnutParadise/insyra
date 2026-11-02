@@ -97,6 +97,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.Stock.CorporateActionsDividends`、`CorporateActionsCapitalChanges`、`CorporateActionsListingApplicants` 回傳某日起的除權息、資本變動（面額變更、減資、ETF 分割）與申請上市櫃資料，各有 `Context` 版本（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.Stream()` 與 `client.FutOpt.Stream()` 連上富果的 WebSocket 即時串流（成交、K 線、五檔、綜合報價、指數）：用 `Subscribe`、`Unsubscribe` 依頻道與代號訂閱，從 `Messages()` 收資料，`Collect` 可直接收成表格。斷線會自動重連並重新訂閱；讀得太慢時丟掉最舊的訊息（`Dropped()` 計數），不卡住連線（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
+- `datafetch.NYT(NYTConfig{APIKey: key})` 透過 `Archive` 與 `ArchiveContext` 讀取紐約時報每月文章的標題、摘要、首段、版別與發布時間，並提供保守的請求間隔、有限次數的配額重試、取消功能，以及可區分的驗證與配額錯誤（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。
 
 ### 容器映像
 
