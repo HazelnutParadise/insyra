@@ -18,8 +18,8 @@
 
 ## 4. PR review and authorized merge
 
-- [ ] 4.1 Reproduce and fix retained graph-input ownership and bounded optimizer checkpoint reading; keep all existing acceptance checks green.
-- [ ] 4.2 Port both corrections, update docs/specs and rerun build/test/vet/lint on both lines.
-- [ ] 4.3 Review the final patch and document fixes and verification in both PRs before the CI/review merge gate.
+- [x] 4.1 Reproduce and fix retained graph-input ownership and bounded optimizer checkpoint reading; keep all existing acceptance checks green.
+- [x] 4.2 Port both corrections, update docs/specs and rerun build/test/vet/lint on both lines.
+- [x] 4.3 Review the final patch and document fixes and verification in both PRs before the CI/review merge gate.
 
 The owner has authorized merging each PR once its CI is all green and review has no outstanding finding. PR state records the result of that external gate.
