@@ -54,22 +54,12 @@ func (t *Tape) rounded() bool {
 
 // Clear forgets the recorded operations and releases every device tensor the
 // tape created for the step: operation outputs and gradients. Parameters and
-// optimizer state stay, so training continues across a Clear. Tensors the
+// optimizer state stay, so training continues across a Clear. SetClearOptions
+// can retain parameter gradients; the default discards them. Tensors the
 // caller supplied, including the inputs of the step, are the caller's to
 // Release.
 func (t *Tape) Clear() {
-	t.ops = nil
-	t.grads = make(map[*Tensor]*Tensor)
-	releaseAll(t.withoutParameters(t.owned))
-	releaseAll(t.gradOwned)
-	for _, release := range t.releasers {
-		release()
-	}
-	t.releasers = nil
-	t.owned, t.gradOwned = nil, nil
-	for _, parameter := range t.params {
-		parameter.grad = nil
-	}
+	t.clearStep(t.clearOptions.KeepGradients)
 }
 
 // Close releases everything the tape holds on a device: what Clear releases,
@@ -79,7 +69,7 @@ func (t *Tape) Close() {
 	if t.closed {
 		return
 	}
-	t.Clear()
+	t.clearStep(false)
 	for _, parameter := range t.params {
 		parameter.value.Release()
 		parameter.releaseState()
@@ -92,25 +82,6 @@ func (t *Tape) checkOpen() error {
 		return fmt.Errorf("tape is closed")
 	}
 	return nil
-}
-
-// withoutParameters drops tensors that were marked as parameters after an
-// operation produced them: a parameter belongs to the tape until Close, not
-// to the step that created it.
-func (t *Tape) withoutParameters(tensors []*Tensor) []*Tensor {
-	kept := make([]*Tensor, 0, len(tensors))
-	for _, tensor := range tensors {
-		if t.marked[tensor] == nil {
-			kept = append(kept, tensor)
-		}
-	}
-	return kept
-}
-
-func releaseAll(tensors []*Tensor) {
-	for _, tensor := range tensors {
-		tensor.Release()
-	}
 }
 
 // own registers a device tensor the tape created, so Clear releases it.

@@ -357,8 +357,8 @@ func parseSafeTensorEntry(name string, raw json.RawMessage) (safeTensorEntry, er
 			if count > uint64(maxInt())/uint64(dimension) {
 				return safeTensorEntry{}, fmt.Errorf("tensor %q shape %v overflows element count", name, rawShape)
 			}
-			count *= uint64(dimension)
 		}
+		count *= uint64(dimension)
 	}
 	if len(result.DataOffsets) == 0 || bytes.TrimSpace(result.DataOffsets)[0] != '[' {
 		return safeTensorEntry{}, fmt.Errorf("tensor %q has invalid data_offsets", name)

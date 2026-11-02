@@ -9,8 +9,9 @@ against PyTorch and finite differences.
 
 Weights load and save as SafeTensors, and trained models export back to ONNX.
 The largest matrix products run on a GPU when one is present and fall back to
-a bit-identical CPU path when none is. The graph is validated when it is
-loaded, and runtime inputs and outputs are bound by name.
+the CPU when none is. Device MatMul's platform limits are described below;
+rounded built-in training has a separate host/device arithmetic contract.
+The graph is validated when loaded, and runtime inputs and outputs are bound by name.
 
 ## Installation
 
@@ -71,6 +72,13 @@ device dispatches do not pay for their transfer cost.
 Device errors and missing hardware fall back to the exact CPU result. The
 fallback is observable through `accel.Default().Report()`.
 
+When the device does run, its result equals the CPU's bit for bit on Apple
+Silicon, where Metal and Go on arm64 both fuse each multiply-add. That has been
+measured there; it is not something WebGPU promises. On amd64, whose CPU path
+does not fuse, the device and the CPU can differ in the last bits of a product,
+and other GPUs have not been measured. When results must be identical across
+machines, turn acceleration off as described below.
+
 Acceleration has two layers. The programmatic primary switch is
 `insyra.Config.SetAcceleration(false)`, which makes eligible `nn` MatMuls and
 the accelerator bridge stay on their exact CPU paths. It defaults to enabled
@@ -111,11 +119,12 @@ R, _ := readout.To(dev)
 tape.Param(E)
 tape.Param(R)
 
+var y *nn.Tensor
 for step := 0; step < steps; step++ {
     tape.Clear()                        // drops last step's operations and tensors; keeps parameters
     X, _ := batch.To(dev)
     h, _ := tape.MatMul(X, E)
-    y, _ := tape.MatMul(h, R)
+    y, _ = tape.MatMul(h, R)
     _ = tape.BackwardFrom(y, upstream)  // upstream lives on dev as well
     _ = tape.SGD(0.05)
     X.Release()                         // tensors you create with To are yours to release
@@ -126,8 +135,10 @@ loss, _ := y.ToHost()                   // the only way values come back
 `Tensor.To(dev)` copies a tensor to a device, `Tensor.ToHost()` copies it
 back, `Tensor.Device()` says where it lives and `Tensor.Release()` frees its
 device memory (safe to repeat). Moving never changes the source and keeps
-every bit. A tape frees the tensors it creates on `Clear` and `Close`, but not
-the ones you pass in. A tensor on a device refuses `Float32Data` and every
+every bit. `Clear` releases step resources except parameters and any parameter
+gradients selected by `ClearOptions`; optimizer state is preserved.
+`Close` also releases registered parameters and optimizer state. Other
+caller-supplied tensors remain the caller's to release. A tensor on a device refuses `Float32Data` and every
 kernel with an error that names `ToHost`; nothing reads back by itself.
 Tensors count against the device's memory budget, and a buffer that is
 garbage-collected without `Release` is freed with a warning.
@@ -165,8 +176,7 @@ Labels are `int64` tensors: `labels.To(dev)` holds them as int32 on the device
 and refuses a negative value or one that does not fit, naming it. `rows` must be
 below 2^24. Any other operation on a
 device tensor returns an error telling you to call `ToHost`; on host tensors
-in this mode they keep their default arithmetic. `SoftmaxCrossEntropy`, which
-needs integer `exp` and `log`; the rest follow in later releases.
+in this mode they keep their default arithmetic.
 
 On an Apple M3, best of five, the exact device `MatMul` took 18 to 19 ms for
 `[4096,96]x[96,128]` and `[4096,128]x[128,96]`. The exact CPU reference took
@@ -465,7 +475,8 @@ gradient := w1.Grad()
 ```
 
 Two more losses take a probability row instead of a class index. Both are
-the mean over rows and run on host tensors only.
+the mean over rows. Default precision runs them on the host; rounded modes also
+support resident tensors, as described in [Training on the device](#training-on-the-device).
 
 ```go
 // Label smoothing, mixup: targets is one probability row per sample.
@@ -477,14 +488,16 @@ loss, err := tape.SoftTargetCrossEntropy(logits, targets)
 loss, err = tape.DistillationLoss(studentLogits, teacherLogits)
 ```
 
-`SoftTargetCrossEntropy` needs finite, non-negative rows that sum to 1 within
-1e-5 and names the row that does not. `DistillationLoss` gives a gradient of
+On the host, `SoftTargetCrossEntropy` checks for finite, non-negative rows that
+sum to 1 within 1e-5 and names the row that does not. Resident probability rows
+must satisfy the same conditions; the caller validates them before upload.
+`DistillationLoss` gives a gradient of
 exactly 0 when the student's logits equal the teacher's. In both, a class with
 probability 0 adds nothing to the loss, and the gradient of the largest logit is
 minus the sum of the others', so it stays nonzero when that logit leads by more
 than the float32 precision cliff of about 16.6, where `p - 1` would be 0
-(Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). A tensor on a
-device is refused; call `ToHost`.
+(Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). In default
+precision, a tensor on a device is refused; call `ToHost` or select a rounded mode.
 
 The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
@@ -724,6 +737,7 @@ b2, _ := tape.Param(weights["b2"]) // [10]
 for epoch := 0; epoch < 5; epoch++ {
 	order := rng.Perm(len(trainLabels))
 	for start := 0; start < len(order); start += 128 {
+		tape.Clear()
 		input, labels := makeBatch(trainImages, trainLabels, order, start, 128)
 		hidden, _ := tape.MatMul(input, w1.Value())
 		hidden, _ = tape.Add(hidden, b1.Value())
@@ -746,9 +760,9 @@ training loss must be below half of the first epoch's. On an Apple M3 the mean
 losses were 0.350281 and 0.163855; the last digits depend on the platform, and
 amd64 measured 0.163840 for the second epoch.
 
-AMSGrad and device training are not part of this API. The tape is intended for
-the fixed-weight CPU training path; the inference kernels and ONNX graph runner
-remain unchanged.
+AMSGrad is not supported. The tape supports host training and the resident
+operations described in [Training on the device](#training-on-the-device).
+The inference kernels and ONNX graph runner remain unchanged.
 
 CNN training uses the same tape and parameter flow. Mark convolution, batch
 normalization affine, and linear weights with `Param`, then compose the
@@ -864,6 +878,8 @@ mis-shaped names return an error.
 `SaveSafeTensors` writes a deterministic, contiguous SafeTensors file for
 `F32`, `I64`, and `BOOL` tensors. Names are sorted before the header and data
 region are written, so saving the same map twice produces identical bytes.
+Scalar shapes `[]` contain one value; a shape with any zero dimension contains
+no values. Both round-trip through SaveSafeTensors and LoadSafeTensors.
 
 `Sequential.SaveWeights` uses torch `nn.Sequential` names, includes
 `BatchNorm2D`'s `running_mean` and `running_var`, and transposes Dense weights
@@ -886,6 +902,135 @@ Dimensions are explicit for `Dense`, so adjacent mismatches fail during
 before its classifier, and evaluates all 10,000 test images: mean losses are
 `0.364155` and `0.110628`, with test accuracy rising from `95.42%` to `97.27%`
 in two epochs.
+
+### Resuming a custom training loop
+
+`Tape.SaveOptimizerState(w io.Writer, named map[string]*Parameter) error`
+exports all built-in optimizer slots. `Tape.LoadOptimizerState(r io.Reader,
+named map[string]*Parameter) error` restores them. Both methods require exactly
+one nonempty, valid UTF-8 name per tape parameter. Use `model.NamedParameters()`
+for Sequential, or a stable map such as `map[string]*nn.Parameter{"encoder.weight": w}`
+for a custom loop. A name must refer to the same parameter and internal shape
+after restart; adding or reordering Sequential layers can change their names.
+Matching names and shapes cannot prove that two models have the same structure
+or parameter meanings; the caller must ensure both still match.
+
+Save weights and optimizer state at the same completed update, with training
+paused. Restore both into a newly built model, then continue at the saved next
+batch with the same optimizer arguments and precision. The example uses
+`bytes.Buffer`; persist each returned byte slice as part of the same checkpoint.
+Imports are `bytes`, `fmt`, and `github.com/HazelnutParadise/insyra/nn`.
+
+```go
+func saveCheckpoint(tape *nn.Tape, model *nn.Sequential) ([]byte, []byte, error) {
+    var weights, state bytes.Buffer
+    if err := model.SaveWeights(&weights); err != nil {
+        return nil, nil, err
+    }
+    if err := tape.SaveOptimizerState(&state, model.NamedParameters()); err != nil {
+        return nil, nil, err
+    }
+    return weights.Bytes(), state.Bytes(), nil
+}
+
+func resumeCheckpoint(weights, state []byte) (*nn.Tape, *nn.Sequential, error) {
+    tape := nn.NewTape(42)
+    model, err := nn.NewSequential(tape, nn.Dense(2, 1)) // same model as the saved run
+    if err != nil {
+        tape.Close()
+        return nil, nil, err
+    }
+    tensors, err := nn.LoadSafeTensors(bytes.NewReader(weights))
+    if err == nil {
+        err = model.LoadWeights(tensors)
+    }
+    if err == nil {
+        err = tape.LoadOptimizerState(bytes.NewReader(state), model.NamedParameters())
+    }
+    if err != nil {
+        tape.Close()
+        return nil, nil, fmt.Errorf("resume checkpoint: %w", err)
+    }
+    return tape, model, nil // caller defers tape.Close() and resumes its training loop
+}
+```
+
+For rounded training, set `accel.PrecisionFloat32Rounded` on the new tape before
+loading. A saved precision that differs from the target tape is refused.
+Resident Adam/AdamW moments are read back for saving and uploaded into new
+buffers for restoration. Rounded checkpoints can move between host and device.
+For custom resident loops, save each parameter's `Value().ToHost()` with
+`SaveSafeTensors`, restore those tensors onto the target device, mark them with
+`Param`, then load optimizer state. `Sequential.SaveWeights` remains host-only.
+Momentum SGD remains host-only.
+
+Adam and AdamW share the same moments and step counter. Momentum velocity is a
+separate slot, so switching between those optimizers preserves both histories.
+Loading uninitialized slots removes old optimizer state. Loading never changes
+weights, gradients, graph history, Clear policy or freeze settings. RNG state,
+dropout masks, batch order, schedules, hyperparameters and custom optimizer
+state must be checkpointed by the caller when needed. In the default precision,
+continuation promises identical bits under the same arithmetic/platform; the
+rounded built-in path also defines identical host/device arithmetic.
+
+Loading validates the entire file and stages all device allocations before
+changing any optimizer slot. Unsupported versions, unknown/missing names or
+slots, aliases, foreign parameters, incompatible shapes/dtypes/precision,
+non-finite values, negative second moments and invalid counters return an error
+with every parameter unchanged. Save validates state before writing; I/O errors
+can leave a partial output stream, so publish a completed checkpoint only after
+both writes succeed. Do not train, move tensors or call Close concurrently with
+Save/Load.
+
+#### Optimizer-state format, version 1
+
+The file is a deterministic [SafeTensors file](https://github.com/safetensors/safetensors#format).
+All descriptors and counters use binary I64, and moments/velocity use binary
+little-endian F32. Float values never pass through JSON numbers. For each
+parameter, `P` is its UTF-8 name encoded with Go's
+`base64.RawURLEncoding`, with no padding; `/` separates it from the slot name.
+
+| Tensor key | Dtype and shape | Meaning |
+| --- | --- | --- |
+| `version` | I64 scalar | `1` |
+| `precision` | I64 scalar | `0`: Exact; `1`: Float32Rounded; `2`: Float32 for caller kernels |
+| `P/shape` | I64 vector of length rank | Parameter's internal dimensions, including an empty vector for a scalar |
+| `P/dtype` | I64 scalar | `0`: float32, the only trainable dtype |
+| `P/step` | I64 `[2]` | Adam step as low then high unsigned 32-bit limbs |
+| `P/adam_m`, `P/adam_v` | F32, parameter shape | First and second moments, present together when step is positive |
+| `P/velocity` | F32, parameter shape | Optional momentum state |
+
+Every parameter has shape/dtype/step descriptors, even before its first update.
+Absent moments require step zero. Each step limb is in `0..4294967295`; the
+combined value must be less than `18446744073709551615` so a next step exists.
+Every stored state value must be finite and second moments must be nonnegative.
+F16/BF16 wire tensors are refused rather than widened. Moments use the layout
+of `Parameter.Value()`, including Dense's internal `[in,out]`, without the
+transpose used by `Sequential.SaveWeights`.
+
+#### Clearing graphs and freezing parameters
+
+`tape.Clear()` already discards recorded operations while preserving parameter
+values and optimizer state. It clears gradients by default. Configure future
+calls when the last parameter gradients should remain usable:
+
+```go
+tape.SetClearOptions(nn.ClearOptions{KeepGradients: true})
+tape.Clear() // releases graph history and intermediate gradients
+// Parameter.Grad and the tape's optimizers still see the parameter gradients.
+tape.SetClearOptions(nn.ClearOptions{}) // later Clear calls discard all gradients
+```
+
+`GetClearOptions()` reports the policy. Retention does not accumulate gradients
+across Backward calls: the next successful Backward replaces them. Close always
+releases retained device gradients, regardless of policy.
+
+`parameter.SetFrozen(true)` makes every built-in optimizer skip that parameter,
+including stale momentum and AdamW weight decay. `GetFrozen()` reports the flag.
+Moments, velocity and step stay unchanged until `SetFrozen(false)` resumes
+updates. Backward still computes its gradients; explicit caller-managed
+`Parameter.Update` calls still write it. Freeze flags are caller policy and are
+not part of the optimizer-state file.
 
 ## Supported operators
 
@@ -1013,10 +1158,11 @@ this package exists for. Choose accordingly:
 - **Use `nn`** when the model runs inside a Go program with zero
   non-Go dependencies, when auditability matters — every operator and
   gradient here is verified against `onnxruntime`, PyTorch, and finite
-  differences, and the parallel and GPU paths are bit-identical to the
-  serial CPU reference — or when the workload is modest (small models,
+  differences, and parallel CPU results match the serial reference — or when the workload is modest (small models,
   batch scoring, embedded scoring next to `ml`). The default GPU path
-  narrows the largest matrix products.
+  narrows the largest matrix products under the platform conditions in
+  [Device MatMul](#device-matmul); rounded built-in training defines matching
+  host/device arithmetic separately.
 - **Use ONNX Runtime** (or another native runtime) when inference
   throughput or latency is the requirement. The numbers above are the
   honest distance.
