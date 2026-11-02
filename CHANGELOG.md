@@ -495,6 +495,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Every release now publishes a container image, `ghcr.io/hazelnutparadise/insyra:<version>`, for `linux/amd64` and `linux/arm64`: the release's `insyra` CLI on the official Go image, with the Vulkan loader and drivers that let `accel` use the host's GPU (`--gpus all` for NVIDIA, `--device /dev/dri` for AMD and Intel on Linux). `0.3` and `latest` follow the highest stable release by version number. See [Docs/container.md](Docs/container.md).
 
+### `arrowipc`
+
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without record or dictionary body reads, then reads selected columns through a cancellable Go iterator with row and decoded-byte bounds. It preserves Parquet scalar cell mappings and exact nullable IDs, decodes dictionary values, and explicitly rejects unsupported selected types such as lists ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+
 ## v0.3.3
 
 ### Core

@@ -494,6 +494,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - 每次發版都會發佈容器映像 `ghcr.io/hazelnutparadise/insyra:<版號>`，支援 `linux/amd64` 與 `linux/arm64`：以 Go 官方映像為底，預裝該版本的 `insyra` CLI，並附 Vulkan loader 與驅動，讓 `accel` 能用宿主機的 GPU（Linux 上 NVIDIA 用 `--gpus all`，AMD、Intel 用 `--device /dev/dri`）。`0.3` 與 `latest` 依版號指向最高的正式版。詳見 [Docs/container.md](Docs/container.md)。
 
+### `arrowipc`
+
+- 新增唯讀 `arrowipc` 套件，不讀取 record 或字典內容即可檢查 Arrow IPC file／Feather V2 結構，並以可取消的 Go iterator 讀取選取欄位，支援每批列數與解碼位元組上限。儲存格沿用 Parquet 的純量對應規則，整數識別碼與空值保留精確內容，字典讀成對應值，不支援的選取型別（如 list）會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。
+
 ## v0.3.3
 
 ### Core
