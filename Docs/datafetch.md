@@ -976,6 +976,72 @@ The stream looks after the connection: Fugle's pings are answered, and after a d
 
 **Plans and errors.** The free plan has the intraday and historical endpoints at 60 requests a minute; the other Fugle endpoints need a paid plan. `errors.Is` tells the failures apart: `ErrFugleAuth` (HTTP 401, the key is wrong or cut short), `ErrFuglePlan` (HTTP 403, the plan does not include the endpoint) and `ErrFugleThrottled` (HTTP 429 on every attempt). Only throttling is retried, after the wait the response's `Retry-After` header asks for (at most 60 seconds) and the retry backoff.
 
+## New York Times Archive (NYT)
+
+`NYT(NYTConfig)` creates a reusable client for one month's article metadata. Pass your API key through `NYTConfig.APIKey`, as with `FugleConfig`; the package does not read environment variables. Enable the Archive API for your key in the [NYT developer portal](https://developer.nytimes.com).
+
+```go
+package main
+
+import (
+    "context"
+    "errors"
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+func main() {
+    if err := fetchMonth(); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+    }
+}
+
+func fetchMonth() error {
+    client, err := datafetch.NYT(datafetch.NYTConfig{
+        APIKey: os.Getenv("NYT_API_KEY"),
+    })
+    if err != nil {
+        return err
+    }
+    ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+    defer cancel()
+    articles, err := client.ArchiveContext(ctx, 2026, 10)
+    if errors.Is(err, datafetch.ErrNYTAuth) {
+        return fmt.Errorf("check that the key has Archive access: %w", err)
+    }
+    if errors.Is(err, datafetch.ErrNYTThrottled) {
+        return fmt.Errorf("quota exhausted; try again later: %w", err)
+    }
+    if err != nil {
+        return err
+    }
+    articles.Show()
+    return nil
+}
+```
+
+`client.Archive(year, month)` uses `context.Background()`. `ArchiveContext(ctx, year, month)` lets cancellation or a deadline stop queueing, pacing, retries, and the HTTP request. Use a year from 1851 through the current year and a month from 1 through 12. A successful month uses one HTTP GET, with no pagination; retries use additional requests. These are article metadata, not full article bodies.
+
+| Column | Value |
+| :--- | :--- |
+| `headline` | `headline.main`, as text |
+| `abstract` | Article abstract |
+| `lead_paragraph` | Lead paragraph |
+| `section_name` | Section name |
+| `pub_date` | `time.Time`, preserving the publication timestamp and offset |
+| `web_url` | Article URL |
+
+Rows retain provider order. Missing or `null` text fields become `nil`. An empty `response.docs` array returns zero rows with all six columns. A missing/malformed article array or invalid publication timestamp is an error. Responses larger than 128 MiB are rejected.
+
+**Configuration.** `NYTConfig` has required `APIKey`, optional `BaseURL` (default `https://api.nytimes.com/svc/archive/v1`), `Timeout` (per HTTP attempt, default 30 seconds), `Interval` (default 12.1 seconds, cannot be shorter), and `Retries` (extra attempts after HTTP 429; zero selects one retry, negative is invalid). Timeout does not include pacing or retry waits. The client refuses redirects and never logs the API key or includes it in returned errors. Reuse the client across months: its quota accounting is shared by concurrent calls on that client, but not by other clients, processes, or NYT APIs.
+
+**Limits and retries.** The client conservatively spaces request starts by 12.1 seconds (under five per minute) and permits at most 500 HTTP attempts in a rolling 24-hour window, counting retries and failures. It returns `ErrNYTThrottled` immediately when that local daily budget is exhausted. On HTTP 429 it waits at least 61 seconds, or longer if `Retry-After` asks, then retries up to `Retries` times. Persistent 429 returns `ErrNYTThrottled` rather than waiting until the next day. A caller's Context can stop every wait, including a long `Retry-After`. HTTP 401/403 returns `ErrNYTAuth` without retry. Test these errors with `errors.Is`.
+
+The five-per-minute and approximately 500-per-day figures come from the report measured on 2026-10-18 for [issue #460](https://github.com/HazelnutParadise/insyra/issues/460), which also reported no quota headers. They are conservative client policy, not a guaranteed NYT allowance. Checked on 2026-11-02: the [official OpenAPI](https://github.com/nytimes/public_api_specs/blob/master/archive_api/archive_api.yaml) documents HTTP 429 for either minute or daily limits, without numerical quotas; the [legacy official guide](https://github.com/nytimes/public_api_specs/blob/master/archive_api/archive_api.md) still says 2,000 per day and warns that limits can change. The current portal FAQ could not be verified. Usage elsewhere with the same key can still cause 429. The official guide warns that one month's response can be about 20 MB. Tests use local fake servers and need neither a key nor internet access.
+
 ## Japan Exchange Group (JPX)
 
 ```go
