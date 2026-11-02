@@ -222,6 +222,19 @@ func TestNYTAcceptanceInvalidInputs(t *testing.T) {
 	}
 }
 
+func TestNYTAcceptanceEndpointTransport(t *testing.T) {
+	for _, endpoint := range []string{"http://example.test", "http://192.0.2.1", "http://[2001:db8::1]", "http://localhost"} {
+		if _, err := NYT(NYTConfig{APIKey: "local-fake-key", BaseURL: endpoint}); err == nil {
+			t.Errorf("accepted plaintext endpoint %s", endpoint)
+		}
+	}
+	for _, endpoint := range []string{"https://example.test", "http://127.0.0.1:12345", "http://[::1]:12345"} {
+		if _, err := NYT(NYTConfig{APIKey: "local-fake-key", BaseURL: endpoint}); err != nil {
+			t.Errorf("refused HTTPS or loopback endpoint: %v", err)
+		}
+	}
+}
+
 func TestNYTAcceptanceSchemaErrors(t *testing.T) {
 	for _, body := range []string{`{`, `{}`, `{"response":{}}`, `{"response":{"docs":null}}`, `{"response":{"docs":[{"pub_date":"bad"}]}}`, `{"response":{"docs":[null]}}`} {
 		t.Run(body, func(t *testing.T) {
