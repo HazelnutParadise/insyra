@@ -129,6 +129,9 @@ func run() error {
 		if err := enc.Encode(result); err != nil {
 			return err
 		}
+		if _, ok := result["sample"]; !ok {
+			return fmt.Errorf("no sample from %s: %v", f.name, result["terminal_error"])
+		}
 	}
 	return nil
 }

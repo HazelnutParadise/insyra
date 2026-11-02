@@ -9,6 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra/arrowipc"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
 func TestOutputByteBudgetBoundsDictionaryExpansion(t *testing.T) {
@@ -60,5 +61,49 @@ func TestOutputByteBudgetBoundaryAndNegativeLimit(t *testing.T) {
 		} else if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxOutputBytes") {
 			t.Fatalf("output budget %d: %d tables, %v", limit, len(got), err)
 		}
+	}
+}
+
+func TestLargeNullRecordStaysBoundedAndCancellable(t *testing.T) {
+	const rows = 1 << 30
+	schema := arrow.NewSchema([]arrow.Field{{Name: "missing", Type: arrow.Null}}, nil)
+	values := array.NewNull(rows) // Null has no row-value buffers.
+	defer values.Release()
+	record := array.NewRecordBatch(schema, []arrow.Array{values}, rows)
+	defer record.Release()
+	var data bytes.Buffer
+	writer, err := ipc.NewFileWriter(&data, ipc.WithSchema(schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Write(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if data.Len() > 4096 {
+		t.Fatalf("null fixture unexpectedly large: %d bytes", data.Len())
+	}
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, rows)
+	got, err := drain(t, tables, errs)
+	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxOutputBytes") {
+		t.Fatalf("oversized output: %d tables, %v", len(got), err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tables, errs = streamFrom(ctx, bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, 1)
+	first, ok := <-tables
+	if !ok || first == nil || first.GetColByNumber(0).Len() != 1 || first.GetColByNumber(0).Get(0) != nil {
+		cancel()
+		for range tables {
+		}
+		t.Fatalf("bounded first null row: %v", <-errs)
+	}
+	cancel()
+	for range tables {
+	}
+	if err := <-errs; err == nil {
+		t.Fatal("large null stream did not report cancellation")
 	}
 }

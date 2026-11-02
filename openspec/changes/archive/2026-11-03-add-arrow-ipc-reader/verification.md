@@ -71,3 +71,5 @@ The 0.4 selector test first failed against []string, then passed with []any: B s
 No total-stream row cap is added. A large logical Null record is handled through bounded output batches, backpressure and context cancellation. A caller retaining every batch chooses to materialize the stream; the package does not claim a bound on that retained total or on total runtime.
 
 After these review corrections, 0.4 build, touched-package tests, touched-package race tests, vet, lint (0 issues), strict change/main-spec validation and Go 1.26.10 govulncheck (0 affected vulnerabilities) passed again. Latest-head CI remains authoritative on PR #676.
+
+The final 0.4 probe repeated schema inspection on all three inputs with unchanged byte/range totals. Annotation and neurotransmitter samples succeeded. The first weights attempt received an IPv6 TCP connection-reset error while fetching the record body, which the reader surfaced; a fresh IPv4 probe of weights then succeeded (3 rows, 690,690 total bytes / 10 ranges). No dataset was fully scanned. The retained probe now exits unsuccessfully when no sample is obtained, rather than treating an encoded diagnostic as success.
