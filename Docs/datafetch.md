@@ -1031,7 +1031,7 @@ func fetchMonth() error {
 | `abstract` | Article abstract |
 | `lead_paragraph` | Lead paragraph |
 | `section_name` | Section name |
-| `pub_date` | `time.Time`, preserving the publication timestamp and offset |
+| `pub_date` | `time.Time`, preserving the publication timestamp and offset; accepts RFC 3339 and colonless offsets such as `+0000` |
 | `web_url` | Article URL |
 
 Rows retain provider order. Missing or `null` text fields become `nil`. An empty `response.docs` array returns zero rows with all six columns. A missing/malformed article array or invalid publication timestamp is an error. Responses larger than 128 MiB are rejected.

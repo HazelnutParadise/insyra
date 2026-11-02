@@ -276,6 +276,10 @@ func nytArchiveTable(ctx context.Context, body io.Reader) (*insyra.DataTable, er
 		}
 		published, err := time.Parse(time.RFC3339Nano, article.Published)
 		if err != nil {
+			// NYT also publishes ISO 8601 timestamps with colonless offsets.
+			published, err = time.Parse("2006-01-02T15:04:05-0700", article.Published)
+		}
+		if err != nil {
 			return nil, fmt.Errorf("datafetch: NYT article %d has an invalid pub_date", i)
 		}
 		var headline *string
