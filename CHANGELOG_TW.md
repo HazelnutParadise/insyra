@@ -239,7 +239,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `PrecisionFloat32Rounded`：`SoftTargetCrossEntropy` 與 `DistillationLoss` 現在可在裝置與主機上以固定的正確捨入運算序列執行，位元一致，蒸餾採用 Barron 論文的梯度（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。此模式的交叉熵損失改用其他類別指數總和的 `log1p`，不再用總和的 `log`，所以標籤領先超過約 16.6 時損失不再顯示 0。**破壞性變更**：此模式下 `SoftmaxCrossEntropy` 的損失在兩種算法不同之處位元不同，先前在這個模式下記錄的執行無法重現。
 
-- `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入會先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`SetClearOptions(ClearOptions{KeepGradients: true})` 讓既有 `Clear()` 保留參數梯度，`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
+- `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`SetClearOptions(ClearOptions{KeepGradients: true})` 讓既有 `Clear()` 保留參數梯度，`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
