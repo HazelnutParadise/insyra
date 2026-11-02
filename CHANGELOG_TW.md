@@ -66,6 +66,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
 - `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`SetClearOptions(ClearOptions{KeepGradients: true})` 讓既有 `Clear()` 保留參數梯度，`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
+- `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
 
 ### `quant`
 

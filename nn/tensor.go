@@ -245,12 +245,28 @@ func newZeroFloat32Tensor(shape []int) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	data, err := allocateFloat32Zeros(count)
+	if err != nil {
+		return nil, fmt.Errorf("tensor shape %v: %w", shapeCopy, err)
+	}
 	return &Tensor{
 		dtype:   DTypeFloat32,
 		shape:   shapeCopy,
 		strides: strides,
-		data:    make([]float32, count),
+		data:    data,
 	}, nil
+}
+
+// allocateFloat32Zeros turns runtime size refusals into an error without
+// copying platform-specific allocation limits. Fatal physical OOM is separate.
+func allocateFloat32Zeros(count int) (data []float32, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			data = nil
+			err = fmt.Errorf("cannot allocate %d float32 elements: %v", count, recovered)
+		}
+	}()
+	return make([]float32, count), nil
 }
 
 func checkedProduct(left, right int, name string) (int, error) {
