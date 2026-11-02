@@ -7,6 +7,8 @@
 - [x] 2.1 Implement metadata-only path and ReaderAt inspection, including dictionaries without fetching values.
 - [x] 2.2 Implement selected, bounded streaming, cancellation, ownership and explicit unsupported-type errors matching Parquet cells.
 
+- [x] 2.3 Bound output cell slots and expanded string/binary payloads before allocation; cover dictionary expansion and null-only batches with failing tests first.
+
 ## 3. Documentation and validation
 
 - [x] 3.1 Add Docs/arrowipc.md, both README package rows, docs index and allpkgs registration; update both Unreleased changelogs.

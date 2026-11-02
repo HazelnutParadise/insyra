@@ -15,6 +15,9 @@ type ReadOptions struct {
 	// MaxBatchBytes caps decoded native buffers plus retained dictionaries.
 	// Zero uses 256 MiB. It does not include DataTable cell overhead.
 	MaxBatchBytes int64
+	// MaxOutputBytes caps each table's cell slots and copied string/binary bytes.
+	// Zero uses 256 MiB. This is not a process memory limit.
+	MaxOutputBytes int64
 }
 
 // FileInfo describes metadata without reading record or dictionary values.

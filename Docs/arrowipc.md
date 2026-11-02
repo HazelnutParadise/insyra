@@ -37,6 +37,7 @@ Inspection fetches only the header, trailer and footer. It never reads record or
 type ReadOptions struct {
     Columns       []string // Empty means all top-level fields.
     MaxBatchBytes int64    // Decoded buffers + dictionaries; 0 = 256 MiB.
+    MaxOutputBytes int64   // Cell slots + expanded payloads per table; 0 = 256 MiB.
 }
 
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
@@ -68,6 +69,7 @@ func readConnections(ctx context.Context, path string) error {
 - The producer holds one native Arrow record batch, its dictionary state and one output table. It uses an unbuffered table channel, so a slow consumer does not build a queue.
 - Arrow v18 reads and decodes every column of that native record. Column selection reduces DataTable conversion, not network bytes or native record memory. A small `batchSize` does **not** cap decoded bytes. `MaxBatchBytes` limits the combined decoded native record buffers and retained dictionary buffers, defaulting to 256 MiB. A negative value is an error. The limit is checked before decompression. Arrow's encoded message limit of 256 MiB and metadata limit of 64 MiB also remain in effect. DataTable cells, encoded buffers and runtime overhead use additional memory, so this is not a process RSS limit.
 - Strings and binary cells are copied. Received DataTables stay valid across later batches, cancellation and reader closure. Consumers never call Arrow `Retain` or `Release`.
+- `MaxOutputBytes` separately limits each output table before its cell slices or string/binary copies are allocated. It charges 16 bytes per selected cell plus each string/binary payload, counting a dictionary value on every occurrence. Zero means 256 MiB; negative values fail before data reads. Exceeding the limit returns an error without emitting that table. Runtime objects and temporary copies use additional memory. There is no total-stream row limit; callers use cancellation to stop reading.
 - Path entry points close their files. `StreamFrom` leaves the source open, and the caller must keep it usable until both channels close.
 
 ### Cancellation and errors

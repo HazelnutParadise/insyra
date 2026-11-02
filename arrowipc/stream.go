@@ -84,6 +84,13 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 	if maxBytes == 0 {
 		maxBytes = defaultMaxBatchBytes
 	}
+	maxOutput := opt.MaxOutputBytes
+	if maxOutput < 0 {
+		return fmt.Errorf("arrowipc: MaxOutputBytes must not be negative")
+	}
+	if maxOutput == 0 {
+		maxOutput = defaultMaxOutputBytes
+	}
 	info, err := inspectSource(ctx, r, size)
 	if err != nil {
 		return err
@@ -123,7 +130,7 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 			record.Release()
 			return err
 		}
-		if err := streamRecord(ctx, record, selected, batchSize, tables); err != nil {
+		if err := streamRecord(ctx, record, selected, batchSize, maxOutput, tables); err != nil {
 			return err
 		}
 	}
@@ -185,7 +192,7 @@ func selectColumns(schema *arrow.Schema, requested []string) ([]selectedColumn, 
 	return selected, nil
 }
 
-func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []selectedColumn, batchSize int, tables chan<- *insyra.DataTable) error {
+func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []selectedColumn, batchSize int, maxOutput int64, tables chan<- *insyra.DataTable) error {
 	defer record.Release()
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -212,6 +219,9 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 			count = remaining
 		}
 		end := start + count
+		if err := checkOutputBudget(ctx, record, selected, start, end, maxOutput); err != nil {
+			return err
+		}
 		columns := make([]*insyra.DataList, 0, len(selected))
 		for _, column := range selected {
 			if err := checkContext(ctx); err != nil {

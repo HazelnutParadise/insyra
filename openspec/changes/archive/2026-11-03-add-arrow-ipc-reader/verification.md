@@ -53,3 +53,11 @@ Checked the installed v18.8.0 `arrow/ipc/file_reader.go`, public `go doc` and of
 ## Verification state
 
 Local dev verification passed: go build ./..., go test ./arrowipc ./parquet, go test -race ./arrowipc ./parquet, go vet ./..., golangci-lint run (0 issues), and GOTOOLCHAIN=go1.26.10 govulncheck ./... (0 affected vulnerabilities). Strict change validation passed. Both-line PR checks are pending; no merge is authorized. The original Go 1.26.9 baseline reported existing [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809), fixed in Go 1.26.10. The patched toolchain is available; the module directive remains unchanged.
+
+## Final PR-review output bounds
+
+Offline output-budget tests first failed to compile without MaxOutputBytes, then failed behaviorally against its no-op skeleton: repeated dictionary strings/binary and null-only cell slots all emitted a table with no error. The identical guard and generated tests are ported here from 0.4. It preflights the whole output before cell allocation or payload copying, charging 16 bytes per selected cell and copied payload bytes per occurrence. The independent 256 MiB default keeps MaxBatchBytes's native-buffer semantics unchanged. Boundary, negative-limit and repeated-value cases are covered.
+
+No total-stream row cap is added. A large logical Null record is handled through bounded output batches, backpressure and context cancellation. A caller retaining every batch chooses to materialize the stream; the package does not claim a bound on that retained total or on total runtime.
+
+After these review corrections, dev build, touched-package tests/race, vet, lint (0 issues), strict change/main-spec validation and Go 1.26.10 govulncheck (0 affected vulnerabilities) passed again. The manual three-file probe repeated successfully with the same schema-only bytes and sample totals. It used IPv4 for this repeat after an IPv6 connection reset affected one 0.4 attempt; all dev samples returned exact cell types and then the intentional context cancellation. The retained probe now exits unsuccessfully when no sample is obtained, rather than treating an encoded diagnostic as success. Latest-head CI remains authoritative on PR #675.
