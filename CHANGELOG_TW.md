@@ -12,6 +12,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `accel.NewKernel`、`Kernel.Bind` 與 `accel.Submit` 可以在 Insyra 張量所在的常駐 `DeviceBuffer` 上執行你自己的 WGSL compute shader，綁定配置與 Insyra 內建 kernel 相同：先是唯讀緩衝區，再來是可讀寫緩衝區，最後是 64 位元組的 uniform。`Bind` 只建一次 bind group，`Submit` 重複使用，每個 dispatch 的參數透過 dynamic offset 從共用的環形緩衝區讀取，所以每次啟動都不需要配置新物件。`Submit` 把所有 dispatch 依序放進同一次提交，並和 Insyra 的常駐運算共用一條佇列，因此兩者之間不需要同步；在 Apple M3 上，168 個 dispatch 一次 `Submit` 花 3.7 毫秒，分成 168 次呼叫則花 23.8 毫秒。`accel.ResidentLimits()` 回報裝置的緩衝區、workgroup 與大小上限，`accel.NewBitsBuffer` 與 `DeviceBuffer.BitsToHost` 能原封不動地搬移索引等 32 位元樣式，`DeviceBuffer.Write`、`WriteBits` 與 `Zero` 會先等前面的 kernel 做完，再就地覆寫緩衝區。Insyra 無法檢查你自己的 kernel，而且 Vulkan 後端不會夾住超出緩衝區尾端的寫入，請自行檢查索引（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
 
+### `arrowipc`
+
+- 新增唯讀 `arrowipc` 套件，不讀取 record 或字典內容即可檢查 Arrow IPC file／Feather V2 結構，並支援選欄、限制每批列數與取消的 DataTable 分批讀取。整數識別碼保留精確值，空值保留為 nil，字典值沿用 Parquet 的儲存格對應規則，不支援的選取型別（包含 list）會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。
+
 ## Unreleased
 
 - `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。

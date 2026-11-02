@@ -445,6 +445,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[gplot](/Docs/gplot.md)** | 基於 [gonum/plot](https://github.com/gonum/plot) 的靜態圖，快速、免 Chrome、支援函數繪圖。 |
 | **[csvxl](/Docs/csvxl.md)** | 處理 Excel 與 CSV 檔案（例如 CSV 轉 Excel）。 |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
+| **[arrowipc](/Docs/arrowipc.md)** | 唯讀 Arrow IPC file／Feather V2 結構檢查，支援可取消的 DataTable 分批讀取。 |
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |
 | **[finance](/Docs/finance.md)** | 高精度定點財務計算：TVM、NPV／IRR、折舊、債券定價、攤還表。 |
 | **[quant](/Docs/quant.md)** | 量化金融策略／回測評估：夏普比率、VaR／CVaR、Sortino／Calmar 比率、最大回撤、年化報酬、市場 Beta／CAPM、歐式選擇權定價與 greeks、隱含波動率、多因子歸因、過擬合機率（CSCV PBO）、通縮夏普比率、walk-forward 驗證、block bootstrap 路徑模擬與百分位帶、均值—變異數投資組合最適化與效率前緣掃描。 |
