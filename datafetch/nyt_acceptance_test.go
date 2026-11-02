@@ -266,6 +266,18 @@ func TestNYTAcceptanceBodyTimeout(t *testing.T) {
 	}
 }
 
+func TestNYTAcceptanceBodyTimeoutAfterJSON(t *testing.T) {
+	c := nytAcceptanceClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(nytAcceptanceEmpty))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	c.http.Timeout = 100 * time.Millisecond
+	if _, err := c.Archive(2026, 10); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("body timeout after valid JSON = %v, want DeadlineExceeded", err)
+	}
+}
+
 type nytAcceptanceSpaces struct{}
 
 func (nytAcceptanceSpaces) Read(p []byte) (int, error) {
