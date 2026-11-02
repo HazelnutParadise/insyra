@@ -243,12 +243,19 @@ func nytArchiveTable(ctx context.Context, body io.Reader) (*insyra.DataTable, er
 	}
 	// Read one extra byte so an artificial EOF at the size limit cannot
 	// conceal trailing data and turn a truncated response into success.
-	limited := &io.LimitedReader{R: body, N: (128 << 20) + 1}
+	reader := &nytArchiveReader{Reader: body}
+	limited := &io.LimitedReader{R: reader, N: (128 << 20) + 1}
 	dec := json.NewDecoder(limited)
 	if err := dec.Decode(&payload); err != nil {
+		if reader.err != nil {
+			err = reader.err
+		}
 		return nil, nytArchiveDecodeError(err)
 	}
 	err := dec.Decode(new(any))
+	if reader.err != nil {
+		return nil, nytArchiveDecodeError(reader.err)
+	}
 	if limited.N == 0 {
 		return nil, errors.New("datafetch: NYT archive response exceeds 128 MiB")
 	}
@@ -291,6 +298,22 @@ func nytArchiveTable(ctx context.Context, body io.Reader) (*insyra.DataTable, er
 		lists[i] = newNamedCol(name, values[i])
 	}
 	return insyra.NewDataTable(lists...), nil
+}
+
+// Older supported JSON decoders may replace an underlying read error with a
+// syntax error. Keep it at the input boundary so timeout classification does
+// not depend on the decoder version.
+type nytArchiveReader struct {
+	io.Reader
+	err error
+}
+
+func (r *nytArchiveReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		r.err = err
+	}
+	return n, err
 }
 
 func nytArchiveDecodeError(err error) error {
