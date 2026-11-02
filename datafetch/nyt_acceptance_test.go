@@ -69,6 +69,28 @@ func TestNYTAcceptanceEmptyMonth(t *testing.T) {
 	}
 }
 
+func TestNYTAcceptancePublicationOffsets(t *testing.T) {
+	for _, value := range []string{
+		"1980-11-23T05:00:00+0000",
+		"2026-10-18T14:05:06+0530",
+		"2026-10-18T14:05:06.123456789-0400",
+	} {
+		t.Run(value, func(t *testing.T) {
+			c := nytAcceptanceClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"response":{"docs":[{"pub_date":"` + value + `"}]}}`))
+			})
+			dt, err := c.Archive(2026, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, ok := dt.GetColByName("pub_date").Data()[0].(time.Time)
+			if !ok || got.Format("2006-01-02T15:04:05.999999999-0700") != value {
+				t.Fatalf("publication timestamp lost value or offset: %v", got)
+			}
+		})
+	}
+}
+
 func TestNYTAcceptancePacingAndQuota(t *testing.T) {
 	calls := 0
 	var starts []time.Time
