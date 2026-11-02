@@ -13,7 +13,7 @@ Production-readiness hardening (2026-09-06). Every package's exported surface wa
 Close the `severity:high` issues first, then medium, with one OpenSpec change per batch. Findings that need an API decision (return shapes, `LogFatal`, name-vs-index, `IDataList` with unexported methods, the Google Maps crawler) stay open until the owner decides; they are listed in the issue tracker, not here.
 
 ## Active Workstreams
-None in flight. Nothing left can be picked up without the owner answering something first.
+Approved addition: #376 optimizer-state checkpoints, ported from `dev`, verified and delivered in PR #673. The API-review decisions below remain separate.
 
 **Wrong answers waiting on a decision, worth taking first:**
 
@@ -22,6 +22,7 @@ None in flight. Nothing left can be picked up without the owner answering someth
 **Awaiting a ruling:** nothing from the decision list that started on 2026-09-25; the open `api-review` issues are the next pickup.
 
 ## Latest Milestones
+- **Optimizer checkpoints (2026-11-02, #376).** Current phase: the named optimizer-state addition and all three PR-review corrections are ported from `dev` to `0.4`, with local validation complete. Blockers: no code blocker; all four host/Metal acceptance conditions, the targeted race run, build/test/vet/lint and all 236 main specs pass. Next verifiable output: merged states in [0.4 PR #673](https://github.com/HazelnutParadise/insyra/pull/673) and [dev PR #674](https://github.com/HazelnutParadise/insyra/pull/674), gated by all-green CI and clean review as authorized by the owner; those links record the live gate and merge status. Next OpenSpec change for this work: none after the archived `save-nn-optimizer-state`; API-review decisions below remain separate. Decision delta: retain the existing Clear signature, configure parameter-gradient retention separately, freeze built-in updates, and persist binary SafeTensors optimizer slots by stable name and matching precision. PR review additionally bounds checkpoint reads before allocation and preserves retained gradients referenced by live graph inputs until Clear/Close. The later empty-matrix correction validates output allocation and skips empty work without changing valid zero shapes or arithmetic ([verification](openspec/changes/archive/2026-11-02-guard-empty-matmul-output/verification.md)). Sources: [#376](https://github.com/HazelnutParadise/insyra/issues/376), [archived change](openspec/changes/archive/2026-11-02-save-nn-optimizer-state/design.md), [resume documentation](Docs/nn.md#resuming-a-custom-training-loop), [precision contract](ENG.md). `delivery-status.md` changed; `AGENTS.md` did not.
 - 2026-11-01 Built-in kernels compile in the background (ported from `dev`, #624; change `accel-kernel-warmup`):
   - **Decision.** The first resident buffer made on a device starts compiling the 28 built-in kernels without holding `submitMu`; a result is installed through the kernel's `sync.Once`, and one compiled for a device that was lost is released before the device.
   - **Measured.** On `dev`: warm-cache first training steps equal the version without warmup on the Apple M3 (12 runs each) and on the NVIDIA GT 1030 (10 each, with one unexplained 2.2 s first run); the GPU suites passed on both. On this line, build, lint and the warmup and lost-device tests passed on the M3.
