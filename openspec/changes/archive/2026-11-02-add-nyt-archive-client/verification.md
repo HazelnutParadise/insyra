@@ -36,3 +36,7 @@ Passed: `go build ./...`, `go test ./...`, `go test -race ./datafetch/... -count
 ## Provider timestamp regression
 
 Remote PR review identified NYT timestamps such as `1980-11-23T05:00:00+0000`, confirmed in the [Gatsby integration author's source](https://github.com/PaulieScanlon/data-champion-ssg-nyc-news/blob/main/src/pages/raw.js), linked by the [Gatsby Archive integration guide](https://www.gatsbyjs.com/blog/fetch-data-from-the-new-york-times-api-using-ssg/). `TestNYTAcceptancePublicationOffsets` failed before the fix for UTC and non-UTC colonless offsets, including fractional seconds. The parser now accepts both RFC3339 and numeric offsets without colons, preserving the instant and offset. Existing RFC3339 and malformed-date tests remain unchanged.
+
+## Endpoint transport regression
+
+A conditional, low-severity remote security finding showed that overriding BaseURL with a non-loopback HTTP endpoint could send the query credential in plaintext. `TestNYTAcceptanceEndpointTransport` was run failing before validation was tightened. HTTPS endpoints and literal IPv4/IPv6 loopback HTTP test servers remain accepted; other plaintext endpoints are rejected before any request. No existing client or dependency was changed.
