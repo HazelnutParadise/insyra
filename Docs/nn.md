@@ -1045,6 +1045,13 @@ not part of the optimizer-state file.
 
 ## Supported operators
 
+`MatMul` supports empty dimensions: multiplying `[m,0]` by `[0,n]`
+returns `[m,n]` zeros when that output can be allocated. `MatMul` and `Gemm`
+return errors for output-size overflow or runtime allocation-size refusal.
+`MatMul` validates before optional device dispatch and completes empty outputs
+without empty-row loops or per-batch offset arrays. Valid empty SafeTensors
+remain readable, including when another dimension is large.
+
 | Operator | Notes |
 | --- | --- |
 | `Gemm` | 2-D matrix product with `alpha`, `beta`, `transA`, and `transB` |
