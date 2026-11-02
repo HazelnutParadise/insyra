@@ -35,20 +35,21 @@ Inspection fetches only the header, trailer and footer. It never reads record or
 
 ```go
 type ReadOptions struct {
-    Columns       []string // Empty means all top-level fields.
+    Columns       []any    // Index string, insyra.Name, or int; empty = all.
     MaxBatchBytes int64    // Decoded buffers + dictionaries; 0 = 256 MiB.
+    MaxOutputBytes int64   // Cell slots + expanded payloads per table; 0 = 256 MiB.
 }
 
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error]
 func StreamFrom(ctx context.Context, r io.ReaderAt, size int64, opt ReadOptions, batchSize int) iter.Seq2[*insyra.DataTable, error]
 ```
 
-The following function processes a file and returns any terminal read error. It needs `context` and `github.com/HazelnutParadise/insyra/arrowipc` imports. The sequence follows this line's Parquet API; the `dev` / 0.3.6 companion has the two-channel form instead.
+The following function processes a file and returns any terminal read error. It needs `context`, `github.com/HazelnutParadise/insyra` and `github.com/HazelnutParadise/insyra/arrowipc` imports. The sequence follows this line's Parquet API; the `dev` / 0.3.6 companion has the two-channel form instead.
 
 ```go
 func readConnections(ctx context.Context, path string) error {
     for table, err := range arrowipc.Stream(ctx, path, arrowipc.ReadOptions{
-        Columns: []string{"body_pre", "body_post", "weight"},
+        Columns: []any{insyra.Name("body_pre"), insyra.Name("body_post"), insyra.Name("weight")},
     }, 4096) {
         if err != nil {
             return err
@@ -60,13 +61,14 @@ func readConnections(ctx context.Context, path string) error {
 }
 ```
 
-`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns use exact, case-sensitive top-level names and appear in request order. Unknown names, repeated selections or ambiguous field names return errors. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
+`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns follow the repository selector convention and appear in request order: `"B"` selects the second field, `insyra.Name("B")` selects the field named B, and an `int` selects a zero-based position (negative counts from the end). Names are exact and case-sensitive. Invalid selectors, repeated resolved fields or ambiguous selected names return errors. The dev companion uses Parquet's `[]string` exact-name selection instead. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
 
 ### Memory and ownership
 
 - The producer holds one native Arrow record batch, its dictionary state and one output table. It uses an internal unbuffered table channel, so a slow consumer does not build a queue.
 - Arrow v18 reads and decodes every column of that native record. Column selection reduces DataTable conversion, not network bytes or native record memory. A small `batchSize` does **not** cap decoded bytes. `MaxBatchBytes` limits the combined decoded native record buffers and retained dictionary buffers, defaulting to 256 MiB. A negative value is an error. The limit is checked before decompression. Arrow's encoded message limit of 256 MiB and metadata limit of 64 MiB also remain in effect. DataTable cells, encoded buffers and runtime overhead use additional memory, so this is not a process RSS limit.
 - Strings and binary cells are copied. Received DataTables stay valid across later batches, cancellation and reader closure. Consumers never call Arrow `Retain` or `Release`.
+- `MaxOutputBytes` separately limits each output table before its cell slices or string/binary copies are allocated. It charges 16 bytes per selected cell plus each string/binary payload, counting a dictionary value on every occurrence. Zero means 256 MiB; negative values fail before data reads. Exceeding the limit returns an error without emitting that table. Runtime objects and temporary copies use additional memory. There is no total-stream row limit; callers use cancellation to stop reading.
 - Path entry points close their files. `StreamFrom` leaves the source open. Keep it usable during iteration; it is safe to close after the range loop returns.
 
 ### Cancellation and errors

@@ -202,7 +202,7 @@ func TestStreamFromPreservesScalarsBatchesAndOwnership(t *testing.T) {
 func TestStreamSelectsColumnsInRequestOrder(t *testing.T) {
 	data := scalarFixture(t)
 	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{
-		Columns: []string{"state", "id"},
+		Columns: namedColumns([]string{"state", "id"}),
 	}, 2)
 	got, err := drain(t, tables, errs)
 	if err != nil {
@@ -245,7 +245,7 @@ func TestStreamPathAndInvalidColumnSelections(t *testing.T) {
 	}
 
 	for _, columns := range [][]string{{"missing"}, {"id", "id"}} {
-		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: columns}, 10)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns(columns)}, 10)
 		output, err := drain(t, tables, errs)
 		if err == nil || len(output) != 0 {
 			t.Fatalf("columns %v: got %d tables and error %v", columns, len(output), err)
@@ -262,7 +262,7 @@ func TestStreamRejectsAmbiguousSelectedName(t *testing.T) {
 		builder.Field(0).(*array.Int32Builder).Append(1)
 		builder.Field(1).(*array.Int32Builder).Append(2)
 	})
-	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"same"}}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"same"})}, 1)
 	got, err := drain(t, tables, errs)
 	if err == nil || len(got) != 0 || !strings.Contains(strings.ToLower(err.Error()), "same") {
 		t.Fatalf("ambiguous selection: tables=%d err=%v", len(got), err)
@@ -295,13 +295,13 @@ func TestInspectListAndStreamExplicitlyRefusesListTypes(t *testing.T) {
 		t.Fatalf("inspection did not preserve list schema: %s", info.Schema)
 	}
 	for _, column := range []string{"items", "nested"} {
-		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{column}}, 1)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{column})}, 1)
 		got, err := drain(t, tables, errs)
 		if err == nil || len(got) != 0 || !strings.Contains(err.Error(), column) {
 			t.Fatalf("selected %s: tables=%d err=%v", column, len(got), err)
 		}
 	}
-	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"value"}}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"value"})}, 1)
 	got, err := drain(t, tables, errs)
 	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0].GetColByNumber(0).Data(), []any{int32(7)}) {
 		t.Fatalf("supported selection: tables=%d err=%v", len(got), err)

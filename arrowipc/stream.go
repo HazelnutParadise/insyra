@@ -84,6 +84,13 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 	if maxBytes == 0 {
 		maxBytes = defaultMaxBatchBytes
 	}
+	maxOutput := opt.MaxOutputBytes
+	if maxOutput < 0 {
+		return fmt.Errorf("arrowipc: MaxOutputBytes must not be negative")
+	}
+	if maxOutput == 0 {
+		maxOutput = defaultMaxOutputBytes
+	}
 	info, err := inspectSource(ctx, r, size)
 	if err != nil {
 		return err
@@ -123,69 +130,14 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 			record.Release()
 			return err
 		}
-		if err := streamRecord(ctx, record, selected, batchSize, tables); err != nil {
+		if err := streamRecord(ctx, record, selected, batchSize, maxOutput, tables); err != nil {
 			return err
 		}
 	}
 	return checkContext(ctx)
 }
 
-func selectColumns(schema *arrow.Schema, requested []string) ([]selectedColumn, error) {
-	fields := schema.Fields()
-	var selected []selectedColumn
-	if len(requested) == 0 {
-		selected = make([]selectedColumn, 0, len(fields))
-		seen := make(map[string]struct{}, len(fields))
-		for i, field := range fields {
-			if _, exists := seen[field.Name]; exists {
-				return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", field.Name)
-			}
-			seen[field.Name] = struct{}{}
-			if err := checkExtension(field); err != nil {
-				return nil, err
-			}
-			if !supportedCellType(field.Type) {
-				return nil, fmt.Errorf("arrowipc: unsupported selected column %q type %s", field.Name, field.Type)
-			}
-			selected = append(selected, selectedColumn{index: i, field: field})
-		}
-		return selected, nil
-	}
-
-	selected = make([]selectedColumn, 0, len(requested))
-	requestedNames := make(map[string]struct{}, len(requested))
-	for _, name := range requested {
-		if _, exists := requestedNames[name]; exists {
-			return nil, fmt.Errorf("arrowipc: duplicate selected column %q", name)
-		}
-		requestedNames[name] = struct{}{}
-
-		index := -1
-		for i, field := range fields {
-			if field.Name != name {
-				continue
-			}
-			if index >= 0 {
-				return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", name)
-			}
-			index = i
-		}
-		if index < 0 {
-			return nil, fmt.Errorf("arrowipc: unknown selected column %q", name)
-		}
-		field := fields[index]
-		if err := checkExtension(field); err != nil {
-			return nil, err
-		}
-		if !supportedCellType(field.Type) {
-			return nil, fmt.Errorf("arrowipc: unsupported selected column %q type %s", field.Name, field.Type)
-		}
-		selected = append(selected, selectedColumn{index: index, field: field})
-	}
-	return selected, nil
-}
-
-func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []selectedColumn, batchSize int, tables chan<- *insyra.DataTable) error {
+func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []selectedColumn, batchSize int, maxOutput int64, tables chan<- *insyra.DataTable) error {
 	defer record.Release()
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -212,6 +164,9 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 			count = remaining
 		}
 		end := start + count
+		if err := checkOutputBudget(ctx, record, selected, start, end, maxOutput); err != nil {
+			return err
+		}
 		columns := make([]*insyra.DataList, 0, len(selected))
 		for _, column := range selected {
 			if err := checkContext(ctx); err != nil {

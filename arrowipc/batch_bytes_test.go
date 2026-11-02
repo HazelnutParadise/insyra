@@ -38,7 +38,7 @@ func TestDecodedBatchByteBudgetPrecedesDecompression(t *testing.T) {
 	if !changed {
 		t.Fatal("fixture has no compressed buffers")
 	}
-	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}, MaxBatchBytes: 1024}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"}), MaxBatchBytes: 1024}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxBatchBytes") {
 		t.Fatalf("decoded budget: %d tables, %v", len(got), err)

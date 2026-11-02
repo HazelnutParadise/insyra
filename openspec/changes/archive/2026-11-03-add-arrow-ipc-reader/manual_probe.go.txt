@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/arrowipc"
 )
 
@@ -96,7 +97,11 @@ func run() error {
 		result := map[string]any{"file": f.name, "size": size, "etag": resp.Header.Get("ETag"), "version": info.Version, "batches": info.NumBatches, "inspect_requests": s.calls, "inspect_bytes": s.bytes, "fields": fields}
 		rctx, rcancel := context.WithCancel(ctx)
 		s.ctx = rctx
-		for dt, err := range arrowipc.StreamFrom(rctx, s, size, arrowipc.ReadOptions{Columns: f.columns}, 3) {
+		selectors := make([]any, len(f.columns))
+		for i, name := range f.columns {
+			selectors[i] = insyra.Name(name)
+		}
+		for dt, err := range arrowipc.StreamFrom(rctx, s, size, arrowipc.ReadOptions{Columns: selectors}, 3) {
 			if err != nil {
 				result["terminal_error"] = err.Error()
 				break

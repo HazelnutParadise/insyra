@@ -11,7 +11,7 @@ The arrowipc package SHALL inspect IPC file and Feather V2 schemas from paths or
 - **THEN** inspection succeeds with original types, nullability, order and metadata and fetches only header, trailer and footer bytes
 
 ### Requirement: Bounded typed batch reading
-Stream and StreamFrom SHALL emit independently owned DataTables of at most the positive batchSize rows, preserving native batch boundaries and requested top-level column order. Empty Columns SHALL select all fields. Missing, duplicate and ambiguous selected names SHALL error. The producer SHALL hold at most one native record plus dictionary state and one output table.
+Stream and StreamFrom SHALL emit independently owned DataTables of at most the positive batchSize rows, preserving native batch boundaries and requested top-level column order. Empty Columns SHALL select all fields. Columns SHALL accept Excel-style strings, insyra.Name names and int positions (negative from the end). Invalid, duplicate and ambiguous selections SHALL error. The producer SHALL hold at most one native record plus dictionary state and one output table.
 
 #### Scenario: Multiple batches and selection
 - **WHEN** a generated file contains several records and Columns selects two fields in reverse order
@@ -23,6 +23,13 @@ ReadOptions.MaxBatchBytes SHALL cap decoded native record buffers plus retained 
 #### Scenario: Decoded length exceeds budget
 - **WHEN** a compressed buffer declares a decoded length above the budget or dictionary buffers leave insufficient room for a record
 - **THEN** reading fails explicitly before that allocation and no affected table is emitted
+
+### Requirement: Expanded output budget
+ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 bytes each) and copied string/binary payloads, including expanded dictionary values, before allocation. Zero SHALL use 256 MiB and negative values SHALL error before data reads. Exceeding the limit SHALL return an error without emitting the affected table. This SHALL NOT claim to bound process RSS or total stream rows.
+
+#### Scenario: Dictionary expansion and null cell slots
+- **WHEN** repeated dictionary values or null-only cell slots would exceed the per-table output budget
+- **THEN** reading fails before the excess allocation and emits no affected table
 
 ### Requirement: Faithful scalar cells and explicit unsupported types
 Readers SHALL preserve Parquet's supported scalar cell mappings and nil nulls, including int64 IDs beyond 2^53, binary byte slices, dates, decimals and dictionary values. Selected unsupported types, including lists, SHALL produce an error naming the field and type before any table is emitted. Inspection SHALL still describe those fields.

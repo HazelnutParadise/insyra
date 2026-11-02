@@ -32,7 +32,7 @@ func TestLateReadErrorIsNotLostAfterDeliveredBatches(t *testing.T) {
 	vector := tab.Vector(flatbuffers.UOffsetT(tab.Offset(10)))
 	second := int64(binary.LittleEndian.Uint64(footer[int(vector)+24:]))
 	src := brokenSecondRecord{data: data, start: second, end: int64(footerAt)}
-	tables, errs := streamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 3)
+	tables, errs := streamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 3)
 	got, err := drain(t, tables, errs)
 	if !errors.Is(err, errBrokenRecord) {
 		t.Fatalf("late error: %v", err)

@@ -16,6 +16,16 @@ func streamPath(ctx context.Context, path string, opt arrowipc.ReadOptions, batc
 	return sequenceChannels(ctx, arrowipc.Stream(ctx, path, opt, batchSize))
 }
 
+// Keep shared fixture assertions about exact names while spelling the 0.4
+// public name-selector form explicitly.
+func namedColumns(names []string) []any {
+	selectors := make([]any, len(names))
+	for i, name := range names {
+		selectors[i] = insyra.Name(name)
+	}
+	return selectors
+}
+
 // Adapt the public sequence only in tests so both maintained lines use the
 // same independent value/ownership/error assertions and generated fixtures.
 func sequenceChannels(ctx context.Context, seq iter.Seq2[*insyra.DataTable, error]) (<-chan *insyra.DataTable, <-chan error) {

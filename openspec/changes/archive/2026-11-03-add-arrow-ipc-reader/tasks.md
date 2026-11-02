@@ -6,6 +6,9 @@
 
 - [x] 2.1 Implement metadata-only path and ReaderAt inspection, including dictionaries without fetching values.
 - [x] 2.2 Implement selected, bounded streaming, cancellation, ownership and explicit unsupported-type errors matching Parquet cells.
+- [x] 2.3 Bound output cell slots and expanded string/binary payloads before allocation; cover dictionary expansion and null-only batches with failing tests first.
+
+- [x] 2.4 Match the 0.4 column-selector contract with index strings, insyra.Name and int positions; prove B differs from Name("B") with tests first.
 
 ## 3. Documentation and validation
 
