@@ -14,9 +14,9 @@
 
 - [x] 2.6 Bound copied schema/name/key-value/timezone strings per occurrence, including native message metadata, with aliasing regressions first.
 
-- [x] 2.6 Bound decoded schema/metadata entry occurrences independently of wire bytes, with failing shared-reference tests first.
+- [x] 2.7 Bound decoded schema/metadata entry occurrences independently of wire bytes, with failing shared-reference tests first.
 
-- [x] 2.7 Refuse unsupported decimal precision/scale before cell construction while retaining schema inspection, with failing generated tests first.
+- [x] 2.8 Refuse unsupported decimal precision/scale before cell construction while retaining schema inspection, with failing generated tests first.
 
 ## 3. Documentation and validation
 
