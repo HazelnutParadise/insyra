@@ -55,7 +55,7 @@ func TestAggregateFooterBlockEntryLimit(t *testing.T) {
 			runtime.GC()
 			var before, after runtime.MemStats
 			runtime.ReadMemStats(&before)
-			tables, errs := streamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 1)
+			tables, errs := arrowipc.StreamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 1)
 			got, err := drain(t, tables, errs)
 			runtime.ReadMemStats(&after)
 			if allocated := after.TotalAlloc - before.TotalAlloc; allocated > uint64(8*len(footer)+(1<<20)) {

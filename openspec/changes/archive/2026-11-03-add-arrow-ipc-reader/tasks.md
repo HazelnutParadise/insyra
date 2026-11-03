@@ -17,11 +17,11 @@
 
 - [x] 2.7 Refuse unsupported decimal precision/scale before cell construction while retaining schema inspection, with failing generated tests first.
 
-- [x] 2.9 Avoid quadratic name collision checks while constructing wide output tables, retaining ownership and Context checks; reproduce cancellation delay first.
+- [x] 2.8 Avoid quadratic name collision checks while constructing wide output tables, retaining ownership and Context checks; reproduce cancellation delay first.
 
-- [x] 2.10 Preflight aggregate dictionary/record block counts before decoded allocation and sorting, with shared-vector allocation regressions first.
+- [x] 2.9 Preflight aggregate dictionary/record block counts before decoded allocation and sorting, with shared-vector allocation regressions first.
 
-- [x] 2.11 Validate native variadic view-buffer counts before allocation/body reads, including unselected columns, with safe generated negative/excess-count regressions first.
+- [x] 2.10 Validate native variadic view-buffer counts before allocation/body reads, including unselected columns, with safe generated negative/excess-count regressions first.
 
 ## 3. Documentation and validation
 

@@ -28,7 +28,7 @@ func TestWideTableConstructionRespectsCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	started := time.Now()
-	tables, errs := streamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
+	tables, errs := arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
 	got, err := drain(t, tables, errs)
 	elapsed := time.Since(started)
 	if elapsed > 3*time.Second {
