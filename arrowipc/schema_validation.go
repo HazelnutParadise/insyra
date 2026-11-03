@@ -7,6 +7,8 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+const maxMetadataEntries = 1 << 16
+
 // These slots are defined in Arrow format/File.fbs and Schema.fbs. Validate
 // vectors before Arrow's decoder allocates slices from their lengths. All
 // arithmetic on untrusted offsets is widened before addition so it cannot wrap.
@@ -53,7 +55,15 @@ func validateSchemaFooter(footer flatbuffers.Table) error {
 		return err
 	}
 	// Repeated references must not expand a tiny footer into an unbounded tree.
-	budget := len(footer.Bytes) / 4
+	budget := min(len(footer.Bytes)/4, maxMetadataEntries)
+	_, footerEntries, err := boundedVector(footer, 12, 4)
+	if err != nil {
+		return err
+	}
+	if footerEntries > budget {
+		return fmt.Errorf("arrowipc: footer metadata exceeds entry limit")
+	}
+	budget -= footerEntries
 	stringsBudget := int64(maxFooterSize)
 	if err := validateKeyValueStrings(footer, 12, &stringsBudget); err != nil {
 		return err
@@ -69,13 +79,13 @@ func validateFieldVector(tab flatbuffers.Table, fieldsSlot, metadataSlot flatbuf
 		return err
 	}
 	if n > *budget {
-		return fmt.Errorf("arrowipc: expanded schema exceeds footer bounds")
+		return fmt.Errorf("arrowipc: expanded schema exceeds entry limit")
 	}
 	*budget -= n
 	if _, metaCount, err := boundedVector(tab, metadataSlot, 4); err != nil {
 		return err
 	} else if metaCount > *budget {
-		return fmt.Errorf("arrowipc: expanded schema metadata exceeds footer bounds")
+		return fmt.Errorf("arrowipc: expanded schema metadata exceeds entry limit")
 	} else {
 		*budget -= metaCount
 	}
@@ -125,6 +135,9 @@ func validateKeyValueStrings(tab flatbuffers.Table, slot flatbuffers.VOffsetT, b
 	start, n, err := boundedVector(tab, slot, 4)
 	if err != nil {
 		return err
+	}
+	if n > maxMetadataEntries {
+		return fmt.Errorf("arrowipc: custom metadata exceeds entry limit %d", maxMetadataEntries)
 	}
 	for i := 0; i < n; i++ {
 		entry, err := tableAt(tab.Bytes, start+uint64(i)*4)

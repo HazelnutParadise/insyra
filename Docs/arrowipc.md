@@ -29,7 +29,7 @@ func InspectFrom(ctx context.Context, r io.ReaderAt, size int64) (FileInfo, erro
 
 Inspection fetches only the header, trailer and footer. It never reads record or dictionary values. The full Arrow schema preserves field order, nullability, dictionary index/value types and ordering, nested fields and metadata, even for types the DataTable reader refuses. The footer records the native batch count but no total row count, so `FileInfo` does not report rows. The returned schema remains usable after inspection and needs no `Release`.
 
-`InspectFrom` lets a caller supply an HTTP Range-backed `io.ReaderAt` and the file's total byte size. It does not download or buffer the whole file and does not close the source. Requests depend on footer size, rather than total data size. Inspection limits the footer to 64 MiB and schema nesting to 64 field levels. Invalid vector lengths and references are rejected before schema decoding. Decoded field names, timezones and metadata keys/values have a separate 64 MiB aggregate budget per footer/schema; shared wire strings count on every occurrence. Each native message has the same decoded custom-metadata string cap.
+`InspectFrom` lets a caller supply an HTTP Range-backed `io.ReaderAt` and the file's total byte size. It does not download or buffer the whole file and does not close the source. Requests depend on footer size, rather than total data size. Inspection limits the footer to 64 MiB and schema nesting to 64 field levels. Invalid vector lengths and references are rejected before schema decoding. Decoded field names, timezones and metadata keys/values have a separate 64 MiB aggregate budget per footer/schema; shared wire strings count on every occurrence. Each native message has the same decoded custom-metadata string cap. A footer/schema also allows at most 65,536 total field and metadata-entry occurrences; repeated references count separately. Each native message custom-metadata map has the same independent entry cap.
 
 ## Read batches
 
@@ -96,9 +96,11 @@ The mappings match `parquet` for supported Arrow types. There is no conversion o
 | Timestamp | `time.Time` using the Arrow time unit |
 | Date32 / Date64 | `time.Time` in UTC, as in Parquet |
 | Duration | `int64` count in the schema's duration unit |
-| Decimal128 / Decimal256 | Exact `github.com/TimLai666/go-decimal` `decimal.Decimal` |
+| Decimal128 / Decimal256 | Exact `github.com/TimLai666/go-decimal` `decimal.Decimal`; precision 1..38 / 1..76, scale 0..precision |
 | Dictionary with supported values | Decoded value in the corresponding type, or `nil` for a null index/value |
 | List / LargeList / FixedSizeList, nested lists, Struct, Map, Union, extension types and other unlisted types | Explicit error identifying the selected field and Arrow type |
+
+Other decimal parameters, including negative scales, remain inspectable but are explicit selected-column errors. This conversion range follows [Parquet DECIMAL](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md#decimal) and keeps returned cells safe to format.
 
 Dictionary ordering is retained in `FileInfo.Schema`; a DataTable contains values, without category ordering semantics. An ordered int8-to-UTF8 dictionary therefore produces strings, never its int8 codes. A selected unsupported type fails before the first table is emitted, including an unsupported type containing only nulls. Parquet currently records unsupported types on `DataTable.Err()` and substitutes nil cells. This package instead returns a terminal error to avoid confusing unsupported values with real nulls.
 
