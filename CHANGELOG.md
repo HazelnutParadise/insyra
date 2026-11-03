@@ -495,6 +495,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Every release now publishes a container image, `ghcr.io/hazelnutparadise/insyra:<version>`, for `linux/amd64` and `linux/arm64`: the release's `insyra` CLI on the official Go image, with the Vulkan loader and drivers that let `accel` use the host's GPU (`--gpus all` for NVIDIA, `--device /dev/dri` for AMD and Intel on Linux). `0.3` and `latest` follow the highest stable release by version number. See [Docs/container.md](Docs/container.md).
 
+### `arrowipc`
+
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading data and streams selected columns as cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs and nulls stay exact, dictionaries decode to values, and unsupported selected types return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+- Metadata validation bounds aliased strings, decoded schema entries, native block counts and variadic view buffers before allocation. It rejects overlapping blocks and unsupported decimal precision/scale. Wide table assembly checks cancellation between columns and uses indexed name selection and construction without quadratic name scans.
+- Dictionary delta messages are explicitly unsupported before their body is fetched, including unselected columns; schema inspection and ordinary dictionaries remain available.
+
 ## v0.3.3
 
 ### Core

@@ -53,6 +53,7 @@ dt.Show()
 | --------------------- | ---------------------------------------------------------- |
 | [csvxl](csvxl.md)     | CSV and Excel file reading/writing with encoding detection |
 | [parquet](parquet.md) | Apache Parquet file support with streaming                 |
+| [arrowipc](arrowipc.md) | Arrow IPC file / Feather V2 schema inspection and batch reading |
 
 #### Data Acquisition
 
