@@ -70,6 +70,20 @@ Stream readers SHALL validate variadic view-buffer counts before native allocati
 - **WHEN** an unselected StringView field declares negative or excessive variadic buffers
 - **THEN** reading selected scalar columns fails before body reads or Arrow allocation, while a valid unselected view remains readable
 
+### Requirement: Indexed named column selection
+Readers SHALL resolve requested names through the schema's prebuilt name index without rescanning every field per selector. Resolution SHALL preserve requested order, unknown/ambiguous-name errors and each maintained line's duplicate and selector semantics.
+
+#### Scenario: Wide schema selected by name
+- **WHEN** a caller selects all 65,536 uniquely named fields in reverse order with a short deadline
+- **THEN** selection and construction complete in the requested order or terminate promptly with cancellation, without quadratic schema scans
+
+### Requirement: Explicit dictionary delta refusal
+Stream readers SHALL reject dictionary delta messages before reading that message's body or invoking native dictionary decoding, including when its column is excluded. Ordinary dictionary values, ordering metadata and nulls SHALL remain supported. Inspect SHALL preserve dictionary schemas without fetching delta metadata or bodies.
+
+#### Scenario: Delta with unsafe logical lengths or offsets
+- **WHEN** a file contains a dictionary delta, with ordinary data or forged logical lengths, offsets or a zero-length body
+- **THEN** streaming emits no table and reports an explicit unsupported-delta error before fetching the delta body, while inspection succeeds
+
 ### Requirement: Expanded output budget
 ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 bytes each) and copied string/binary payloads, including expanded dictionary values, before allocation. Zero SHALL use 256 MiB and negative values SHALL error before data reads. Exceeding the limit SHALL return an error without emitting the affected table. This SHALL NOT claim to bound process RSS or total stream rows.
 

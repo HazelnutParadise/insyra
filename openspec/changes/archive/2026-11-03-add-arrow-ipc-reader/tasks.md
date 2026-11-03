@@ -24,6 +24,12 @@
 
 - [x] 2.11 Validate native variadic view-buffer counts before allocation/body reads, including unselected columns, with safe generated negative/excess-count regressions first.
 
+- [x] 2.11 Resolve requested field names through the existing Arrow schema index, preserving line-specific errors and order; extend wide-name failing tests first.
+
+- [x] 2.12 Correct Field discriminator/type slots for timezone budgeting and cover aliased timezones plus retained ordinary timezones with failing tests first.
+
+- [x] 2.13 Explicitly refuse dictionary delta messages before their body/native decoding, document the format limitation and cover selected/excluded, forged and zero-body cases with generated failing tests first.
+
 ## 3. Documentation and validation
 
 - [x] 3.1 Add Docs/arrowipc.md, both README package rows, docs index and allpkgs registration; update both Unreleased changelogs.

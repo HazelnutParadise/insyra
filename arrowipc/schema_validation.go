@@ -101,8 +101,8 @@ func validateFieldVector(tab flatbuffers.Table, fieldsSlot, metadataSlot flatbuf
 			return err
 		}
 		// Schema.fbs Type.Timestamp is 10; its timezone is a copied string.
-		if o := field.Offset(6); o != 0 && field.GetByte(field.Pos+flatbuffers.UOffsetT(o)) == 10 {
-			timestamp, err := offsetTable(field, 8)
+		if o := field.Offset(8); o != 0 && field.GetByte(field.Pos+flatbuffers.UOffsetT(o)) == 10 {
+			timestamp, err := offsetTable(field, 10)
 			if err != nil {
 				return err
 			}

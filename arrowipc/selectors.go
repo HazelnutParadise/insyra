@@ -9,21 +9,21 @@ import (
 )
 
 func selectColumns(schema *arrow.Schema, requested []any) ([]selectedColumn, error) {
-	fields := schema.Fields()
+	width := schema.NumFields()
 	if len(requested) == 0 {
-		requested = make([]any, len(fields))
-		for i := range fields {
+		requested = make([]any, width)
+		for i := 0; i < width; i++ {
 			requested[i] = i
 		}
 	}
 	selected := make([]selectedColumn, 0, len(requested))
 	seen := make(map[string]struct{}, len(requested))
 	for _, selector := range requested {
-		index, err := columnIndex(fields, selector)
+		index, err := columnIndex(schema, selector)
 		if err != nil {
 			return nil, err
 		}
-		field := fields[index]
+		field := schema.Field(index)
 		if _, exists := seen[field.Name]; exists {
 			return nil, fmt.Errorf("arrowipc: duplicate or ambiguous selected column %q", field.Name)
 		}
@@ -39,38 +39,33 @@ func selectColumns(schema *arrow.Schema, requested []any) ([]selectedColumn, err
 	return selected, nil
 }
 
-func columnIndex(fields []arrow.Field, selector any) (int, error) {
+func columnIndex(schema *arrow.Schema, selector any) (int, error) {
+	width := schema.NumFields()
 	switch value := selector.(type) {
 	case string:
 		index, ok := utils.ParseColIndex(value)
-		if !ok || index >= len(fields) {
+		if !ok || index < 0 || index >= width {
 			return -1, fmt.Errorf("arrowipc: invalid column index %q; use insyra.Name(%q) for a field name", value, value)
 		}
 		return index, nil
 	case int:
 		index := value
 		if index < 0 {
-			index += len(fields)
+			index += width
 		}
-		if index < 0 || index >= len(fields) {
-			return -1, fmt.Errorf("arrowipc: column position %d out of range for %d fields", value, len(fields))
+		if index < 0 || index >= width {
+			return -1, fmt.Errorf("arrowipc: column position %d out of range for %d fields", value, width)
 		}
 		return index, nil
 	case insyra.NameSelector:
-		index := -1
-		for i, field := range fields {
-			if field.Name != value.Value() {
-				continue
-			}
-			if index >= 0 {
-				return -1, fmt.Errorf("arrowipc: ambiguous selected column %q", value.Value())
-			}
-			index = i
-		}
-		if index < 0 {
+		indices := schema.FieldIndices(value.Value())
+		if len(indices) == 0 {
 			return -1, fmt.Errorf("arrowipc: unknown selected column %q", value.Value())
 		}
-		return index, nil
+		if len(indices) > 1 {
+			return -1, fmt.Errorf("arrowipc: ambiguous selected column %q", value.Value())
+		}
+		return indices[0], nil
 	default:
 		return -1, fmt.Errorf("arrowipc: invalid column selector %T; use an Excel-style index, insyra.Name, or int position", selector)
 	}
