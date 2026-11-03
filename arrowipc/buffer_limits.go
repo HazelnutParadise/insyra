@@ -12,6 +12,7 @@ import (
 )
 
 const defaultMaxBatchBytes int64 = 256 << 20
+const maxBlockEntries = 1 << 16
 
 type ipcBlock struct {
 	offset     int64
@@ -86,15 +87,25 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 	if err := validateSchemaFooter(tab); err != nil {
 		return err
 	}
-	var blocks []ipcBlock
-	for _, slot := range []flatbuffers.VOffsetT{8, 10} {
+	var starts [2]uint64
+	var counts [2]int
+	total := 0
+	for i, slot := range []flatbuffers.VOffsetT{8, 10} {
 		start, n, err := boundedVector(tab, slot, 24)
 		if err != nil {
 			return err
 		}
-		for i := 0; i < n; i++ {
+		if n > maxBlockEntries-total {
+			return fmt.Errorf("arrowipc: native block entry limit %d exceeded", maxBlockEntries)
+		}
+		starts[i], counts[i] = start, n
+		total += n
+	}
+	blocks := make([]ipcBlock, 0, total)
+	for vector, start := range starts {
+		for i := 0; i < counts[vector]; i++ {
 			b := footer[start+uint64(i)*24:]
-			block := ipcBlock{offset: int64(binary.LittleEndian.Uint64(b[:8])), metadata: int(int32(binary.LittleEndian.Uint32(b[8:12]))), body: int64(binary.LittleEndian.Uint64(b[16:24])), dictionary: slot == 8}
+			block := ipcBlock{offset: int64(binary.LittleEndian.Uint64(b[:8])), metadata: int(int32(binary.LittleEndian.Uint32(b[8:12]))), body: int64(binary.LittleEndian.Uint64(b[16:24])), dictionary: vector == 0}
 			if block.offset < 8 || block.metadata < 8 || block.body < 0 || block.offset > r.footerAt || int64(block.metadata) > r.footerAt-block.offset || block.body > r.footerAt-block.offset-int64(block.metadata) {
 				return fmt.Errorf("arrowipc: invalid IPC block extent")
 			}
@@ -107,7 +118,6 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 	// A body offset must never also name another block's metadata. Otherwise
 	// ReadAt's metadata dispatch could bypass the pending body's byte budget.
 	sort.Slice(blocks, func(i, j int) bool { return blocks[i].offset < blocks[j].offset })
-	r.blocks = make(map[int64]ipcBlock, len(blocks))
 	var end int64
 	for _, block := range blocks {
 		if block.offset < end {
@@ -115,6 +125,9 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 		}
 		// The extent checks above prove this sum cannot overflow.
 		end = block.offset + int64(block.metadata) + block.body
+	}
+	r.blocks = make(map[int64]ipcBlock, len(blocks))
+	for _, block := range blocks {
 		r.blocks[block.offset] = block
 	}
 	return nil
@@ -169,12 +182,25 @@ func recordMetadata(data []byte, block ipcBlock) (flatbuffers.Table, error) {
 	if _, _, err := boundedVector(record, 6, 16); err != nil {
 		return flatbuffers.Table{}, err
 	} // FieldNode
-	if _, _, err := boundedVector(record, 8, 16); err != nil {
+	_, buffers, err := boundedVector(record, 8, 16)
+	if err != nil {
 		return flatbuffers.Table{}, err
-	} // Buffer
-	if _, _, err := boundedVector(record, 12, 8); err != nil {
+	}
+	start, counts, err := boundedVector(record, 12, 8)
+	if err != nil {
 		return flatbuffers.Table{}, err
-	} // variadicBufferCounts
+	}
+	if counts > maxMetadataEntries {
+		return flatbuffers.Table{}, fmt.Errorf("arrowipc: variadic buffer count vector exceeds entry limit")
+	}
+	var total int64
+	for i := 0; i < counts; i++ {
+		count := int64(binary.LittleEndian.Uint64(record.Bytes[start+uint64(i)*8:]))
+		if count < 0 || count > int64(buffers)-total || count > int64(maxMetadataEntries)-total {
+			return flatbuffers.Table{}, fmt.Errorf("arrowipc: invalid or excessive variadic buffer count %d", count)
+		}
+		total += count
+	}
 	return record, nil
 }
 

@@ -496,7 +496,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `arrowipc`
 
-- 新增唯讀 `arrowipc` 套件，不讀取 record 或字典內容即可檢查 Arrow IPC file／Feather V2 結構，並以可取消的 Go iterator 讀取選取欄位，支援每批列數、解碼緩衝區與展開後輸出的上限。儲存格沿用 Parquet 的純量對應規則，整數識別碼與空值保留精確內容，字典讀成對應值，不支援的選取型別（如 list）會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。 重疊或重複的 footer 區塊會在讀取資料前被拒絕。 解碼後的中繼資料文字也會逐次計入上限，包含共用位址的文字。 解碼後的結構項目數也有獨立上限，不支援的十進位數 precision／scale 會在建立儲存格前回傳錯誤。
+- 新增唯讀 `arrowipc` 套件，不讀取資料即可檢查 Arrow IPC file／Feather V2 結構，並支援選欄與可取消的 DataTable 分批讀取，原生緩衝區與展開後輸出各有位元組上限。整數識別碼與空值保留精確內容，字典讀成對應值，不支援的選取型別會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。
+- 中繼資料會在配置前限制共用文字、解碼後的結構項目、原生區塊數與 view 緩衝區數量，並拒絕重疊區塊及不支援的十進位數 precision／scale。寬表格建立時會逐欄檢查取消狀態，避免反覆掃描先前欄名。
 
 ## v0.3.3
 

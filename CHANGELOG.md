@@ -497,7 +497,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `arrowipc`
 
-- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without record or dictionary body reads, then reads selected columns through a cancellable Go iterator with row, decoded-buffer and expanded-output bounds. It preserves Parquet scalar cell mappings and exact nullable IDs, decodes dictionary values, and explicitly rejects unsupported selected types such as lists ([#377](https://github.com/HazelnutParadise/insyra/issues/377)). Overlapping or duplicate footer blocks are rejected before data reads. Decoded metadata strings are budgeted per occurrence, including shared offsets. Decoded schema entries are capped independently of wire size, and unsupported decimal precision/scale is rejected before cell construction.
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading data and streams selected columns as cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs and nulls stay exact, dictionaries decode to values, and unsupported selected types return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+- Metadata validation bounds aliased strings, decoded schema entries, native block counts and variadic view buffers before allocation. It rejects overlapping blocks and unsupported decimal precision/scale. Wide table assembly checks cancellation between columns and avoids quadratic name checks.
 
 ## v0.3.3
 
