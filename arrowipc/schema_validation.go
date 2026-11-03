@@ -54,9 +54,13 @@ func validateSchemaFooter(footer flatbuffers.Table) error {
 	}
 	// Repeated references must not expand a tiny footer into an unbounded tree.
 	budget := len(footer.Bytes) / 4
-	return validateFieldVector(schema, 6, 8, 0, &budget)
+	stringsBudget := int64(maxFooterSize)
+	if err := validateKeyValueStrings(footer, 12, &stringsBudget); err != nil {
+		return err
+	}
+	return validateFieldVector(schema, 6, 8, 0, &budget, &stringsBudget)
 }
-func validateFieldVector(tab flatbuffers.Table, fieldsSlot, metadataSlot flatbuffers.VOffsetT, depth int, budget *int) error {
+func validateFieldVector(tab flatbuffers.Table, fieldsSlot, metadataSlot flatbuffers.VOffsetT, depth int, budget *int, stringsBudget *int64) error {
 	if depth > 64 {
 		return fmt.Errorf("arrowipc: schema nesting exceeds 64 levels")
 	}
@@ -75,13 +79,62 @@ func validateFieldVector(tab flatbuffers.Table, fieldsSlot, metadataSlot flatbuf
 	} else {
 		*budget -= metaCount
 	}
+	if err := validateKeyValueStrings(tab, metadataSlot, stringsBudget); err != nil {
+		return err
+	}
 	for i := 0; i < n; i++ {
 		field, err := tableAt(tab.Bytes, start+uint64(i)*4)
 		if err != nil {
 			return err
 		}
-		if err := validateFieldVector(field, 14, 16, depth+1, budget); err != nil {
+		if err := chargeMetadataString(field, 4, stringsBudget); err != nil {
 			return err
+		}
+		// Schema.fbs Type.Timestamp is 10; its timezone is a copied string.
+		if o := field.Offset(6); o != 0 && field.GetByte(field.Pos+flatbuffers.UOffsetT(o)) == 10 {
+			timestamp, err := offsetTable(field, 8)
+			if err != nil {
+				return err
+			}
+			if err := chargeMetadataString(timestamp, 6, stringsBudget); err != nil {
+				return err
+			}
+		}
+		if err := validateFieldVector(field, 14, 16, depth+1, budget, stringsBudget); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Arrow copies metadata strings, even when multiple offsets share wire bytes.
+// Charge each occurrence before decoding, without allocating those strings.
+func chargeMetadataString(tab flatbuffers.Table, slot flatbuffers.VOffsetT, budget *int64) error {
+	_, n, err := boundedVector(tab, slot, 1)
+	if err != nil {
+		return err
+	}
+	if int64(n) > *budget {
+		return fmt.Errorf("arrowipc: decoded metadata strings exceed %d bytes", maxFooterSize)
+	}
+	*budget -= int64(n)
+	return nil
+}
+
+func validateKeyValueStrings(tab flatbuffers.Table, slot flatbuffers.VOffsetT, budget *int64) error {
+	start, n, err := boundedVector(tab, slot, 4)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		entry, err := tableAt(tab.Bytes, start+uint64(i)*4)
+		if err != nil {
+			return err
+		}
+		for _, textSlot := range []flatbuffers.VOffsetT{4, 6} {
+			if err := chargeMetadataString(entry, textSlot, budget); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

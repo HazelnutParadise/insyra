@@ -497,7 +497,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `arrowipc`
 
-- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without record or dictionary body reads, then reads selected columns through a cancellable Go iterator with row, decoded-buffer and expanded-output bounds. It preserves Parquet scalar cell mappings and exact nullable IDs, decodes dictionary values, and explicitly rejects unsupported selected types such as lists ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without record or dictionary body reads, then reads selected columns through a cancellable Go iterator with row, decoded-buffer and expanded-output bounds. It preserves Parquet scalar cell mappings and exact nullable IDs, decodes dictionary values, and explicitly rejects unsupported selected types such as lists ([#377](https://github.com/HazelnutParadise/insyra/issues/377)). Overlapping or duplicate footer blocks are rejected before data reads. Decoded metadata strings are budgeted per occurrence, including shared offsets.
 
 ## v0.3.3
 

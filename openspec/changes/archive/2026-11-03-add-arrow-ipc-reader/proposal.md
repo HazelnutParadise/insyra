@@ -22,4 +22,4 @@ New `arrowipc/` package, `Docs/arrowipc.md`, both README and changelog entry poi
 
 ## Delivery
 
-The owner explicitly requires this change to be archived in each PR before merge. Open one PR to dev and one to 0.4; leave merging to the owner after CI is green and review is clean.
+The owner explicitly requires this change to be archived in each PR before merge. Open one PR to dev and one to 0.4. The owner has now authorized merging both after all CI is green, every review finding is addressed and a fresh review finds no new issues.

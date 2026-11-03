@@ -52,7 +52,7 @@ Checked the installed v18.8.0 `arrow/ipc/file_reader.go`, public `go doc` and of
 
 ## Verification state
 
-Local dev verification passed: go build ./..., go test ./arrowipc ./parquet, go test -race ./arrowipc ./parquet, go vet ./..., golangci-lint run (0 issues), and GOTOOLCHAIN=go1.26.10 govulncheck ./... (0 affected vulnerabilities). Strict change validation passed. Both-line PR checks are pending; no merge is authorized. The original Go 1.26.9 baseline reported existing [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809), fixed in Go 1.26.10. The patched toolchain is available; the module directive remains unchanged.
+Local dev verification passed: go build ./..., go test ./arrowipc ./parquet, go test -race ./arrowipc ./parquet, go vet ./..., golangci-lint run (0 issues), and GOTOOLCHAIN=go1.26.10 govulncheck ./... (0 affected vulnerabilities). Strict change validation passed. At that initial delivery snapshot, both-line PR checks were pending and merging was not authorized. The owner now permits conditional agent merging after green CI and a fresh review with no new issues, with every finding addressed. The original Go 1.26.9 baseline reported existing [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809), fixed in Go 1.26.10. The patched toolchain is available; the module directive remains unchanged.
 
 ## 0.4 port
 
@@ -73,3 +73,13 @@ No total-stream row cap is added. A large logical Null record is handled through
 After these review corrections, 0.4 build, touched-package tests, touched-package race tests, vet, lint (0 issues), strict change/main-spec validation and Go 1.26.10 govulncheck (0 affected vulnerabilities) passed again. Latest-head CI remains authoritative on PR #676.
 
 The final 0.4 probe repeated schema inspection on all three inputs with unchanged byte/range totals. Annotation and neurotransmitter samples succeeded. The first weights attempt received an IPv6 TCP connection-reset error while fetching the record body, which the reader surfaced; a fresh IPv4 probe of weights then succeeded (3 rows, 690,690 total bytes / 10 ranges). No dataset was fully scanned. The retained probe now exits unsuccessfully when no sample is obtained, rather than treating an encoded diagnostic as success.
+
+## Merge-gate overlap correction
+
+The fresh remote security review found that a footer block could start inside another block's metadata or body, letting metadata dispatch take precedence over pending-body validation. Generated small-file regressions first failed for metadata overlap (two tables and one body read before failure), body overlap (one body read), duplicate blocks (four tables and no error), and record/dictionary-body overlap (one body read). The fix validates all dictionary and record extents together before data reads, sorting only an internal copy; all four now fail with an overlap error, zero body reads and zero output tables. Existing valid-file tests continue to pass. No large decoded-length allocation is exercised by these regression inputs.
+
+The overlap correction on 0.4 passed build, go test ./arrowipc ./parquet, touched-package race tests, go vet ./..., golangci-lint (0 issues), strict change/main-spec validation and Go 1.26.10 govulncheck (0 affected vulnerabilities). CI and fresh reviews must cover the final head before merging.
+
+The companion security review also identified aliased metadata strings: Arrow's metadataFromFB converts every key/value to a retained Go string. Three generated small-file regressions (schema metadata, field metadata and field names) first returned no error for 1,025 references to one 64 KiB value. The validator now charges copied strings per occurrence before Arrow decoding, with a 64 MiB aggregate for footer/schema text and separately for each message's custom metadata. The regressions reject the expanded input and require less than 2 MiB of allocation. Field names, timestamp timezones, footer/schema/field key-value maps and message key-value maps share the same bounded string walker.
+
+With both merge-gate corrections applied, 0.4 build, touched-package tests/race, full vet, lint (0 issues), strict change/main-spec validation and Go 1.26.10 govulncheck (0 affected vulnerabilities) passed. Shared metadata strings below the budget remain readable after the caller source is cleared.

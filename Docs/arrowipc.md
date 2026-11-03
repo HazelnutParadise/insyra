@@ -29,7 +29,7 @@ func InspectFrom(ctx context.Context, r io.ReaderAt, size int64) (FileInfo, erro
 
 Inspection fetches only the header, trailer and footer. It never reads record or dictionary values. The full Arrow schema preserves field order, nullability, dictionary index/value types and ordering, nested fields and metadata, even for types the DataTable reader refuses. The footer records the native batch count but no total row count, so `FileInfo` does not report rows. The returned schema remains usable after inspection and needs no `Release`.
 
-`InspectFrom` lets a caller supply an HTTP Range-backed `io.ReaderAt` and the file's total byte size. It does not download or buffer the whole file and does not close the source. Requests depend on footer size, rather than total data size. Inspection limits the footer to 64 MiB and schema nesting to 64 field levels. Invalid vector lengths and references are rejected before schema decoding.
+`InspectFrom` lets a caller supply an HTTP Range-backed `io.ReaderAt` and the file's total byte size. It does not download or buffer the whole file and does not close the source. Requests depend on footer size, rather than total data size. Inspection limits the footer to 64 MiB and schema nesting to 64 field levels. Invalid vector lengths and references are rejected before schema decoding. Decoded field names, timezones and metadata keys/values have a separate 64 MiB aggregate budget per footer/schema; shared wire strings count on every occurrence. Each native message has the same decoded custom-metadata string cap.
 
 ## Read batches
 
@@ -77,7 +77,7 @@ The sequence yields each DataTable with a nil error. A failure yields one `(nil,
 
 Breaking or returning from the range loop cancels and drains internal production before the sequence returns. Cleanup also runs if the caller's loop panics, without swallowing that panic. A nil or already cancelled context yields one error without opening the source. Cancellation is checked around reads, conversion and delivery. An `io.ReaderAt` call already in progress cannot be interrupted by this interface, so a remote reader must bind its HTTP requests to the supplied context; early-loop cleanup waits for an in-flight request to return.
 
-Malformed files, truncated input and unsupported selected types return errors. A record with rows but zero columns also returns an error because a DataTable cannot represent those rows. A file with an unsupported field can still be inspected, and `Columns` can exclude that field.
+Malformed files, truncated input and unsupported selected types return errors. Overlapping or duplicate footer blocks are rejected before reading dictionary or record bodies. A record with rows but zero columns also returns an error because a DataTable cannot represent those rows. A file with an unsupported field can still be inspected, and `Columns` can exclude that field.
 
 ## Cell types
 
