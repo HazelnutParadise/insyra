@@ -24,6 +24,20 @@ ReadOptions.MaxBatchBytes SHALL cap decoded native record buffers plus retained 
 - **WHEN** a compressed buffer declares a decoded length above the budget or dictionary buffers leave insufficient room for a record
 - **THEN** reading fails explicitly before that allocation and no affected table is emitted
 
+### Requirement: Disjoint IPC block extents
+Stream readers SHALL reject overlapping or duplicate footer block extents, across both dictionary and record blocks, before reading native block bodies. Extent validation SHALL include metadata and body bytes, preserve footer record order and allow adjacent non-overlapping blocks.
+
+#### Scenario: Overlapping block dispatch
+- **WHEN** a footer block overlaps another block's metadata or body, or duplicates its extent
+- **THEN** streaming fails explicitly before any body read or table emission
+
+### Requirement: Bounded decoded metadata strings
+Readers SHALL charge schema field names, timestamp timezones and metadata keys/values per decoded occurrence, including aliased wire strings. Footer/schema strings and each message's custom metadata SHALL have a 64 MiB decoded-string budget checked before Arrow decoding. Exceeding the budget SHALL return an explicit error without expanding the strings.
+
+#### Scenario: Shared string offsets amplify decoded metadata
+- **WHEN** many names or metadata entries reference one wire string and their decoded total exceeds the budget
+- **THEN** inspection or streaming rejects the metadata before Arrow copies the strings
+
 ### Requirement: Expanded output budget
 ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 bytes each) and copied string/binary payloads, including expanded dictionary values, before allocation. Zero SHALL use 256 MiB and negative values SHALL error before data reads. Exceeding the limit SHALL return an error without emitting the affected table. This SHALL NOT claim to bound process RSS or total stream rows.
 

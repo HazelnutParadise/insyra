@@ -19,3 +19,7 @@ None.
 ## Impact
 
 New `arrowipc/` package, `Docs/arrowipc.md`, both README and changelog entry points, docs index and allpkgs registration. No dependency, Go directive, existing API, CLI or writer changes. Manual MaleCNS range probes are evidence only and never CI inputs.
+
+## Delivery
+
+The owner explicitly requires this change to be archived in each PR before merge. Open one PR to dev and one to 0.4. The owner has now authorized merging both after all CI is green, every review finding is addressed and a fresh review finds no new issues.

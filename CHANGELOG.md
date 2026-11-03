@@ -107,7 +107,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `arrowipc`
 
-- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading record or dictionary bodies, and streams selected columns as bounded, cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs remain exact, nulls remain nil, dictionary values follow Parquet cell mappings, and unsupported selected types (including lists) return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading record or dictionary bodies, and streams selected columns as bounded, cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs remain exact, nulls remain nil, dictionary values follow Parquet cell mappings, and unsupported selected types (including lists) return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)). Overlapping or duplicate footer blocks are rejected before data reads. Decoded metadata strings are also bounded per occurrence, including shared wire offsets.
 
 ## v0.3.5
 

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -85,7 +86,7 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 	if err := validateSchemaFooter(tab); err != nil {
 		return err
 	}
-	r.blocks = make(map[int64]ipcBlock)
+	var blocks []ipcBlock
 	for _, slot := range []flatbuffers.VOffsetT{8, 10} {
 		start, n, err := boundedVector(tab, slot, 24)
 		if err != nil {
@@ -100,11 +101,21 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 			if int64(block.metadata) > maxFooterSize || block.body > defaultMaxBatchBytes {
 				return fmt.Errorf("arrowipc: encoded IPC message exceeds Arrow size limits")
 			}
-			if prior, ok := r.blocks[block.offset]; ok && prior != block {
-				return fmt.Errorf("arrowipc: conflicting IPC blocks at offset %d", block.offset)
-			}
-			r.blocks[block.offset] = block
+			blocks = append(blocks, block)
 		}
+	}
+	// A body offset must never also name another block's metadata. Otherwise
+	// ReadAt's metadata dispatch could bypass the pending body's byte budget.
+	sort.Slice(blocks, func(i, j int) bool { return blocks[i].offset < blocks[j].offset })
+	r.blocks = make(map[int64]ipcBlock, len(blocks))
+	var end int64
+	for _, block := range blocks {
+		if block.offset < end {
+			return fmt.Errorf("arrowipc: overlapping IPC blocks at offset %d", block.offset)
+		}
+		// The extent checks above prove this sum cannot overflow.
+		end = block.offset + int64(block.metadata) + block.body
+		r.blocks[block.offset] = block
 	}
 	return nil
 }
@@ -141,7 +152,8 @@ func recordMetadata(data []byte, block ipcBlock) (flatbuffers.Table, error) {
 	if bodyLen != block.body {
 		return flatbuffers.Table{}, fmt.Errorf("arrowipc: IPC body length differs from footer")
 	}
-	if _, _, err := boundedVector(message, 12, 4); err != nil {
+	stringsBudget := int64(maxFooterSize)
+	if err := validateKeyValueStrings(message, 12, &stringsBudget); err != nil {
 		return flatbuffers.Table{}, err
 	}
 	record, err := offsetTable(message, 8)
