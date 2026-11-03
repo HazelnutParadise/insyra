@@ -59,7 +59,7 @@ func TestOverlappingIPCBlocksFailBeforeBodyReads(t *testing.T) {
 				binary.LittleEndian.PutUint64(second[16:24], 0)
 			}
 			source := &watchedIPCBody{Reader: bytes.NewReader(data), start: bodyAt, end: bodyAt + body}
-			tables, errs := streamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 3)
+			tables, errs := arrowipc.StreamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 3)
 			got, err := drain(t, tables, errs)
 			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "overlapping IPC blocks") || source.reads != 0 {
 				t.Fatalf("%s: %d tables, %d body reads, error %v", kind, len(got), source.reads, err)
