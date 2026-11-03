@@ -18,8 +18,14 @@ func supportedCellType(dt arrow.DataType) bool {
 		arrow.FLOAT32, arrow.FLOAT64, arrow.BOOL, arrow.STRING, arrow.LARGE_STRING,
 		arrow.BINARY, arrow.LARGE_BINARY, arrow.FIXED_SIZE_BINARY,
 		arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64, arrow.DURATION,
-		arrow.DECIMAL128, arrow.DECIMAL256, arrow.NULL:
+		arrow.NULL:
 		return true
+	case arrow.DECIMAL128:
+		t := dt.(*arrow.Decimal128Type)
+		return t.Precision >= 1 && t.Precision <= 38 && t.Scale >= 0 && t.Scale <= t.Precision
+	case arrow.DECIMAL256:
+		t := dt.(*arrow.Decimal256Type)
+		return t.Precision >= 1 && t.Precision <= 76 && t.Scale >= 0 && t.Scale <= t.Precision
 	case arrow.DICTIONARY:
 		return supportedCellType(dt.(*arrow.DictionaryType).ValueType)
 	default:

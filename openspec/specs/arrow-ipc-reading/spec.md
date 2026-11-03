@@ -38,6 +38,20 @@ Readers SHALL charge schema field names, timestamp timezones and metadata keys/v
 - **WHEN** many names or metadata entries reference one wire string and their decoded total exceeds the budget
 - **THEN** inspection or streaming rejects the metadata before Arrow copies the strings
 
+### Requirement: Bounded decoded schema entries
+Readers SHALL reject a footer/schema with more than 65,536 total decoded field and metadata-entry occurrences before Arrow allocation. Repeated references SHALL count separately. Each native message custom-metadata map SHALL also be limited to 65,536 entries, independently of wire size and string bytes.
+
+#### Scenario: Shared empty field offsets
+- **WHEN** a bounded footer repeats one empty-name scalar field or metadata table more than the decoded entry limit
+- **THEN** inspection and streaming reject it before Arrow materializes the expanded objects
+
+### Requirement: Supported decimal parameters
+Selected Decimal128 and Decimal256 columns SHALL use precision 1..38 and 1..76 respectively and scale 0..precision, matching Parquet's decimal parameter range. Other parameters SHALL return an explicit unsupported-column error before cell construction, including dictionary value types. Inspection SHALL preserve the original decimal schema.
+
+#### Scenario: Extreme or negative decimal scale
+- **WHEN** a selected decimal has an excessive or negative scale, or precision beyond its storage width
+- **THEN** streaming returns an error naming the column and type without emitting a cell or formatting its value
+
 ### Requirement: Expanded output budget
 ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 bytes each) and copied string/binary payloads, including expanded dictionary values, before allocation. Zero SHALL use 256 MiB and negative values SHALL error before data reads. Exceeding the limit SHALL return an error without emitting the affected table. This SHALL NOT claim to bound process RSS or total stream rows.
 
