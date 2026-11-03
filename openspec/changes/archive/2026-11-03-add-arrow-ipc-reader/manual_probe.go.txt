@@ -1,0 +1,132 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	json "github.com/goccy/go-json"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/HazelnutParadise/insyra/arrowipc"
+)
+
+type source struct {
+	ctx          context.Context
+	url          string
+	size         int64
+	mu           sync.Mutex
+	calls, bytes int64
+}
+
+func (s *source) ReadAt(p []byte, off int64) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	req, err := http.NewRequestWithContext(s.ctx, http.MethodGet, s.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))-1))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("expected 206, got %s", resp.Status)
+	}
+	want := fmt.Sprintf("bytes %d-%d/%d", off, off+int64(len(p))-1, s.size)
+	if resp.Header.Get("Content-Range") != want {
+		return 0, fmt.Errorf("bad Content-Range: %s", resp.Header.Get("Content-Range"))
+	}
+	n, err := io.ReadFull(resp.Body, p)
+	s.mu.Lock()
+	s.calls++
+	s.bytes += int64(n)
+	s.mu.Unlock()
+	return n, err
+}
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+func run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	base := "https://storage.googleapis.com/flyem-male-cns/v1.0/connectome-data/flat-connectome/"
+	files := []struct {
+		name    string
+		columns []string
+	}{
+		{"connectome-weights-male-cns-v1.0-minconf-0.5.feather", []string{"body_pre", "body_post", "weight"}},
+		{"body-annotations-male-cns-v1.0-minconf-0.5.feather", []string{"bodyId", "statusLabel"}},
+		{"body-neurotransmitters-male-cns-v1.0.feather", []string{"body", "total_nt_predictions", "predicted_nt_confidence", "predicted_nt"}},
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	for _, f := range files {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, base+f.name, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("HEAD %s: %s", f.name, resp.Status)
+		}
+		size, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+		if err != nil {
+			return err
+		}
+		s := &source{ctx: ctx, url: base + f.name, size: size}
+		info, err := arrowipc.InspectFrom(ctx, s, size)
+		if err != nil {
+			return fmt.Errorf("inspect %s: %w", f.name, err)
+		}
+		fields := []map[string]any{}
+		for _, field := range info.Schema.Fields() {
+			fields = append(fields, map[string]any{"name": field.Name, "type": field.Type.String(), "nullable": field.Nullable})
+		}
+		result := map[string]any{"file": f.name, "size": size, "etag": resp.Header.Get("ETag"), "version": info.Version, "batches": info.NumBatches, "inspect_requests": s.calls, "inspect_bytes": s.bytes, "fields": fields}
+		rctx, rcancel := context.WithCancel(ctx)
+		s.ctx = rctx
+		tables, errs := arrowipc.StreamFrom(rctx, s, size, arrowipc.ReadOptions{Columns: f.columns}, 3)
+		if dt, ok := <-tables; ok {
+			result["sample_columns"] = f.columns
+			nr, nc := dt.Size()
+			result["sample_shape"] = []int{nr, nc}
+			cells := map[string]any{}
+			for _, name := range f.columns {
+				col := dt.GetColByName(name)
+				vals := []map[string]any{}
+				for i := 0; i < col.Len(); i++ {
+					v := col.Get(i)
+					vals = append(vals, map[string]any{"type": fmt.Sprintf("%T", v), "value": v})
+				}
+				cells[name] = vals
+			}
+			result["sample"] = cells
+		}
+		rcancel()
+		for range tables {
+		}
+		if e := <-errs; e != nil {
+			result["terminal_error"] = e.Error()
+		}
+		result["total_requests"] = s.calls
+		result["total_bytes"] = s.bytes
+		if err := enc.Encode(result); err != nil {
+			return err
+		}
+		if _, ok := result["sample"]; !ok {
+			return fmt.Errorf("no sample from %s: %v", f.name, result["terminal_error"])
+		}
+	}
+	return nil
+}

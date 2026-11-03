@@ -458,6 +458,7 @@ How a cell treats a decimal (it sorts by value, but `Mean` and `Sum` need it con
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
+| **[arrowipc](/Docs/arrowipc.md)** | Read-only Arrow IPC file / Feather V2 schema inspection and cancellable DataTable batch reading. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |
 | **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. |
 | **[quant](/Docs/quant.md)** | Quantitative finance for strategy/backtest evaluation: Sharpe ratio, VaR/CVaR, Sortino and Calmar ratios, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward validation, block-bootstrap path simulation with percentile bands, and mean-variance portfolio optimization with an efficient-frontier sweep. |
