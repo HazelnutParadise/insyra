@@ -174,6 +174,11 @@ func recordMetadata(data []byte, block ipcBlock) (flatbuffers.Table, error) {
 		return flatbuffers.Table{}, err
 	}
 	if block.dictionary {
+		// Arrow concatenates delta dictionaries before per-table output checks.
+		// Refuse this encoding before its body can reach the native decoder.
+		if o := record.Offset(8); o != 0 && record.GetBool(record.Pos+flatbuffers.UOffsetT(o)) {
+			return flatbuffers.Table{}, fmt.Errorf("arrowipc: dictionary delta messages are unsupported")
+		}
 		record, err = offsetTable(record, 6)
 		if err != nil {
 			return flatbuffers.Table{}, err

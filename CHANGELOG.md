@@ -108,7 +108,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `arrowipc`
 
 - Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading data and streams selected columns as cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs and nulls stay exact, dictionaries decode to values, and unsupported selected types return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
-- Metadata validation bounds aliased strings, decoded schema entries, native block counts and variadic view buffers before allocation. It rejects overlapping blocks and unsupported decimal precision/scale. Wide table assembly checks cancellation between columns and avoids quadratic name checks.
+- Metadata validation bounds aliased strings, decoded schema entries, native block counts and variadic view buffers before allocation. It rejects overlapping blocks and unsupported decimal precision/scale. Wide table assembly checks cancellation between columns and uses indexed name selection and construction without quadratic name scans.
+- Dictionary delta messages are explicitly unsupported before their body is fetched, including unselected columns; schema inspection and ordinary dictionaries remain available.
 
 ## v0.3.5
 

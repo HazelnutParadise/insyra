@@ -167,19 +167,14 @@ func selectColumns(schema *arrow.Schema, requested []string) ([]selectedColumn, 
 		}
 		requestedNames[name] = struct{}{}
 
-		index := -1
-		for i, field := range fields {
-			if field.Name != name {
-				continue
-			}
-			if index >= 0 {
-				return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", name)
-			}
-			index = i
-		}
-		if index < 0 {
+		indices := schema.FieldIndices(name)
+		if len(indices) == 0 {
 			return nil, fmt.Errorf("arrowipc: unknown selected column %q", name)
 		}
+		if len(indices) > 1 {
+			return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", name)
+		}
+		index := indices[0]
 		field := fields[index]
 		if err := checkExtension(field); err != nil {
 			return nil, err
