@@ -76,9 +76,9 @@ func readConnections(ctx context.Context, path string) error {
 
 Drain the table channel before reading the terminal error channel. A successful stream closes the error channel without a value, so `<-errs` is nil. A failed stream sends one error to its buffered error channel and closes both channels. An error after earlier batches does not undo those batches.
 
-If processing stops early, cancel the supplied context. To wait for cleanup, drain the table channel and then receive from the error channel. Cancellation is checked around reads, conversion and delivery. A nil context is an error. An `io.ReaderAt` call already in progress cannot be interrupted by this interface, so a remote reader must bind its HTTP requests to the same context.
+If processing stops early, cancel the supplied context. To wait for cleanup, drain the table channel and then receive from the error channel. Cancellation is checked around reads, conversion and delivery, and between columns during table assembly. Wide tables avoid repeated name-collision scans while preserving selected names and order. A nil context is an error. An `io.ReaderAt` call already in progress cannot be interrupted by this interface, so a remote reader must bind its HTTP requests to the same context.
 
-Malformed files, truncated input and unsupported selected types return errors. Overlapping or duplicate footer blocks are rejected before reading dictionary or record bodies. A record with rows but zero columns also returns an error because a DataTable cannot represent those rows. A file with an unsupported field can still be inspected, and `Columns` can exclude that field.
+Malformed files, truncated input and unsupported selected types return errors. Overlapping or duplicate footer blocks are rejected before reading dictionary or record bodies. Streaming permits at most 65,536 total dictionary/record blocks, checked before building or sorting their metadata. Variadic view-buffer counts are validated even in unselected fields: their vector and sum are limited to 65,536, counts cannot be negative and their sum cannot exceed the native buffer entries. A record with rows but zero columns also returns an error because a DataTable cannot represent those rows. A file with an unsupported field can still be inspected, and `Columns` can exclude that field.
 
 ## Cell types
 

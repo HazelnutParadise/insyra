@@ -222,8 +222,19 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 		if err := checkOutputBudget(ctx, record, selected, start, end, maxOutput); err != nil {
 			return err
 		}
-		columns := make([]*insyra.DataList, 0, len(selected))
-		for _, column := range selected {
+		// AppendCols scans prior names for each named column. Bootstrap with
+		// empty unnamed columns, then replace by position: selection already
+		// established unique names, and UpdateColByNumber owns a data copy.
+		columns := make([]*insyra.DataList, len(selected))
+		empty := insyra.NewDataList()
+		for i := range columns {
+			columns[i] = empty
+		}
+		if err := checkContext(ctx); err != nil {
+			return err
+		}
+		table := insyra.NewDataTable(columns...)
+		for i, column := range selected {
 			if err := checkContext(ctx); err != nil {
 				return err
 			}
@@ -245,9 +256,8 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 				}
 				values[int(row-start)] = value
 			}
-			columns = append(columns, insyra.NewDataList().Append(values...).SetName(column.field.Name))
+			table.UpdateColByNumber(i, insyra.NewDataList().Append(values...).SetName(column.field.Name))
 		}
-		table := insyra.NewDataTable(columns...)
 		if err := checkContext(ctx); err != nil {
 			return err
 		}

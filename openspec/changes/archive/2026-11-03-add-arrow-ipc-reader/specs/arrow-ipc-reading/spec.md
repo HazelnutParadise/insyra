@@ -49,6 +49,27 @@ Selected Decimal128 and Decimal256 columns SHALL use precision 1..38 and 1..76 r
 - **WHEN** a selected decimal has an excessive or negative scale, or precision beyond its storage width
 - **THEN** streaming returns an error naming the column and type without emitting a cell or formatting its value
 
+### Requirement: Cancellable wide table construction
+Readers SHALL construct output tables without scanning all earlier column names for every selected field. They SHALL use already validated unique names, preserve order and cell ownership, and check Context while filling columns. Wide schemas within the inspection limits SHALL remain readable without an additional selected-column count cap.
+
+#### Scenario: Wide null record with cancellation
+- **WHEN** a generated record has 65,536 uniquely named Null columns and reading has a short deadline
+- **THEN** reading completes with all names and nulls intact or terminates promptly with cancellation, without entering quadratic name collision checks
+
+### Requirement: Bounded native footer block entries
+Stream readers SHALL cap the aggregate dictionary and record block count at 65,536 before allocating, appending or sorting decoded block entries. Shared vectors SHALL count at every occurrence. Exceeding this limit SHALL fail before native body reads; inspection MAY report the larger batch count without materializing block entries.
+
+#### Scenario: Dictionary and record vectors share block entries
+- **WHEN** dictionary and record vectors each pass wire bounds but their combined entry count exceeds 65,536
+- **THEN** streaming rejects the count before constructing the decoded block collection or reading a body
+
+### Requirement: Bounded variadic view-buffer counts
+Stream readers SHALL validate variadic view-buffer counts before native allocation and body reads, including unselected fields. Counts SHALL be nonnegative, their vector and aggregate SHALL not exceed 65,536, and their aggregate SHALL not exceed the message's declared buffer entries. Invalid counts SHALL produce an explicit error.
+
+#### Scenario: Unselected view requests excessive buffers
+- **WHEN** an unselected StringView field declares negative or excessive variadic buffers
+- **THEN** reading selected scalar columns fails before body reads or Arrow allocation, while a valid unselected view remains readable
+
 ### Requirement: Expanded output budget
 ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 bytes each) and copied string/binary payloads, including expanded dictionary values, before allocation. Zero SHALL use 256 MiB and negative values SHALL error before data reads. Exceeding the limit SHALL return an error without emitting the affected table. This SHALL NOT claim to bound process RSS or total stream rows.
 
