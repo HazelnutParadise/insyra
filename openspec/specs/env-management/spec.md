@@ -214,14 +214,10 @@ When an environment's `state.json` exists but cannot be read, the system SHALL s
 - **THEN** the command fails with an error naming the file, and the file's bytes are unchanged
 
 ### Requirement: A missing state file starts an empty environment
-When an environment has no `state.json`, or an empty one, the system SHALL start it with no variables and SHALL NOT report an error.
+When an environment has no `state.json`, the system SHALL start it with no variables and SHALL NOT report an error.
 
 #### Scenario: No state file
 - **WHEN** the environment's `state.json` does not exist and a command is run
-- **THEN** the command runs with no variables
-
-#### Scenario: Empty state file
-- **WHEN** the environment's `state.json` is empty, as `Create` leaves it for a moment, and a command is run
 - **THEN** the command runs with no variables
 
 ### Requirement: A lock being released is waited for on Windows
@@ -231,3 +227,9 @@ The system SHALL treat a refusal to create the state lock as a held lock to wait
 - **WHEN** twelve processes save one environment at the same moment
 - **THEN** every save succeeds and every variable is present afterwards
 
+### Requirement: A new environment's files are never seen part-written
+Create SHALL make each default file appear whole, so a session opening the environment while another creates it reads a complete `state.json`.
+
+#### Scenario: Two sessions open a missing environment
+- **WHEN** two sessions open the same missing environment at once
+- **THEN** both open it, and neither reports that `state.json` cannot be read

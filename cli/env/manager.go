@@ -575,7 +575,7 @@ func writeDefaultFiles(envPath string) error {
 		{"config.json", "{}\n", 0o644},
 	}
 	for _, f := range files {
-		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
+		err := createWhole(filepath.Join(envPath, f.name), f.data, f.perm)
 		if errors.Is(err, fs.ErrExist) {
 			info, statErr := os.Lstat(filepath.Join(envPath, f.name))
 			if statErr != nil {
@@ -588,14 +588,6 @@ func writeDefaultFiles(envPath string) error {
 		}
 		if err != nil {
 			return err
-		}
-		_, writeErr := handle.WriteString(f.data)
-		closeErr := handle.Close()
-		if writeErr != nil {
-			return writeErr
-		}
-		if closeErr != nil {
-			return closeErr
 		}
 	}
 	return nil
@@ -681,4 +673,42 @@ func Export(name, outputPath string) error { return defaultManager.Export(name, 
 // Deprecated: use Default().Import instead. Removed in 0.4.
 func Import(inputPath, targetName string, force bool) (string, error) {
 	return defaultManager.Import(inputPath, targetName, force)
+}
+
+// createWhole creates path holding data, failing with fs.ErrExist when it is
+// already there. A reader never sees the file part-written: data goes to a
+// temporary file first, which is then linked into place. On a file system
+// without hard links it falls back to writing the file in place.
+func createWhole(path, data string, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	_, writeErr := tmp.WriteString(data)
+	closeErr := tmp.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return err
+	}
+	linkErr := os.Link(tmpPath, path)
+	if linkErr == nil || errors.Is(linkErr, fs.ErrExist) {
+		return linkErr
+	}
+	handle, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	_, writeErr = handle.WriteString(data)
+	closeErr = handle.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
 }

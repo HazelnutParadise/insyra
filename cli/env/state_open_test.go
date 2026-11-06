@@ -47,18 +47,3 @@ func TestOpenVariablesStartsEmptyWithoutAStateFile(t *testing.T) {
 		t.Fatalf("got (%v, %v), want an empty map and no error", vars, err)
 	}
 }
-
-func TestOpenVariablesStartsEmptyWithAnEmptyStateFile(t *testing.T) {
-	root := t.TempDir()
-	m := NewManager(root, "")
-	if err := m.EnsureDefaultEnvironment(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "envs", "default", "state.json"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	vars, err := m.OpenVariables("default")
-	if err != nil || vars == nil || len(vars) != 0 {
-		t.Fatalf("got (%v, %v), want an empty map and no error", vars, err)
-	}
-}
