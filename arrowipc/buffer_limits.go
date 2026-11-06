@@ -35,7 +35,7 @@ type bufferLimitedSource struct {
 	size            int64
 	limit           int64
 	footerAt        int64
-	blocks          map[int64]ipcBlock
+	blocks          []ipcBlock // sorted by offset
 	pending         *pendingBody
 	dictionaryBytes int64
 }
@@ -63,7 +63,7 @@ func (r *bufferLimitedSource) ReadAt(p []byte, off int64) (n int, err error) {
 		r.footerAt = r.size - 10 - length
 	} else if off == r.footerAt && r.footerAt > 0 {
 		err = r.readBlocks(p)
-	} else if block, ok := r.blocks[off]; ok {
+	} else if block, ok := r.blockAt(off); ok {
 		if len(p) != block.metadata {
 			return n, fmt.Errorf("arrowipc: unexpected IPC metadata read length")
 		}
@@ -128,11 +128,19 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 		// The extent checks above prove this sum cannot overflow.
 		end = block.offset + int64(block.metadata) + block.body
 	}
-	r.blocks = make(map[int64]ipcBlock, len(blocks))
-	for _, block := range blocks {
-		r.blocks[block.offset] = block
-	}
+	// The sorted slice is the lookup table: a map would cost about three
+	// times as much for the millions of blocks a 64 MiB footer can list.
+	r.blocks = blocks
 	return nil
+}
+
+// blockAt returns the block whose metadata starts at off.
+func (r *bufferLimitedSource) blockAt(off int64) (ipcBlock, bool) {
+	i := sort.Search(len(r.blocks), func(i int) bool { return r.blocks[i].offset >= off })
+	if i < len(r.blocks) && r.blocks[i].offset == off {
+		return r.blocks[i], true
+	}
+	return ipcBlock{}, false
 }
 
 func recordMetadata(data []byte, block ipcBlock) (flatbuffers.Table, error) {
