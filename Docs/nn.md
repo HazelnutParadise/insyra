@@ -655,8 +655,9 @@ if err := tape.SGDMomentum(0.01, 0.9); err != nil { log.Fatal(err) }
 `initialRate*(1+cos(pi*step/tMax))/2`, with `LR(0)` equal to the initial
 rate. Read the scheduled rate before the optimizer step, then advance the
 schedule after it, matching `torch.optim.lr_scheduler.CosineAnnealingLR`.
-`ClipGradNorm(maxNorm)` computes one global L2 norm over all tracked gradients,
-scales every gradient when needed, and returns the pre-clip norm.
+`ClipGradNorm(maxNorm)` computes one global L2 norm over the gradients of the
+parameters that are not frozen, scales those gradients when needed, and returns
+the pre-clip norm. A frozen parameter's gradient takes no part and is not scaled.
 
 Dropout is a training wrapper using the tape-owned seeded RNG. Use
 `nn.NewTape(seed)` when a reproducible mask is needed; kept values are scaled
@@ -897,8 +898,10 @@ func resumeCheckpoint(weights, state []byte) (*nn.Tape, *nn.Sequential, error) {
 }
 ```
 
-For rounded training, set `accel.PrecisionFloat32Rounded` on the new tape before
-loading. A saved precision that differs from the target tape is refused.
+For rounded training, set `accel.PrecisionFloat32Rounded` or
+`accel.PrecisionFloat32` on the new tape before loading. Those two run the same
+Adam, so either reads a file the other saved; a file from an exact tape and one
+from a float32 tape are refused by the other.
 Resident Adam/AdamW moments are read back for saving and uploaded into new
 buffers for restoration. Rounded checkpoints can move between host and device.
 For custom resident loops, save each parameter's `Value().ToHost()` with
@@ -909,9 +912,11 @@ Momentum SGD remains host-only.
 Adam and AdamW share the same moments and step counter. Momentum velocity is a
 separate slot, so switching between those optimizers preserves both histories.
 Loading uninitialized slots removes old optimizer state. Loading never changes
-weights, gradients, graph history, Clear policy or freeze settings. RNG state,
-dropout masks, batch order, schedules, hyperparameters and custom optimizer
-state must be checkpointed by the caller when needed. In the default precision,
+weights, gradients, graph history or freeze settings. Batch order, schedules,
+hyperparameters and custom optimizer state must be checkpointed by the caller
+when needed. The random numbers `Tape.Dropout` draws cannot be resumed: a resumed
+tape starts its masks again from its seed, so a run that uses dropout does not
+continue bit for bit. In the default precision,
 continuation promises identical bits under the same arithmetic/platform; the
 rounded built-in path also defines identical host/device arithmetic.
 
@@ -933,27 +938,27 @@ exactly that payload and at most one extra byte to reject trailing input, then
 decodes it without buffering a second copy of the whole file. Existing writer
 output fits these limits; unusually large extra metadata or padding may not.
 
-#### Optimizer-state format, version 1
+#### Optimizer-state format, version 2
 
 The file is a deterministic [SafeTensors file](https://github.com/safetensors/safetensors#format).
-All descriptors and counters use binary I64, and moments/velocity use binary
-little-endian F32. Float values never pass through JSON numbers. For each
-parameter, `P` is its UTF-8 name encoded with Go's
-`base64.RawURLEncoding`, with no padding; `/` separates it from the slot name.
+Its header's `__metadata__` holds `insyra.optimizer_state.version` (`"2"`) and
+`insyra.optimizer_state.precision` (`"exact"`, or `"float32"` for both
+`Float32` and `Float32Rounded`). Load reads the version before anything else,
+so a file from a newer release is reported as an unsupported version. Steps
+use binary I64, and moments/velocity use binary little-endian F32. Float values
+never pass through JSON numbers. For each parameter, `P` is its UTF-8 name
+encoded with Go's `base64.RawURLEncoding`, with no padding; `/` separates it
+from the slot name.
 
 | Tensor key | Dtype and shape | Meaning |
 | --- | --- | --- |
-| `version` | I64 scalar | `1` |
-| `precision` | I64 scalar | `0`: Exact; `1`: Float32Rounded; `2`: Float32 for caller kernels |
 | `P/shape` | I64 vector of length rank | Parameter's internal dimensions, including an empty vector for a scalar |
-| `P/dtype` | I64 scalar | `0`: float32, the only trainable dtype |
-| `P/step` | I64 `[2]` | Adam step as low then high unsigned 32-bit limbs |
+| `P/step` | I64 scalar | Adam step, from 0 through 9223372036854775807 |
 | `P/adam_m`, `P/adam_v` | F32, parameter shape | First and second moments, present together when step is positive |
 | `P/velocity` | F32, parameter shape | Optional momentum state |
 
-Every parameter has shape/dtype/step descriptors, even before its first update.
-Absent moments require step zero. Each step limb is in `0..4294967295`; the
-combined value must be less than `18446744073709551615` so a next step exists.
+Every parameter has shape and step tensors, even before its first update.
+Absent moments require step zero.
 Every stored state value must be finite and second moments must be nonnegative.
 F16/BF16 wire tensors are refused rather than widened. Moments use the layout
 of `Parameter.Value()`, including Dense's internal `[in,out]`, without the
@@ -961,22 +966,23 @@ transpose used by `Sequential.SaveWeights`.
 
 #### Clearing graphs and freezing parameters
 
-`tape.Clear()` already discards recorded operations while preserving parameter
-values and optimizer state. It clears gradients by default. Configure future
-calls when the last parameter gradients should remain usable:
+`tape.Clear()` discards recorded operations while preserving parameter values
+and optimizer state, and discards the gradients too. Pass `ClearOptions` to a
+call that should keep the last parameter gradients usable:
 
 ```go
-tape.SetClearOptions(nn.ClearOptions{KeepGradients: true})
-tape.Clear() // releases graph history and intermediate gradients
+tape.Clear(nn.ClearOptions{KeepGradients: true}) // releases graph history and intermediate gradients
 // Parameter.Grad and the tape's optimizers still see the parameter gradients.
-tape.SetClearOptions(nn.ClearOptions{}) // later Clear calls discard all gradients
+tape.Clear() // discards all gradients
 ```
 
-`GetClearOptions()` reports the policy. Retention does not accumulate gradients
-across Backward calls: the next successful Backward replaces them. A retained
-gradient reused as an input to a later graph stays alive through repeated
-Backward calls on that graph, and is released when Clear discards its last use.
-Close always releases retained device gradients, regardless of policy.
+The options apply to that call only. More than one options value clears
+everything and makes the tape unusable: every later `Param`, `Backward` and
+`BackwardFrom` returns that error. Retention does not
+accumulate gradients across Backward calls: the next successful Backward
+replaces them. A retained gradient reused as an input to a later graph stays
+alive through repeated Backward calls on that graph, and is released when Clear
+discards its last use. Close always releases retained device gradients.
 
 `parameter.SetFrozen(true)` makes every built-in optimizer skip that parameter,
 including stale momentum and AdamW weight decay. `GetFrozen()` reports the flag.

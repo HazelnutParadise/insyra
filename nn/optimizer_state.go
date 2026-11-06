@@ -115,16 +115,22 @@ func optimizerStateTargets(t *Tape, named map[string]*Parameter) ([]optimizerSta
 	return targets, nil
 }
 
-func optimizerStatePrecisionCode(precision accel.Precision) (int64, error) {
+const (
+	optimizerStateVersionKey   = "insyra.optimizer_state.version"
+	optimizerStatePrecisionKey = "insyra.optimizer_state.precision"
+	optimizerStateVersion      = "2"
+)
+
+// optimizerStatePrecision names the Adam arithmetic a tape runs. Float32 and
+// Float32Rounded run the same rounded Adam, so their checkpoints are one kind.
+func optimizerStatePrecision(precision accel.Precision) (string, error) {
 	switch precision {
 	case "", accel.PrecisionExact:
-		return 0, nil
-	case accel.PrecisionFloat32Rounded:
-		return 1, nil
-	case accel.PrecisionFloat32:
-		return 2, nil
+		return "exact", nil
+	case accel.PrecisionFloat32Rounded, accel.PrecisionFloat32:
+		return "float32", nil
 	default:
-		return 0, fmt.Errorf("optimizer state: unsupported tape precision %q", precision)
+		return "", fmt.Errorf("optimizer state: unsupported tape precision %q", precision)
 	}
 }
 
@@ -171,8 +177,8 @@ func optimizerStateReadSlots(target optimizerStateTarget) (optimizerStateSlots, 
 	parameter := target.parameter
 	count := parameter.value.Len()
 	slots := optimizerStateSlots{step: parameter.adamStep}
-	if slots.step == math.MaxUint64 {
-		return optimizerStateSlots{}, fmt.Errorf("optimizer state: parameter %q has a maximal step with no representable next step", target.name)
+	if slots.step > math.MaxInt64 {
+		return optimizerStateSlots{}, fmt.Errorf("optimizer state: parameter %q has a step above %d, which the file cannot hold", target.name, int64(math.MaxInt64))
 	}
 
 	if parameter.adamMDev != nil || parameter.adamVDev != nil {
@@ -253,21 +259,12 @@ func (t *Tape) SaveOptimizerState(w io.Writer, named map[string]*Parameter) erro
 	if err != nil {
 		return err
 	}
-	precision, err := optimizerStatePrecisionCode(t.GetPrecision())
+	precision, err := optimizerStatePrecision(t.GetPrecision())
 	if err != nil {
 		return err
 	}
 
 	tensors := map[string]*Tensor{}
-	version, err := optimizerStateIntTensor(nil, []int64{1})
-	if err != nil {
-		return fmt.Errorf("optimizer state: create version descriptor: %w", err)
-	}
-	precisionTensor, err := optimizerStateIntTensor(nil, []int64{precision})
-	if err != nil {
-		return fmt.Errorf("optimizer state: create precision descriptor: %w", err)
-	}
-	tensors["version"], tensors["precision"] = version, precisionTensor
 
 	for _, target := range targets {
 		parameter := target.parameter
@@ -280,23 +277,16 @@ func (t *Tape) SaveOptimizerState(w io.Writer, named map[string]*Parameter) erro
 		if err != nil {
 			return fmt.Errorf("optimizer state: create %q shape descriptor: %w", target.name, err)
 		}
-		dtype, err := optimizerStateIntTensor(nil, []int64{0})
-		if err != nil {
-			return fmt.Errorf("optimizer state: create %q dtype descriptor: %w", target.name, err)
-		}
-		step, err := optimizerStateIntTensor([]int{2}, []int64{
-			int64(uint32(parameter.adamStep)),
-			int64(uint32(parameter.adamStep >> 32)),
-		})
-		if err != nil {
-			return fmt.Errorf("optimizer state: create %q step descriptor: %w", target.name, err)
-		}
-		tensors[prefix+"shape"], tensors[prefix+"dtype"], tensors[prefix+"step"] = shape, dtype, step
-
 		slots, err := optimizerStateReadSlots(target)
 		if err != nil {
 			return err
 		}
+		step, err := optimizerStateIntTensor(nil, []int64{int64(slots.step)})
+		if err != nil {
+			return fmt.Errorf("optimizer state: create %q step descriptor: %w", target.name, err)
+		}
+		tensors[prefix+"shape"], tensors[prefix+"step"] = shape, step
+
 		if slots.hasAdam {
 			first, err := newFloat32Tensor(parameter.value.shape, slots.adamM)
 			if err != nil {
@@ -316,113 +306,50 @@ func (t *Tape) SaveOptimizerState(w io.Writer, named map[string]*Parameter) erro
 			tensors[prefix+"velocity"] = velocity
 		}
 	}
-	if err := SaveSafeTensors(w, tensors); err != nil {
+	metadata := map[string]string{optimizerStateVersionKey: optimizerStateVersion, optimizerStatePrecisionKey: precision}
+	if err := saveSafeTensors(w, tensors, metadata); err != nil {
 		return fmt.Errorf("save optimizer state: %w", err)
 	}
 	return nil
 }
 
-func optimizerStateDescriptor(tensors map[string]*Tensor, name string, shape []int) (*Tensor, error) {
-	tensor := tensors[name]
-	if tensor == nil {
-		return nil, fmt.Errorf("optimizer state: missing tensor %q", name)
-	}
-	if tensor.dtype != DTypeInt64 || !sameShape(tensor.shape, shape) {
-		return nil, fmt.Errorf("optimizer state: tensor %q must be I64 with shape %v", name, shape)
-	}
-	return tensor, nil
-}
-
-func optimizerStateLoadSlots(tensors map[string]*Tensor, target optimizerStateTarget) (optimizerStateSlots, map[string]struct{}, error) {
+// optimizerStateLoadSlots reads one parameter's slots from tensors whose names,
+// dtypes and shapes optimizerStateReadCheckpoint has already checked, so only
+// the values are left to check.
+func optimizerStateLoadSlots(tensors map[string]*Tensor, target optimizerStateTarget) (optimizerStateSlots, error) {
 	parameter := target.parameter
 	prefix := makeOptimizerStatePrefix(target.name)
-	expected := map[string]struct{}{
-		prefix + "shape": {},
-		prefix + "dtype": {},
-		prefix + "step":  {},
-	}
-
-	shapeTensor, err := optimizerStateDescriptor(tensors, prefix+"shape", []int{len(parameter.value.shape)})
-	if err != nil {
-		return optimizerStateSlots{}, nil, err
-	}
-	if len(shapeTensor.int64Data) != len(parameter.value.shape) {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q shape descriptor has the wrong length", target.name)
-	}
 	for index, dimension := range parameter.value.shape {
-		if shapeTensor.int64Data[index] < 0 || uint64(shapeTensor.int64Data[index]) != uint64(dimension) {
-			return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q shape does not match target shape %v", target.name, parameter.value.shape)
+		if stored := tensors[prefix+"shape"].int64Data[index]; stored < 0 || uint64(stored) != uint64(dimension) {
+			return optimizerStateSlots{}, fmt.Errorf("optimizer state: parameter %q shape does not match target shape %v", target.name, parameter.value.shape)
 		}
 	}
-
-	dtypeTensor, err := optimizerStateDescriptor(tensors, prefix+"dtype", nil)
-	if err != nil {
-		return optimizerStateSlots{}, nil, err
+	stored := tensors[prefix+"step"].int64Data[0]
+	if stored < 0 {
+		return optimizerStateSlots{}, fmt.Errorf("optimizer state: parameter %q has a negative step %d", target.name, stored)
 	}
-	if len(dtypeTensor.int64Data) != 1 || dtypeTensor.int64Data[0] != 0 {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q has unsupported dtype descriptor", target.name)
-	}
-
-	stepTensor, err := optimizerStateDescriptor(tensors, prefix+"step", []int{2})
-	if err != nil {
-		return optimizerStateSlots{}, nil, err
-	}
-	if len(stepTensor.int64Data) != 2 {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q step descriptor must have two limbs", target.name)
-	}
-	for _, limb := range stepTensor.int64Data {
-		if limb < 0 || uint64(limb) > math.MaxUint32 {
-			return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q has an invalid step limb %d", target.name, limb)
-		}
-	}
-	step := uint64(uint32(stepTensor.int64Data[0])) | uint64(uint32(stepTensor.int64Data[1]))<<32
-	if step == math.MaxUint64 {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q has a maximal step with no representable next step", target.name)
-	}
-
-	slots := optimizerStateSlots{step: step}
-	first, hasFirst := tensors[prefix+"adam_m"]
-	second, hasSecond := tensors[prefix+"adam_v"]
-	if hasFirst {
-		expected[prefix+"adam_m"] = struct{}{}
-	}
-	if hasSecond {
-		expected[prefix+"adam_v"] = struct{}{}
-	}
-	if hasFirst != hasSecond {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q must have both Adam moments or neither", target.name)
-	}
-	if hasFirst {
+	slots := optimizerStateSlots{step: uint64(stored)}
+	if first, exists := tensors[prefix+"adam_m"]; exists {
 		slots.hasAdam = true
-		for name, tensor := range map[string]*Tensor{prefix + "adam_m": first, prefix + "adam_v": second} {
-			if tensor.dtype != DTypeFloat32 || !sameShape(tensor.shape, parameter.value.shape) {
-				return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: tensor %q must be F32 with shape %v", name, parameter.value.shape)
-			}
-		}
 		slots.adamM = append([]float32{}, first.data...)
-		slots.adamV = append([]float32{}, second.data...)
+		slots.adamV = append([]float32{}, tensors[prefix+"adam_v"].data...)
 	}
-	if (step > 0) != slots.hasAdam {
-		return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: parameter %q has inconsistent Adam step and moments", target.name)
+	if (slots.step > 0) != slots.hasAdam {
+		return optimizerStateSlots{}, fmt.Errorf("optimizer state: parameter %q has inconsistent Adam step and moments", target.name)
 	}
-
 	if velocity, exists := tensors[prefix+"velocity"]; exists {
-		expected[prefix+"velocity"] = struct{}{}
-		if velocity.dtype != DTypeFloat32 || !sameShape(velocity.shape, parameter.value.shape) {
-			return optimizerStateSlots{}, nil, fmt.Errorf("optimizer state: tensor %q must be F32 with shape %v", prefix+"velocity", parameter.value.shape)
-		}
 		slots.velocity = append([]float32{}, velocity.data...)
 	}
 	if err := optimizerStateFinite(slots.adamM, target.name+" adam_m", false); err != nil {
-		return optimizerStateSlots{}, nil, err
+		return optimizerStateSlots{}, err
 	}
 	if err := optimizerStateFinite(slots.adamV, target.name+" adam_v", true); err != nil {
-		return optimizerStateSlots{}, nil, err
+		return optimizerStateSlots{}, err
 	}
 	if err := optimizerStateFinite(slots.velocity, target.name+" velocity", false); err != nil {
-		return optimizerStateSlots{}, nil, err
+		return optimizerStateSlots{}, err
 	}
-	return slots, expected, nil
+	return slots, nil
 }
 
 // LoadOptimizerState restores the complete optimizer checkpoint saved for named.
@@ -439,12 +366,12 @@ func (t *Tape) LoadOptimizerState(r io.Reader, named map[string]*Parameter) erro
 	if err != nil {
 		return err
 	}
-	precision, err := optimizerStatePrecisionCode(t.GetPrecision())
+	precision, err := optimizerStatePrecision(t.GetPrecision())
 	if err != nil {
 		return err
 	}
 
-	entries, data, err := optimizerStateReadCheckpoint(r, targets)
+	entries, data, err := optimizerStateReadCheckpoint(r, targets, precision)
 	if err != nil {
 		return err
 	}
@@ -453,40 +380,13 @@ func (t *Tape) LoadOptimizerState(r io.Reader, named map[string]*Parameter) erro
 		return fmt.Errorf("optimizer state: decode SafeTensors: %w", err)
 	}
 
-	expected := map[string]struct{}{"version": {}, "precision": {}}
-	version, err := optimizerStateDescriptor(tensors, "version", nil)
-	if err != nil {
-		return err
-	}
-	if len(version.int64Data) != 1 || version.int64Data[0] != 1 {
-		return fmt.Errorf("optimizer state: unsupported version")
-	}
-	precisionTensor, err := optimizerStateDescriptor(tensors, "precision", nil)
-	if err != nil {
-		return err
-	}
-	if len(precisionTensor.int64Data) != 1 || precisionTensor.int64Data[0] != precision {
-		return fmt.Errorf("optimizer state: checkpoint precision does not match tape precision")
-	}
-
 	loaded := make(map[*Parameter]optimizerStateSlots, len(targets))
 	for _, target := range targets {
-		slots, keys, err := optimizerStateLoadSlots(tensors, target)
+		slots, err := optimizerStateLoadSlots(tensors, target)
 		if err != nil {
 			return err
 		}
 		loaded[target.parameter] = slots
-		for key := range keys {
-			expected[key] = struct{}{}
-		}
-	}
-	if len(tensors) != len(expected) {
-		return fmt.Errorf("optimizer state: checkpoint has %d tensors, want exactly %d", len(tensors), len(expected))
-	}
-	for key := range tensors {
-		if _, exists := expected[key]; !exists {
-			return fmt.Errorf("optimizer state: unexpected tensor %q", key)
-		}
 	}
 
 	staged := make(map[*Parameter][2]*accel.DeviceBuffer)
