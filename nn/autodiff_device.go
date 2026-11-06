@@ -58,8 +58,8 @@ func (t *Tape) rounded() bool {
 // gradients are discarded unless ClearOptions.KeepGradients asks to keep them;
 // each call decides for itself. Tensors the caller supplied, including the
 // inputs of the step, are the caller's to Release. More than one options value
-// is an error, reported by the next Param, Backward or BackwardFrom, and that
-// call clears everything.
+// clears everything and makes the tape unusable: every later Param, Backward
+// and BackwardFrom returns that error, as a second NewTape seed does.
 func (t *Tape) Clear(opts ...ClearOptions) {
 	if len(opts) > 1 {
 		if t.err == nil {
