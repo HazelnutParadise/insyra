@@ -3,10 +3,10 @@ package datafetch
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -161,8 +161,9 @@ func TestNYTConnectionErrorKeepsTheCauseWithoutTheURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = c.Archive(2026, 10)
-	if !errors.Is(err, syscall.ECONNREFUSED) {
-		t.Fatalf("error = %v, want the connection-refused cause", err)
+	var opErr *net.OpError
+	if !errors.As(err, &opErr) || opErr.Op != "dial" {
+		t.Fatalf("error = %v, want the dial error as its cause", err)
 	}
 	if strings.Contains(err.Error(), nytTestAPIKey) || strings.Contains(err.Error(), "api-key") {
 		t.Fatalf("error carries the URL or key: %v", err)
