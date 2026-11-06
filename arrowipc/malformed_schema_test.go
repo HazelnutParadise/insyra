@@ -71,7 +71,7 @@ func TestUnknownExtensionIsNotSilentlyReadAsStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := info.Schema.Field(0).Metadata.GetValue("ARROW:extension:name"); !ok {
+	if _, ok := info.Columns[0].Metadata["ARROW:extension:name"]; !ok {
 		t.Fatal("extension metadata lost during inspection")
 	}
 	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)

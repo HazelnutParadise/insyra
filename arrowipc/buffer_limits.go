@@ -12,7 +12,6 @@ import (
 )
 
 const defaultMaxBatchBytes int64 = 256 << 20
-const maxBlockEntries = 1 << 16
 
 type ipcBlock struct {
 	offset     int64
@@ -36,7 +35,7 @@ type bufferLimitedSource struct {
 	size            int64
 	limit           int64
 	footerAt        int64
-	blocks          map[int64]ipcBlock
+	blocks          []ipcBlock // sorted by offset
 	pending         *pendingBody
 	dictionaryBytes int64
 }
@@ -64,7 +63,7 @@ func (r *bufferLimitedSource) ReadAt(p []byte, off int64) (n int, err error) {
 		r.footerAt = r.size - 10 - length
 	} else if off == r.footerAt && r.footerAt > 0 {
 		err = r.readBlocks(p)
-	} else if block, ok := r.blocks[off]; ok {
+	} else if block, ok := r.blockAt(off); ok {
 		if len(p) != block.metadata {
 			return n, fmt.Errorf("arrowipc: unexpected IPC metadata read length")
 		}
@@ -95,9 +94,6 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 		if err != nil {
 			return err
 		}
-		if n > maxBlockEntries-total {
-			return fmt.Errorf("arrowipc: native block entry limit %d exceeded", maxBlockEntries)
-		}
 		starts[i], counts[i] = start, n
 		total += n
 	}
@@ -106,11 +102,17 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 		for i := 0; i < counts[vector]; i++ {
 			b := footer[start+uint64(i)*24:]
 			block := ipcBlock{offset: int64(binary.LittleEndian.Uint64(b[:8])), metadata: int(int32(binary.LittleEndian.Uint32(b[8:12]))), body: int64(binary.LittleEndian.Uint64(b[16:24])), dictionary: vector == 0}
+			// Arrow refuses a block outside the file or over the size limits
+			// it is given before reading it (validateFileBlock in arrow-go
+			// v18.8.0 arrow/ipc/file_reader.go), but it accepts 4-byte
+			// metadata, which this reader could not watch. Refuse every block
+			// it cannot watch, so none reaches Arrow unchecked.
 			if block.offset < 8 || block.metadata < 8 || block.body < 0 || block.offset > r.footerAt || int64(block.metadata) > r.footerAt-block.offset || block.body > r.footerAt-block.offset-int64(block.metadata) {
 				return fmt.Errorf("arrowipc: invalid IPC block extent")
 			}
-			if int64(block.metadata) > maxFooterSize || block.body > defaultMaxBatchBytes {
-				return fmt.Errorf("arrowipc: encoded IPC message exceeds Arrow size limits")
+			// Arrow refuses the same, but its message does not name the option.
+			if block.body > r.limit {
+				return fmt.Errorf("arrowipc: an encoded IPC message body of %d bytes exceeds MaxBatchBytes %d", block.body, r.limit)
 			}
 			blocks = append(blocks, block)
 		}
@@ -126,11 +128,19 @@ func (r *bufferLimitedSource) readBlocks(footer []byte) error {
 		// The extent checks above prove this sum cannot overflow.
 		end = block.offset + int64(block.metadata) + block.body
 	}
-	r.blocks = make(map[int64]ipcBlock, len(blocks))
-	for _, block := range blocks {
-		r.blocks[block.offset] = block
-	}
+	// The sorted slice is the lookup table: a map would cost about three
+	// times as much for the millions of blocks a 64 MiB footer can list.
+	r.blocks = blocks
 	return nil
+}
+
+// blockAt returns the block whose metadata starts at off.
+func (r *bufferLimitedSource) blockAt(off int64) (ipcBlock, bool) {
+	i := sort.Search(len(r.blocks), func(i int) bool { return r.blocks[i].offset >= off })
+	if i < len(r.blocks) && r.blocks[i].offset == off {
+		return r.blocks[i], true
+	}
+	return ipcBlock{}, false
 }
 
 func recordMetadata(data []byte, block ipcBlock) (flatbuffers.Table, error) {

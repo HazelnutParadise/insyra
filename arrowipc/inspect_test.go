@@ -70,8 +70,8 @@ func TestInspectDictionaryAndNestedSchemaWithoutValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !info.Schema.Equal(schema) || !reflect.DeepEqual(info.Schema.Metadata(), schema.Metadata()) {
-		t.Fatalf("schema changed: %s", info.Schema)
+	if !reflect.DeepEqual(info, infoOf(schema, 3, "V5")) {
+		t.Fatalf("schema changed: %#v", info)
 	}
 	if info.NumBatches != 3 || info.Version != "V5" {
 		t.Fatalf("metadata: %#v", info)
@@ -82,10 +82,10 @@ func TestInspectDictionaryAndNestedSchemaWithoutValues(t *testing.T) {
 	if !bytes.Equal(data, original) {
 		t.Fatal("inspection mutated source")
 	}
-	// The schema stays valid after the backing source is overwritten.
+	// The information stays valid after the backing source is overwritten.
 	clear(data)
-	if !info.Schema.Equal(schema) {
-		t.Fatal("schema borrowed source memory")
+	if !reflect.DeepEqual(info, infoOf(schema, 3, "V5")) {
+		t.Fatal("inspection borrowed source memory")
 	}
 }
 
@@ -99,3 +99,18 @@ func TestInspectBadReaderAtDoesNotPanic(t *testing.T) {
 type panicReaderAt struct{}
 
 func (panicReaderAt) ReadAt([]byte, int64) (int, error) { panic(io.ErrUnexpectedEOF) }
+
+// infoOf is the FileInfo Inspect reports for schema.
+func infoOf(schema *arrow.Schema, batches int, version string) arrowipc.FileInfo {
+	metadata := func(m arrow.Metadata) map[string]string {
+		if m.Len() == 0 {
+			return nil
+		}
+		return m.ToMap()
+	}
+	info := arrowipc.FileInfo{NumBatches: batches, Version: version, Metadata: metadata(schema.Metadata())}
+	for _, field := range schema.Fields() {
+		info.Columns = append(info.Columns, arrowipc.ColumnInfo{Name: field.Name, Type: field.Type.String(), Nullable: field.Nullable, Metadata: metadata(field.Metadata)})
+	}
+	return info
+}

@@ -290,9 +290,9 @@ func TestInspectListAndStreamExplicitlyRefusesListTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !arrow.TypeEqual(info.Schema.Field(1).Type, arrow.ListOf(arrow.PrimitiveTypes.Int64)) ||
-		!arrow.TypeEqual(info.Schema.Field(2).Type, arrow.ListOf(arrow.ListOf(arrow.PrimitiveTypes.Int64))) {
-		t.Fatalf("inspection did not preserve list schema: %s", info.Schema)
+	if info.Columns[1].Type != arrow.ListOf(arrow.PrimitiveTypes.Int64).String() ||
+		info.Columns[2].Type != arrow.ListOf(arrow.ListOf(arrow.PrimitiveTypes.Int64)).String() {
+		t.Fatalf("inspection did not preserve list schema: %#v", info.Columns)
 	}
 	for _, column := range []string{"items", "nested"} {
 		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{column})}, 1)

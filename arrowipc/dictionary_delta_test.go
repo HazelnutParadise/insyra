@@ -195,7 +195,7 @@ func TestDictionaryDeltasFailBeforeTheirBodies(t *testing.T) {
 				if err != nil || info.NumBatches != 1 {
 					t.Fatalf("delta schema inspection: %v", err)
 				}
-				if _, ok := info.Schema.Field(1).Type.(*arrow.DictionaryType); !ok {
+				if !strings.HasPrefix(info.Columns[1].Type, "dictionary<") {
 					t.Fatal("dictionary type lost")
 				}
 				source := &watchedIPCBody{Reader: bytes.NewReader(data), start: int64(bodyAt), end: int64(bodyAt) + body}

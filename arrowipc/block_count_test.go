@@ -12,7 +12,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-func TestAggregateFooterBlockEntryLimit(t *testing.T) {
+// A footer repeating one block tens of thousands of times is refused before
+// any body is read, and without allocating far beyond the footer itself.
+func TestRepeatedFooterBlocksAreRefusedBeforeReading(t *testing.T) {
 	for _, shared := range []bool{false, true} {
 		name := "records"
 		count := 65537
@@ -61,7 +63,7 @@ func TestAggregateFooterBlockEntryLimit(t *testing.T) {
 			if allocated := after.TotalAlloc - before.TotalAlloc; allocated > uint64(8*len(footer)+(1<<20)) {
 				t.Fatalf("%d-byte footer allocated %d bytes before rejection", len(footer), allocated)
 			}
-			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "block entry limit") || source.reads != 0 {
+			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "overlapping IPC blocks") || source.reads != 0 {
 				t.Fatalf("%d tables, %d body reads, error %v", len(got), source.reads, err)
 			}
 		})

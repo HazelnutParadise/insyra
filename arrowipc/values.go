@@ -2,7 +2,9 @@ package arrowipc
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/TimLai666/go-decimal/decimal"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -77,7 +79,7 @@ func cellValue(arr arrow.Array, i int) (any, error) {
 	case *array.Date64:
 		return a.Value(i).ToTime().UTC(), nil
 	case *array.Duration:
-		return int64(a.Value(i)), nil
+		return durationValue(int64(a.Value(i)), a.DataType().(*arrow.DurationType).Unit)
 	case *array.Decimal128:
 		return decimal.NewFromScaledInt(a.Value(i).BigInt(), a.DataType().(*arrow.Decimal128Type).Scale), nil
 	case *array.Decimal256:
@@ -100,4 +102,14 @@ func checkExtension(field arrow.Field) error {
 		return fmt.Errorf("arrowipc: unsupported selected column %q extension type %q (storage %s)", field.Name, name, field.Type)
 	}
 	return nil
+}
+
+// durationValue turns a count of unit into a time.Duration, as the Parquet
+// reader does, and refuses a count time.Duration cannot hold.
+func durationValue(count int64, unit arrow.TimeUnit) (any, error) {
+	multiplier := int64(unit.Multiplier())
+	if count > math.MaxInt64/multiplier || count < math.MinInt64/multiplier {
+		return nil, fmt.Errorf("arrowipc: duration %d %s does not fit time.Duration", count, unit)
+	}
+	return time.Duration(count * multiplier), nil
 }
