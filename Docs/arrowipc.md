@@ -69,7 +69,7 @@ func readConnections(ctx context.Context, path string) error {
 }
 ```
 
-`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns follow the repository selector convention and appear in request order: `"B"` selects the second field, `insyra.Name("B")` selects the field named B, and an `int` selects a zero-based position (negative counts from the end). Names are exact and case-sensitive. Invalid selectors, a field selected twice and an ambiguous name return errors. Fields that share a name are renamed as `DataTable.AppendCols` renames them: two fields named `x` become `x` and `x_1`. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
+`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns follow the repository selector convention and appear in request order: `"B"` selects the second field, `insyra.Name("B")` selects the field named B (on this line `isr.Name` is a different type and is not accepted), and an `int` selects a zero-based position (negative counts from the end). Names are exact and case-sensitive. Invalid selectors, a field selected twice and an ambiguous name return errors. Fields that share a name are renamed as `DataTable.AppendCols` renames them: two fields named `x` become `x` and `x_1`. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
 
 ### Memory and ownership
 
@@ -89,7 +89,7 @@ Malformed files, truncated input and unsupported selected types return errors. A
 
 ## Cell types
 
-The mappings match `parquet` for supported Arrow types. There is no conversion of IDs through `float64`.
+The mappings match `parquet` for supported Arrow types, except Duration (below). There is no conversion of IDs through `float64`.
 
 | Arrow type | DataTable cell |
 | --- | --- |
@@ -102,7 +102,7 @@ The mappings match `parquet` for supported Arrow types. There is no conversion o
 | Binary / LargeBinary / FixedSizeBinary | Copied `[]byte`, including empty byte strings |
 | Timestamp | `time.Time` using the Arrow time unit |
 | Date32 / Date64 | `time.Time` in UTC, as in Parquet |
-| Duration | `time.Duration`, as in Parquet; a count `time.Duration` cannot hold is an error |
+| Duration | `time.Duration`, as 0.4's Parquet reader returns it (this line's Parquet reader returns the raw int64 count); a count `time.Duration` cannot hold is an error |
 | Decimal128 / Decimal256 | Exact `github.com/TimLai666/go-decimal` `decimal.Decimal`; precision 1..38 / 1..76, scale 0..precision |
 | Dictionary with supported values | Decoded value in the corresponding type, or `nil` for a null index/value |
 | List / LargeList / FixedSizeList, nested lists, Struct, Map, Union, extension types and other unlisted types | Explicit error identifying the selected field and Arrow type |

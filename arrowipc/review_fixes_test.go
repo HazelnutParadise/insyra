@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -204,19 +203,21 @@ func TestRepeatedFieldNamesAreRenamed(t *testing.T) {
 
 // buffer_limits.go watches the reads arrow-go v18.8.0's FileReader makes. A
 // different version may read in another order, so moving to one means
-// checking that code against it and changing this version.
+// checking that code against it and changing this version. go test's build
+// information does not list dependencies, so go.mod is read instead.
 func TestArrowGoVersionTheReadWatcherWasCheckedAgainst(t *testing.T) {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		t.Skip("no build information")
+	mod, err := os.ReadFile("../go.mod")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, dep := range info.Deps {
-		if dep.Path == "github.com/apache/arrow-go/v18" {
-			if dep.Version != "v18.8.0" {
-				t.Fatalf("arrow-go is %s; check buffer_limits.go against it, then update this test", dep.Version)
+	for _, line := range strings.Split(string(mod), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "github.com/apache/arrow-go/v18" {
+			if fields[1] != "v18.8.0" {
+				t.Fatalf("arrow-go is %s; check buffer_limits.go against it, then update this test", fields[1])
 			}
 			return
 		}
 	}
-	t.Skip("arrow-go not in the build information")
+	t.Fatal("go.mod does not require github.com/apache/arrow-go/v18")
 }

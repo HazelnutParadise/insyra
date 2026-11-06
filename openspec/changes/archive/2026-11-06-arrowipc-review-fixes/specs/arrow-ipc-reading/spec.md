@@ -45,7 +45,7 @@ Readers SHALL preserve Parquet's supported scalar cell mappings and nil nulls, i
 - **THEN** each cell is the time.Duration of 1500 of that unit
 
 ### Requirement: Cancellation errors and ownership
-Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, report a source shorter than its given size as an error wrapping io.ErrUnexpectedEOF, and never close caller-owned ReaderAt sources. Stream and StreamFrom SHALL return lazy iter.Seq2[*insyra.DataTable, error] sequences, yield terminal errors once as (nil, error), and cancel and drain internal production before returning on early loop exit. Tables SHALL survive reader cleanup without caller Release calls.
+Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, report a source shorter than its given size as an error wrapping io.ErrUnexpectedEOF, and never close caller-owned ReaderAt sources. Stream and StreamFrom SHALL return lazy iter.Seq2[*insyra.DataTable, error] sequences, yield terminal errors once as (nil, error), and cancel and drain internal production before returning on early loop exit. Tables SHALL survive reader cleanup without caller Release calls. Caller-owned sources SHALL be safe to close after iteration returns.
 
 #### Scenario: Cancellation and damaged files
 - **WHEN** a context is cancelled before reading or while a producer is blocked, or a source is truncated or not Arrow
