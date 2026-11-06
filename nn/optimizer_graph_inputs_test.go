@@ -44,8 +44,7 @@ func TestRetainedGradientGraphInput(t *testing.T) {
 	if seed.grad != retainedGradient || tape.marked[retainedGradient] != nil {
 		t.Fatal("fixture must retain the Custom VJP result as a gradient, not register it as a parameter")
 	}
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
-	tape.Clear()
+	tape.Clear(ClearOptions{KeepGradients: true})
 	if _, err := retainedGradient.ToHost(); err != nil {
 		t.Fatalf("KeepGradients Clear released the resident matrix gradient: %v", err)
 	}
@@ -86,8 +85,7 @@ func TestRetainedGradientGraphInput(t *testing.T) {
 	}
 
 	parameterGradient := operand.grad
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
-	tape.Clear()
+	tape.Clear(ClearOptions{KeepGradients: true})
 	if !retainedGradient.device.Released() {
 		t.Fatal("second KeepGradients Clear retained an input that no parameter gradient references")
 	}
@@ -98,7 +96,6 @@ func TestRetainedGradientGraphInput(t *testing.T) {
 		t.Fatal("cleared graph input remained readable after its last owner was released")
 	}
 
-	tape.SetClearOptions(ClearOptions{})
 	tape.Clear()
 	if !parameterGradient.device.Released() {
 		t.Fatal("default Clear did not release the parameter gradient")

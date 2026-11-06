@@ -109,7 +109,8 @@ func (t *Tape) adamRounded(rate, weightDecay float32, decay bool) error {
 			param.adamStep = step
 			continue
 		}
-		if param.adamMDev == nil {
+		created := param.adamMDev == nil
+		if created {
 			// Both moments or neither: a failure between them must not leave
 			// the state half built, nor advance the step count.
 			m, err := accel.NewZeroDeviceBuffer(value.Device(), value.device.Len())
@@ -124,6 +125,11 @@ func (t *Tape) adamRounded(rate, weightDecay float32, decay bool) error {
 			param.adamMDev, param.adamVDev = m, v
 		}
 		if err := accel.RoundedAdam(value.device, gradient.device, param.adamMDev, param.adamVDev, scalars); err != nil {
+			if created {
+				// The first step did not happen, so the parameter has no
+				// moments yet; keep it that way rather than hold zeros.
+				param.releaseState()
+			}
 			return err
 		}
 		param.adamStep = step

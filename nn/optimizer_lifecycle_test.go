@@ -8,9 +8,6 @@ import (
 	"github.com/HazelnutParadise/insyra/accel"
 )
 
-// Clear must continue to satisfy existing interfaces and method values.
-var _ interface{ Clear() } = (*Tape)(nil)
-
 func lifecycleStep(t *testing.T, tape *Tape, p *Parameter) {
 	t.Helper()
 	y, err := tape.Add(p.Value(), p.Value())
@@ -29,11 +26,7 @@ func TestOptimizerClearRetainsOnlyParameterGradients(t *testing.T) {
 	p, _ := tape.Param(v)
 	lifecycleStep(t, tape, p)
 	want := p.Grad().data
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
-	if !tape.GetClearOptions().KeepGradients {
-		t.Fatal("Clear policy was not retained")
-	}
-	tape.Clear()
+	tape.Clear(ClearOptions{KeepGradients: true})
 	if len(tape.ops) != 0 || len(tape.grads) != 1 || p.Grad() == nil {
 		t.Fatal("Clear must release graph and intermediate gradients but retain parameter gradients")
 	}
@@ -50,7 +43,6 @@ func TestOptimizerClearRetainsOnlyParameterGradients(t *testing.T) {
 			t.Fatal("Backward accumulated rather than replaced retained gradients")
 		}
 	}
-	tape.SetClearOptions(ClearOptions{})
 	tape.Clear()
 	if p.Grad() != nil || len(tape.grads) != 0 {
 		t.Fatal("default Clear must discard gradients")
@@ -141,7 +133,6 @@ func TestOptimizerClearResidentOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
 	for i := 0; i < 8; i++ {
 		y, err := tape.Add(p.Value(), p.Value())
 		if err != nil {
@@ -164,7 +155,7 @@ func TestOptimizerClearResidentOwnership(t *testing.T) {
 			t.Fatal("frozen device parameter was updated")
 		}
 		p.SetFrozen(false)
-		tape.Clear()
+		tape.Clear(ClearOptions{KeepGradients: true})
 		if len(tape.ops) != 0 || p.grad == nil || p.grad.device.Released() {
 			t.Fatal("Clear released retained device gradients or kept operations")
 		}
@@ -208,8 +199,7 @@ func TestOptimizerClearRetainsAliasedResidentOutputGradient(t *testing.T) {
 	if err := tape.BackwardFrom(output, output); err != nil {
 		t.Fatal(err)
 	}
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
-	tape.Clear()
+	tape.Clear(ClearOptions{KeepGradients: true})
 	if gradient.device.Released() || len(tape.gradOwned) != 1 || a.grad != b.grad {
 		t.Fatal("shared parameter gradient needs one retained owner across both lists")
 	}
