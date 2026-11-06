@@ -30,8 +30,7 @@ func retainedOutputGradient(t *testing.T) (*Tape, *Parameter, *Parameter, *Tenso
 	if err := tape.BackwardFrom(output, output); err != nil {
 		t.Fatal(err)
 	}
-	tape.SetClearOptions(ClearOptions{KeepGradients: true})
-	tape.Clear()
+	tape.Clear(ClearOptions{KeepGradients: true})
 	return tape, a, b, gradient
 }
 
@@ -78,7 +77,6 @@ func TestRetainedGradientCanBeReusedByNextBackward(t *testing.T) {
 	if err := tape.SGD(0.01); err != nil {
 		t.Fatal(err)
 	}
-	tape.SetClearOptions(ClearOptions{})
 	tape.Clear()
 	if !gradient.device.Released() {
 		t.Fatal("discarding gradients must eventually release the reused buffer")

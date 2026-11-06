@@ -230,7 +230,12 @@ func TestOptimizerStateReadWhitespaceMetadataScalarAndEmptySlots(t *testing.T) {
 
 	canonical := optimizerStateExport(t, source, named)
 	withMetadata, _ := optimizerStateWithEditedHeader(t, canonical, func(entries map[string]json.RawMessage, _ int) {
-		metadata, err := json.Marshal(map[string]string{"note": " whitespace is valid "})
+		var existing map[string]string
+		if err := json.Unmarshal(entries["__metadata__"], &existing); err != nil {
+			t.Fatal(err)
+		}
+		existing["note"] = " whitespace is valid "
+		metadata, err := json.Marshal(existing)
 		if err != nil {
 			t.Fatal(err)
 		}

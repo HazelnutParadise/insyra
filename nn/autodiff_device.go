@@ -54,12 +54,21 @@ func (t *Tape) rounded() bool {
 
 // Clear forgets the recorded operations and releases every device tensor the
 // tape created for the step: operation outputs and gradients. Parameters and
-// optimizer state stay, so training continues across a Clear. SetClearOptions
-// can retain parameter gradients; the default discards them. Tensors the
-// caller supplied, including the inputs of the step, are the caller's to
-// Release.
-func (t *Tape) Clear() {
-	t.clearStep(t.clearOptions.KeepGradients)
+// optimizer state stay, so training continues across a Clear. The parameter
+// gradients are discarded unless ClearOptions.KeepGradients asks to keep them;
+// each call decides for itself. Tensors the caller supplied, including the
+// inputs of the step, are the caller's to Release. More than one options value
+// is an error, reported by the next Param, Backward or BackwardFrom, and that
+// call clears everything.
+func (t *Tape) Clear(opts ...ClearOptions) {
+	if len(opts) > 1 {
+		if t.err == nil {
+			t.err = fmt.Errorf("Clear: at most one ClearOptions may be given, got %d", len(opts))
+		}
+		t.clearStep(false)
+		return
+	}
+	t.clearStep(len(opts) == 1 && opts[0].KeepGradients)
 }
 
 // Close releases everything the tape holds on a device: what Clear releases,
