@@ -10,7 +10,7 @@ The review of the merged Arrow IPC reader (#675, #676) found that a batch over 2
 - A short source is an error wrapping `io.ErrUnexpectedEOF`.
 - Fields that share a name are renamed `name_1`, `name_2`, ... instead of refused; a field selected twice is still an error.
 - A test pins arrow-go v18.8.0, which the read watcher was checked against.
-- On `dev`: `Stream`/`StreamFrom` return `iter.Seq2[*insyra.DataTable, error]`, `ReadOptions.Columns` is `[]any` with `insyra.Name`, and the root package gains `insyra.Name` and `NameSelector`, as on 0.4.
+- On `dev`: `Stream`/`StreamFrom` return `iter.Seq2[*insyra.DataTable, error]`, `ReadOptions.Columns` is `[]any` with `insyra.Name`, and the root package gains `insyra.Name` and `NameSelector`, with `isr.Name` returning that type, as on 0.4.
 
 ## Impact
 

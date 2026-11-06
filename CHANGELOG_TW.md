@@ -40,7 +40,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：新增 `INT(x)`、`ROUNDUP(x, n)`、`ROUNDDOWN(x, n)`，行為跟 Excel 一樣。`ROUNDUP` 往離 0 遠的方向，`ROUNDDOWN` 往靠近 0 的方向，`INT` 跟 `FLOOR` 結果相同。
 - CCL：新增 Excel 365 的名字 `REGEXTEST`。`REGEX_MATCH` 棄用，會警告一次，0.4 移除，請改用 `REGEXTEST`。
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
-- `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變，`isr.Name` 仍是另一個型別，`arrowipc` 不接受。
+- `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變。`isr.Name` 現在回傳同一個型別（`isr.NameSelector` 是 `insyra.NameSelector` 的別名），與 0.4 相同，兩者在 `isr` 和 `arrowipc` 都能用。
 
 ### `ml` 與 `nn`
 

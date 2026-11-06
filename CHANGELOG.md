@@ -40,7 +40,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `INT(x)`, `ROUNDUP(x, n)` and `ROUNDDOWN(x, n)`, as in Excel. `ROUNDUP` rounds away from zero and `ROUNDDOWN` toward zero, and `INT` gives what `FLOOR` gives.
 - CCL: `REGEXTEST` is Excel 365's name for `REGEX_MATCH`, which is deprecated in its favour, logs one warning, and is removed in 0.4.
 - CCL: `CEIL` and `FLOOR` take an optional positive multiple: `CEIL(12, 5)` is 15 and `FLOOR(12, 5)` is 10. `AVERAGE`, `POWER`, `CEILING`, `REPT` and other Excel names CCL spells differently now say which name to write.
-- `insyra.Name("price")` marks a column selector as a name rather than an Excel-style index, the 0.4 selector rule. `arrowipc.ReadOptions.Columns` takes it; other selectors on this line are unchanged, and `isr.Name` stays a separate type that `arrowipc` does not accept.
+- `insyra.Name("price")` marks a column selector as a name rather than an Excel-style index, the 0.4 selector rule. `arrowipc.ReadOptions.Columns` takes it; other selectors on this line are unchanged. `isr.Name` now returns the same type (`isr.NameSelector` is an alias of `insyra.NameSelector`), as on 0.4, so either works in `isr` and in `arrowipc`.
 
 ### `ml` and `nn`
 

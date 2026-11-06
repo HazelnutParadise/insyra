@@ -69,7 +69,7 @@ func readConnections(ctx context.Context, path string) error {
 }
 ```
 
-`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns follow the repository selector convention and appear in request order: `"B"` selects the second field, `insyra.Name("B")` selects the field named B (on this line `isr.Name` is a different type and is not accepted), and an `int` selects a zero-based position (negative counts from the end). Names are exact and case-sensitive. Invalid selectors, a field selected twice and an ambiguous name return errors. Fields that share a name are renamed as `DataTable.AppendCols` renames them: two fields named `x` become `x` and `x_1`. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
+`batchSize` must be positive. Each table contains at most that many rows. Native record boundaries remain visible: two short native records are not combined. Columns follow the repository selector convention and appear in request order: `"B"` selects the second field, `insyra.Name("B")` selects the field named B, and an `int` selects a zero-based position (negative counts from the end). Names are exact and case-sensitive. Invalid selectors, a field selected twice and an ambiguous name return errors. Fields that share a name are renamed as `DataTable.AppendCols` renames them: two fields named `x` become `x` and `x_1`. Options are copied when Stream or StreamFrom is called. Reading starts only when the sequence is iterated. Each iteration opens a fresh reader.
 
 ### Memory and ownership
 
