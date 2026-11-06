@@ -1,7 +1,6 @@
 package env
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -20,51 +19,11 @@ type SerializedVariable struct {
 }
 
 type State struct {
-	Variables  map[string]SerializedVariable `json:"variables"`
-	LastAccess time.Time                     `json:"lastAccess"`
-}
-
-// UnmarshalJSON keeps the timestamp format used by earlier releases. An
-// invalid timestamp string means unknown time, not unreadable variables.
-func (s *State) UnmarshalJSON(data []byte) error {
-	var stored struct {
-		Variables  map[string]SerializedVariable `json:"variables"`
-		LastAccess string                        `json:"lastAccess"`
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	if err := dec.Decode(&stored); err != nil {
-		return err
-	}
-	var lastAccess time.Time
-	if stored.LastAccess != "" {
-		if parsed, err := time.Parse(time.RFC3339, stored.LastAccess); err == nil {
-			// Parse accepts some offsets (such as +24:00) that JSON cannot
-			// write. Treat those as unknown too, so exporting remains safe.
-			if _, err := parsed.MarshalJSON(); err == nil {
-				lastAccess = parsed
-			}
-		}
-	}
-	*s = State{Variables: stored.Variables, LastAccess: lastAccess}
-	return nil
-}
-
-// MarshalJSON preserves the string timestamp understood by earlier releases,
-// including an empty string for an environment that has not been accessed.
-func (s State) MarshalJSON() ([]byte, error) {
-	lastAccess := json.RawMessage(`""`)
-	if !s.LastAccess.IsZero() {
-		var err error
-		lastAccess, err = s.LastAccess.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return json.Marshal(struct {
-		Variables  map[string]SerializedVariable `json:"variables"`
-		LastAccess json.RawMessage               `json:"lastAccess"`
-	}{Variables: s.Variables, LastAccess: lastAccess})
+	Variables map[string]SerializedVariable `json:"variables"`
+	// LastAccess is when the environment was last saved. The zero time means
+	// it is unknown: the environment was never saved, or its file holds no
+	// timestamp this release can read.
+	LastAccess time.Time `json:"lastAccess"`
 }
 
 // UnsavedVariable is a variable SaveVariables left out of state.json.
@@ -99,13 +58,11 @@ func (m *Manager) SaveVariables(envName string, vars map[string]any) ([]UnsavedV
 		}
 		stored[key] = raw
 	}
-	document := struct {
-		Variables  map[string]json.RawMessage `json:"variables"`
-		LastAccess string                     `json:"lastAccess"`
-	}{
-		Variables:  stored,
-		LastAccess: time.Now().UTC().Format(time.RFC3339),
+	lastAccess, err := encodeLastAccess(time.Now().UTC().Truncate(time.Second))
+	if err != nil {
+		return nil, err
 	}
+	document := stateFile[json.RawMessage]{Variables: stored, LastAccess: lastAccess}
 	payload, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return nil, err
@@ -184,16 +141,11 @@ func (m *Manager) readState(envName string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	var state State
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&state); err != nil {
+	var file stateFile[SerializedVariable]
+	if err := decodeJSON(raw, &file); err != nil {
 		return nil, err
 	}
-	if state.Variables == nil {
-		state.Variables = map[string]SerializedVariable{}
-	}
-	return &state, nil
+	return stateFromFile(&file), nil
 }
 
 // RestoreVariables reads envName's variables back at the Go types they were

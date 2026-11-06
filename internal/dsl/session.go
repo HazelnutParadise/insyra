@@ -47,9 +47,9 @@ func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, e
 		return nil, err
 	}
 
-	vars, err := mgr.RestoreVariables(envName)
+	vars, err := mgr.OpenVariables(envName)
 	if err != nil {
-		vars = map[string]any{}
+		return nil, err
 	}
 
 	if output == nil {
