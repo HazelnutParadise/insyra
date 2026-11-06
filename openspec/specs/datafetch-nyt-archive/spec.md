@@ -4,7 +4,7 @@
 Fetch complete monthly New York Times article metadata through an authenticated client with bounded quota handling, cancellable requests, and a stable DataTable schema.
 ## Requirements
 ### Requirement: Monthly archive client
-The package SHALL create NYTClient through NYT(NYTConfig) with a required APIKey, and provide Archive(year, month) and ArchiveContext(ctx, year, month). It SHALL reject an uncreated client, invalid configuration, a year before 1851, a month outside 1 through 12, and a month after the current one, without a request.
+The package SHALL create NYTClient through NYT(NYTConfig) with a required APIKey, and provide Archive(year, month) and ArchiveContext(ctx, year, month). It SHALL reject an uncreated client, invalid configuration, a year before 1851, a month outside 1 through 12, and a month that has not begun anywhere on Earth, without a request.
 
 #### Scenario: Invalid input sends nothing
 - **WHEN** the key is empty, the client is uncreated, or the requested year/month is invalid or in the future
@@ -22,7 +22,7 @@ A successful call SHALL GET /{year}/{month}.json with api-key and return _id, he
 - **THEN** its pub_date cell is nil and the rest of the month is returned
 
 ### Requirement: Paced bounded quota handling
-Each client SHALL space request starts at least 12.1 seconds apart by default, with no configurable faster interval. It SHALL count every HTTP attempt toward a rolling 500-attempt daily budget. A 429 SHALL wait at least 61 seconds, or a longer Retry-After of at most two minutes, before each of Retries retries, zero meaning none, then return ErrNYTThrottled.
+Each client SHALL space request starts at least 12.1 seconds apart by default, with no configurable faster interval. It SHALL count every HTTP attempt toward a rolling 500-attempt daily budget. A 429 SHALL wait at least 61 seconds, or a longer Retry-After of at most two minutes, before each of Retries retries, zero meaning none, then return ErrNYTThrottled; it SHALL also return ErrNYTThrottled at once when the Context deadline would end the wait.
 
 #### Scenario: Minute limit clears
 - **WHEN** Retries is at least one and a server returns 429 then a successful response
@@ -48,7 +48,7 @@ The client SHALL stop queueing, pacing, retry waits and HTTP work when Context e
 - **THEN** the returned error omits it
 
 ### Requirement: Daily quota error
-An exhausted daily quota SHALL be returned as *NYTQuotaError, which matches ErrNYTThrottled and carries RetryAt, the time a request is expected to be allowed: the oldest counted attempt plus 24 hours, or the time a Retry-After over two minutes names. When the Context has a deadline at or after RetryAt the call SHALL wait until then and try again; otherwise it SHALL return the error at once.
+An exhausted daily quota SHALL be returned as *NYTQuotaError, which matches ErrNYTThrottled and carries RetryAt, the time a request is expected to be allowed: the oldest counted attempt plus 24 hours, or the time a Retry-After over two minutes names. RetryAt SHALL be no earlier than the client's next request slot. When the Context has a deadline after RetryAt the call SHALL wait until then and try again; otherwise it SHALL return the error at once.
 
 #### Scenario: Deadline long enough
 - **WHEN** the budget is exhausted and the Context deadline is after RetryAt

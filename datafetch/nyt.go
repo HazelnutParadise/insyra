@@ -65,7 +65,8 @@ type NYTConfig struct {
 	Interval time.Duration
 	// Retries is the number of retry attempts after HTTP 429 from the
 	// per-minute limit. Zero means none; negative values are rejected. Other
-	// HTTP failures are not retried.
+	// HTTP failures are not retried. Waiting for the daily quota is not a
+	// retry: it depends only on the Context's deadline.
 	Retries int
 }
 
@@ -139,8 +140,9 @@ func (c *NYTClient) Archive(year, month int) (*insyra.DataTable, error) {
 // Each client spaces request starts by at least 12.1s and counts every attempt
 // against a rolling 500-attempt/24-hour budget. A 429 waits at least 61s, or
 // as long as Retry-After asks up to two minutes, before each of the configured
-// retries, then returns ErrNYTThrottled if still refused. An exhausted daily
-// quota is a *NYTQuotaError: when ctx has a deadline at or after its RetryAt
+// retries, then returns ErrNYTThrottled if still refused or if the deadline
+// would end the wait. An exhausted daily
+// quota is a *NYTQuotaError: when ctx has a deadline after its RetryAt
 // the call waits until then and tries again, otherwise it returns the error at
 // once. Every wait and the HTTP request stop when ctx ends.
 func (c *NYTClient) ArchiveContext(ctx context.Context, year, month int) (*insyra.DataTable, error) {
@@ -150,7 +152,9 @@ func (c *NYTClient) ArchiveContext(ctx context.Context, year, month int) (*insyr
 	if c == nil || c.http == nil || c.limiter == nil {
 		return nil, errors.New("datafetch: NYTClient was not created with NYT")
 	}
-	now := c.now()
+	// The month is not in the future anywhere on Earth: UTC+14 is the
+	// earliest a new month starts.
+	now := c.now().UTC().Add(14 * time.Hour)
 	if year < 1851 || month < 1 || month > 12 || year > now.Year() || (year == now.Year() && month > int(now.Month())) {
 		return nil, errors.New("datafetch: NYT year must be 1851 or later, month 1 through 12, and the month not in the future")
 	}
@@ -159,14 +163,21 @@ func (c *NYTClient) ArchiveContext(ctx context.Context, year, month int) (*insyr
 		var quota *NYTQuotaError
 		switch {
 		case errors.As(err, &quota):
+			// A request needs time after RetryAt, so the deadline must be
+			// strictly later.
 			deadline, ok := ctx.Deadline()
-			if !ok || deadline.Before(quota.RetryAt) {
+			if !ok || !deadline.After(quota.RetryAt) {
 				return nil, err
 			}
 			if err := c.wait(ctx, quota.RetryAt.Sub(c.now())); err != nil {
 				return nil, err
 			}
 		case errors.Is(err, ErrNYTThrottled) && retries < c.cfg.Retries:
+			// A retry the deadline cannot reach would only end in the
+			// Context's error; report the throttling instead.
+			if deadline, ok := ctx.Deadline(); ok && !deadline.After(c.now().Add(retryAfter)) {
+				return nil, err
+			}
 			retries++
 			if err := c.wait(ctx, retryAfter); err != nil {
 				return nil, err
@@ -178,9 +189,13 @@ func (c *NYTClient) ArchiveContext(ctx context.Context, year, month int) (*insyr
 }
 
 // attempt waits for the next request slot, charges the attempt to the daily
-// budget and sends it. Only attempts about to run are charged, so a cancelled
-// wait leaves the budget alone.
+// budget and sends it. An exhausted budget is reported before a slot is taken,
+// and only attempts about to run are charged, so neither a refusal nor a
+// cancelled wait spends anything.
 func (c *NYTClient) attempt(ctx context.Context, year, month int) (*insyra.DataTable, time.Duration, error) {
+	if err := c.quotaError(); err != nil {
+		return nil, 0, err
+	}
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, 0, err
 	}
@@ -188,20 +203,39 @@ func (c *NYTClient) attempt(ctx context.Context, year, month int) (*insyra.DataT
 		return nil, 0, err
 	}
 	c.mu.Lock()
+	if err := c.quotaErrorLocked(); err != nil {
+		// Another call used the last attempt while this one waited.
+		c.mu.Unlock()
+		return nil, 0, err
+	}
+	c.attempts = append(c.attempts, c.now())
+	c.mu.Unlock()
+	return c.archiveRequest(ctx, year, month)
+}
+
+func (c *NYTClient) quotaError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.quotaErrorLocked()
+}
+
+// quotaErrorLocked drops attempts older than the window and reports a full
+// budget, with RetryAt no earlier than the next request slot.
+func (c *NYTClient) quotaErrorLocked() error {
 	now := c.now()
 	first := 0
 	for first < len(c.attempts) && !c.attempts[first].Add(nytQuotaWindow).After(now) {
 		first++
 	}
 	c.attempts = c.attempts[first:]
-	if len(c.attempts) >= nytDailyLimit {
-		retryAt := c.attempts[0].Add(nytQuotaWindow)
-		c.mu.Unlock()
-		return nil, 0, &NYTQuotaError{RetryAt: retryAt}
+	if len(c.attempts) < nytDailyLimit {
+		return nil
 	}
-	c.attempts = append(c.attempts, now)
-	c.mu.Unlock()
-	return c.archiveRequest(ctx, year, month)
+	retryAt := c.attempts[0].Add(nytQuotaWindow)
+	if next := c.limiter.Next(); next.After(retryAt) {
+		retryAt = next
+	}
+	return &NYTQuotaError{RetryAt: retryAt}
 }
 
 func (c *NYTClient) archiveRequest(ctx context.Context, year, month int) (*insyra.DataTable, time.Duration, error) {
@@ -270,8 +304,13 @@ func nytRetryAfter(header string, now time.Time) time.Duration {
 // nytBodySnippet is the start of an error response as one line of printable
 // text, with the API key removed, so an error can say why NYT refused.
 func nytBodySnippet(body io.Reader, key string) string {
-	raw, _ := io.ReadAll(io.LimitReader(body, 300))
+	// Read past the 300 bytes shown by three times the key, its longest
+	// escaped form, so a key crossing the cut is removed whole first.
+	raw, _ := io.ReadAll(io.LimitReader(body, int64(300+3*len(key))))
 	text := nytRedact(string(raw), key)
+	if len(text) > 300 {
+		text = strings.ToValidUTF8(text[:300], "")
+	}
 	text = strings.Map(func(r rune) rune {
 		if unicode.IsPrint(r) {
 			return r
@@ -406,7 +445,10 @@ func nytWordCount(raw json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	if unquoted, err := strconv.Unquote(text); err == nil {
-		text = unquoted
+		text = strings.TrimSpace(unquoted)
+		if text == "" {
+			return nil, nil
+		}
 	}
 	n, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
