@@ -5,7 +5,8 @@ A `state.json` whose `lastAccess` was a number, boolean, array or object failed 
 ## What Changes
 
 - A `lastAccess` that is not readable RFC3339 text, whatever its JSON type, loads as the zero time and the variables load as usual.
-- A `state.json` that exists but cannot be read stops the command, `env open`, `env import` into the open environment, the REPL and `NewSession`, with an error naming the file, and leaves the file unchanged. A missing or empty file starts the environment empty. `Manager.OpenVariables` does this, as on `dev`.
+- A `state.json` that exists but cannot be read stops the command, `env open`, `env import` into the open environment, the REPL and `NewSession`, with an error naming the file, and leaves the file unchanged. A missing file starts the environment empty. `Manager.OpenVariables` does this, as on `dev`.
+- `Create` writes each default file to a temporary file and links it into place, so a session opening an environment another one is creating never reads a half-written `state.json`, which the stop above would refuse.
 - `State` has no JSON methods of its own. One private type describes the stored layout and is used by reading, `SaveVariables`, `Export` and `Import`; `ExportPayload` reads and writes through it.
 
 ## Impact

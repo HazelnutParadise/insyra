@@ -2,7 +2,7 @@
 
 - [x] 1.1 A `lastAccess` of another JSON type loads as zero time and keeps the variables through a save
 - [x] 1.2 A struct embedding `State` keeps its own fields through JSON
-- [x] 1.3 `OpenVariables` refuses an unreadable file without changing it, and starts a missing or empty one empty
+- [x] 1.3 `OpenVariables` refuses an unreadable file without changing it, and starts a missing one empty; two sessions opening a missing environment at once both succeed
 - [x] 1.4 `NewSession` on an unreadable file fails naming it and leaves it unchanged
 
 ## 2. Implementation
