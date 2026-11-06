@@ -61,10 +61,17 @@ func TestManyBatchesInspectAndStreamAgree(t *testing.T) {
 	if err != nil || info.NumBatches != batches {
 		t.Fatalf("Inspect: %d batches, %v", info.NumBatches, err)
 	}
-	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 10)
-	got, err := drain(t, tables, errs)
-	if err != nil || len(got) != batches {
-		t.Fatalf("Stream: %d tables, %v", len(got), err)
+	// Counted straight off the sequence: drain's per-table timeout is too
+	// short for 70,000 tables on a slow runner.
+	count := 0
+	for _, err := range arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 10) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		count++
+	}
+	if count != batches {
+		t.Fatalf("Stream: %d tables, want %d", count, batches)
 	}
 }
 
