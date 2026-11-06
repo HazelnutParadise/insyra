@@ -156,11 +156,8 @@ func optimizerStateAssertExportedSlots(t *testing.T, encoded []byte, named map[s
 	}
 	for name, parameter := range named {
 		step := tensors[optimizerStateKey(name, "step")]
-		if step == nil || step.dtype != DTypeInt64 || !reflect.DeepEqual(step.int64Data, []int64{
-			int64(uint32(parameter.adamStep)),
-			int64(uint32(parameter.adamStep >> 32)),
-		}) {
-			t.Fatalf("%q exported step limbs = %v, want exact uint64 %d", name, step, parameter.adamStep)
+		if step == nil || step.dtype != DTypeInt64 || len(step.shape) != 0 || !reflect.DeepEqual(step.int64Data, []int64{int64(parameter.adamStep)}) {
+			t.Fatalf("%q exported step = %v, want the scalar %d", name, step, parameter.adamStep)
 		}
 		for slot, expected := range map[string][]float32{
 			"velocity": parameter.velocity,
@@ -351,15 +348,27 @@ func optimizerStateRequireAtomicRejection(t *testing.T, tape *Tape, named map[st
 	}
 }
 
-func optimizerStateMutateSafeTensors(t *testing.T, encoded []byte, mutate func(map[string]*Tensor)) []byte {
+// optimizerStateMutateFile re-encodes a checkpoint after editing its tensors and
+// its header metadata, which carries the version and the precision.
+func optimizerStateMutateFile(t *testing.T, encoded []byte, mutate func(map[string]*Tensor), mutateMetadata func(map[string]string)) []byte {
 	t.Helper()
 	tensors, err := LoadSafeTensors(bytes.NewReader(encoded))
 	if err != nil {
 		t.Fatalf("decode valid SafeTensors fixture: %v", err)
 	}
-	mutate(tensors)
+	headerEnd := 8 + int(binary.LittleEndian.Uint64(encoded[:8]))
+	_, metadata, err := parseSafeTensorHeader(encoded[8:headerEnd])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutate != nil {
+		mutate(tensors)
+	}
+	if mutateMetadata != nil {
+		mutateMetadata(metadata)
+	}
 	var result bytes.Buffer
-	if err := SaveSafeTensors(&result, tensors); err != nil {
+	if err := saveSafeTensors(&result, tensors, metadata); err != nil {
 		t.Fatalf("re-encode SafeTensors mutation: %v", err)
 	}
 	return result.Bytes()
@@ -404,18 +413,25 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 	matrixSecondMoment := optimizerStateKey(optimizerStateMatrixName, "adam_v")
 	matrixStep := optimizerStateKey(optimizerStateMatrixName, "step")
 	matrixShape := optimizerStateKey(optimizerStateMatrixName, "shape")
-	matrixDType := optimizerStateKey(optimizerStateMatrixName, "dtype")
 	cases := []struct {
 		name  string
 		input []byte
 		edit  func(map[string]*Tensor)
+		meta  func(map[string]string)
 		wire  string
 	}{
 		{
 			name:  "unsupported version",
 			input: adamState,
-			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, "version", []int64{2})
+			meta: func(metadata map[string]string) {
+				metadata[optimizerStateVersionKey] = "3"
+			},
+		},
+		{
+			name:  "missing version",
+			input: adamState,
+			meta: func(metadata map[string]string) {
+				delete(metadata, optimizerStateVersionKey)
 			},
 		},
 		{
@@ -435,8 +451,8 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 			edit: func(tensors map[string]*Tensor) {
 				extra := optimizerStatePrefix("unexpected/name")
 				optimizerStateReplaceI64(t, tensors, extra+"shape", []int64{1})
-				optimizerStateReplaceI64(t, tensors, extra+"dtype", []int64{0})
-				optimizerStateReplaceI64(t, tensors, extra+"step", []int64{0, 0})
+				step, _ := NewInt64Tensor(nil, []int64{0})
+				tensors[extra+"step"] = step
 			},
 		},
 		{
@@ -447,16 +463,19 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 			},
 		},
 		{
-			name:  "dtype descriptor uses wrong wire dtype",
+			name:  "step uses wrong wire dtype",
 			input: adamState,
 			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceF32(t, tensors, matrixDType, []float32{0})
+				step, _ := NewTensor(nil, []float32{4})
+				tensors[matrixStep] = step
 			},
 		},
 		{
-			name: "unsupported parameter dtype", input: adamState,
+			name:  "step is not a scalar",
+			input: adamState,
 			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, matrixDType, []int64{1})
+				step, _ := NewInt64Tensor([]int{2}, []int64{4, 0})
+				tensors[matrixStep] = step
 			},
 		},
 		{
@@ -469,7 +488,7 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 		{
 			name: "zero step with initialized moments", input: adamState,
 			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{0, 0})
+				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{0})
 			},
 		},
 		{
@@ -488,8 +507,8 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 		{
 			name:  "precision mismatch",
 			input: adamState,
-			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, "precision", []int64{1})
+			meta: func(metadata map[string]string) {
+				metadata[optimizerStatePrecisionKey] = "float32"
 			},
 		},
 		{
@@ -514,24 +533,10 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 			},
 		},
 		{
-			name:  "step limb overflow",
+			name:  "negative step",
 			input: adamState,
 			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{1 << 32, 0})
-			},
-		},
-		{
-			name:  "negative step limb",
-			input: adamState,
-			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{-1, 0})
-			},
-		},
-		{
-			name:  "maximal step has no next representable step",
-			input: adamState,
-			edit: func(tensors map[string]*Tensor) {
-				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{int64(^uint32(0)), int64(^uint32(0))})
+				optimizerStateReplaceI64(t, tensors, matrixStep, []int64{-1})
 			},
 		},
 		{
@@ -569,7 +574,7 @@ func TestOptimizerStateCorruptImportsAreTransactional(t *testing.T) {
 				wireType := testCase.wire[separator+1:]
 				encoded = optimizerStateRewriteWireDType(t, encoded, wireName, wireType)
 			} else {
-				encoded = optimizerStateMutateSafeTensors(t, encoded, testCase.edit)
+				encoded = optimizerStateMutateFile(t, encoded, testCase.edit, testCase.meta)
 			}
 			if _, err := LoadSafeTensors(bytes.NewReader(encoded)); err != nil {
 				t.Fatalf("mutated fixture is not valid SafeTensors: %v", err)
@@ -889,7 +894,7 @@ func optimizerStateRewriteWireDType(t *testing.T, encoded []byte, name, dtype st
 		t.Fatal("state fixture has an invalid header length")
 	}
 	headerEnd := 8 + int(headerLength)
-	entries, err := parseSafeTensorHeader(encoded[8:headerEnd])
+	entries, _, err := parseSafeTensorHeader(encoded[8:headerEnd])
 	if err != nil {
 		t.Fatal(err)
 	}

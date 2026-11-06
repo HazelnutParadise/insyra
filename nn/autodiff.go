@@ -21,9 +21,9 @@ type Tape struct {
 	rng     *rand.Rand
 	seed    int64
 	seedSet bool
-	// err is set when NewTape was given more than one seed. NewTape has no
-	// error result, so Param and Backward, which every training step calls,
-	// report it.
+	// err is set when NewTape was given more than one seed or Clear more than
+	// one ClearOptions. Neither has an error result, so Param and Backward,
+	// which every training step calls, report it.
 	err error
 
 	precision  accel.Precision
@@ -34,8 +34,7 @@ type Tape struct {
 	passOwned  []*Tensor
 	// releasers free device state that is not a tensor, such as the
 	// intermediates a cross-entropy gradient reuses.
-	releasers    []func()
-	clearOptions ClearOptions
+	releasers []func()
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -975,9 +974,11 @@ func (t *Tape) SGDMomentum(rate, momentum float32) error {
 	return nil
 }
 
-// ClipGradNorm clips all tracked gradients by their global L2 norm and
-// returns the norm before clipping. Parameters without a gradient are
-// excluded, matching torch.nn.utils.clip_grad_norm_.
+// ClipGradNorm clips the gradients of the parameters the built-in optimizers
+// update by their global L2 norm and returns the norm before clipping. Frozen
+// parameters and parameters without a gradient are left out, as
+// torch.nn.utils.clip_grad_norm_ leaves out parameters that are not trained;
+// a frozen parameter's gradient is not scaled.
 func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
 	if math.IsNaN(float64(maxNorm)) || math.IsInf(float64(maxNorm), 0) || maxNorm < 0 {
 		return 0, fmt.Errorf("clip grad norm maximum must be finite and non-negative")
@@ -989,6 +990,9 @@ func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
 	}
 	var squaredNorm float64
 	for _, param := range t.params {
+		if param.frozen {
+			continue
+		}
 		gradient := t.grads[param.value]
 		if gradient == nil {
 			continue
@@ -1001,6 +1005,9 @@ func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
 	if totalNorm > maxNorm && totalNorm > 0 {
 		scale := maxNorm / totalNorm
 		for _, param := range t.params {
+			if param.frozen {
+				continue
+			}
 			gradient := t.grads[param.value]
 			if gradient == nil {
 				continue
