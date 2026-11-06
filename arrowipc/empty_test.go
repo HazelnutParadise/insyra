@@ -14,7 +14,7 @@ import (
 
 func TestSuccessfulStreamClosesErrorChannelWithoutValue(t *testing.T) {
 	data := scalarFixture(t)
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 3)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 3)
 	for range tables {
 	}
 	if err, ok := <-errs; ok {
@@ -38,7 +38,7 @@ func TestZeroColumnRowsCannotBeSilentlyLost(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), arrowipc.ReadOptions{}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "zero-column") {
 		t.Fatalf("nonempty zero-column record: %d tables, %v", len(got), err)
@@ -51,7 +51,7 @@ func TestSchemaOnlyFileEmitsNoTables(t *testing.T) {
 	if err != nil || info.NumBatches != 0 {
 		t.Fatalf("empty inspect: %#v %v", info, err)
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err != nil {
 		t.Fatalf("schema-only stream: %d tables %v", len(got), err)

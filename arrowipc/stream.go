@@ -15,6 +15,9 @@ import (
 type selectedColumn struct {
 	index int
 	field arrow.Field
+	// name is the column's name in the table: the field name, with _1, _2,
+	// ... added when an earlier selected column already has it.
+	name string
 }
 
 func startStream(produce func(chan<- *insyra.DataTable) error) (<-chan *insyra.DataTable, <-chan error) {
@@ -95,7 +98,7 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 	if err != nil {
 		return err
 	}
-	selected, err := selectColumns(info.Schema, opt.Columns)
+	selected, err := selectColumns(info.schema, opt.Columns)
 	if err != nil {
 		return err
 	}
@@ -104,7 +107,10 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 	}
 
 	source := limitedSource(ctx, r, size, maxBytes)
-	reader, err := ipc.NewFileReader(io.NewSectionReader(source, 0, size))
+	// Arrow checks each block's extent and its metadata and body lengths
+	// against these limits before reading it.
+	reader, err := ipc.NewFileReader(io.NewSectionReader(source, 0, size),
+		ipc.WithBodySizeLimit(maxBytes), ipc.WithMetadataSizeLimit(maxFooterSize))
 	if err != nil {
 		return fmt.Errorf("arrowipc: open file reader: %w", err)
 	}
@@ -115,7 +121,7 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 		return err
 	}
 
-	if !reader.Schema().Equal(info.Schema) || reader.NumRecords() != info.NumBatches {
+	if !reader.Schema().Equal(info.schema) || reader.NumRecords() != info.batches {
 		return fmt.Errorf("arrowipc: source schema or batch count changed during opening")
 	}
 	for i := 0; i < reader.NumRecords(); i++ {
@@ -137,56 +143,6 @@ func streamSource(ctx context.Context, r io.ReaderAt, size int64, opt ReadOption
 	return checkContext(ctx)
 }
 
-func selectColumns(schema *arrow.Schema, requested []string) ([]selectedColumn, error) {
-	fields := schema.Fields()
-	var selected []selectedColumn
-	if len(requested) == 0 {
-		selected = make([]selectedColumn, 0, len(fields))
-		seen := make(map[string]struct{}, len(fields))
-		for i, field := range fields {
-			if _, exists := seen[field.Name]; exists {
-				return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", field.Name)
-			}
-			seen[field.Name] = struct{}{}
-			if err := checkExtension(field); err != nil {
-				return nil, err
-			}
-			if !supportedCellType(field.Type) {
-				return nil, fmt.Errorf("arrowipc: unsupported selected column %q type %s", field.Name, field.Type)
-			}
-			selected = append(selected, selectedColumn{index: i, field: field})
-		}
-		return selected, nil
-	}
-
-	selected = make([]selectedColumn, 0, len(requested))
-	requestedNames := make(map[string]struct{}, len(requested))
-	for _, name := range requested {
-		if _, exists := requestedNames[name]; exists {
-			return nil, fmt.Errorf("arrowipc: duplicate selected column %q", name)
-		}
-		requestedNames[name] = struct{}{}
-
-		indices := schema.FieldIndices(name)
-		if len(indices) == 0 {
-			return nil, fmt.Errorf("arrowipc: unknown selected column %q", name)
-		}
-		if len(indices) > 1 {
-			return nil, fmt.Errorf("arrowipc: ambiguous selected column %q", name)
-		}
-		index := indices[0]
-		field := fields[index]
-		if err := checkExtension(field); err != nil {
-			return nil, err
-		}
-		if !supportedCellType(field.Type) {
-			return nil, fmt.Errorf("arrowipc: unsupported selected column %q type %s", field.Name, field.Type)
-		}
-		selected = append(selected, selectedColumn{index: index, field: field})
-	}
-	return selected, nil
-}
-
 func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []selectedColumn, batchSize int, maxOutput int64, tables chan<- *insyra.DataTable) error {
 	defer record.Release()
 	if err := checkContext(ctx); err != nil {
@@ -197,7 +153,7 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 	}
 	for _, column := range selected {
 		if int64(column.index) >= record.NumCols() {
-			return fmt.Errorf("arrowipc: record is missing selected column %q", column.field.Name)
+			return fmt.Errorf("arrowipc: record is missing selected column %q", column.name)
 		}
 	}
 
@@ -219,7 +175,7 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 		}
 		// AppendCols scans prior names for each named column. Bootstrap with
 		// empty unnamed columns, then replace by position: selection already
-		// established unique names, and UpdateColByNumber owns a data copy.
+		// made the names unique, and UpdateColByNumber owns a data copy.
 		columns := make([]*insyra.DataList, len(selected))
 		empty := insyra.NewDataList()
 		for i := range columns {
@@ -236,7 +192,7 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 			values := make([]any, int(count))
 			array := record.Column(column.index)
 			if array == nil || int64(array.Len()) < end {
-				return fmt.Errorf("arrowipc: invalid data for selected column %q", column.field.Name)
+				return fmt.Errorf("arrowipc: invalid data for selected column %q", column.name)
 			}
 			for row := start; row < end; row++ {
 				if err := checkContext(ctx); err != nil {
@@ -247,11 +203,11 @@ func streamRecord(ctx context.Context, record arrow.RecordBatch, selected []sele
 					return err
 				}
 				if conversionErr != nil {
-					return fmt.Errorf("arrowipc: column %q row %d: %w", column.field.Name, row, conversionErr)
+					return fmt.Errorf("arrowipc: column %q row %d: %w", column.name, row, conversionErr)
 				}
 				values[int(row-start)] = value
 			}
-			table.UpdateColByNumber(i, insyra.NewDataList().Append(values...).SetName(column.field.Name))
+			table.UpdateColByNumber(i, insyra.NewDataList().Append(values...).SetName(column.name))
 		}
 		if err := checkContext(ctx); err != nil {
 			return err

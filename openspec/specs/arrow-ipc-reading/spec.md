@@ -1,28 +1,36 @@
 # arrow-ipc-reading Specification
 
 ## Purpose
-Provide metadata-only schema inspection and bounded, cancellable DataTable reading for Arrow IPC files and Feather V2 while preserving scalar types and explicit errors.
+Provide metadata-only schema inspection and bounded, cancellable DataTable iteration for Arrow IPC files and Feather V2 while preserving scalar types and explicit errors.
 ## Requirements
 ### Requirement: Metadata-only schema inspection
-The arrowipc package SHALL inspect IPC file and Feather V2 schemas from paths or io.ReaderAt plus size without reading record or dictionary bodies. It SHALL return the full Arrow schema, IPC version and native batch count, including unsupported field types.
+The arrowipc package SHALL inspect IPC file and Feather V2 schemas from paths or io.ReaderAt plus size without reading record or dictionary bodies. It SHALL return, in Insyra's own types, every top-level field's name, Arrow type text, nullability and metadata, the schema metadata, the IPC version and the native batch count, including unsupported field types.
 
 #### Scenario: Dictionary and nested schema over ranges
 - **WHEN** a caller inspects a file with dictionary and list columns through a ReaderAt that rejects body reads
 - **THEN** inspection succeeds with original types, nullability, order and metadata and fetches only header, trailer and footer bytes
 
 ### Requirement: Bounded typed batch reading
-Stream and StreamFrom SHALL emit independently owned DataTables of at most the positive batchSize rows, preserving native batch boundaries and requested top-level column order. Empty Columns SHALL select all fields. Missing, duplicate and ambiguous selected names SHALL error. The producer SHALL hold at most one native record plus dictionary state and one output table.
+Stream and StreamFrom SHALL emit independently owned DataTables of at most the positive batchSize rows, preserving native batch boundaries and requested top-level column order. Empty Columns SHALL select all fields. Columns SHALL accept Excel-style strings, insyra.Name names and int positions (negative from the end). Invalid and ambiguous selectors and a field selected twice SHALL error. The producer SHALL hold at most one native record plus dictionary state and one output table.
 
 #### Scenario: Multiple batches and selection
 - **WHEN** a generated file contains several records and Columns selects two fields in reverse order
 - **THEN** every row is emitted once with those fields in that order and no output exceeds batchSize
 
+#### Scenario: Fields that share a name
+- **WHEN** a file has fields named x, x and x_1
+- **THEN** the table's columns are named x, x_1 and x_1_1, as DataTable.AppendCols names them
+
 ### Requirement: Decoded byte budget
-ReadOptions.MaxBatchBytes SHALL cap decoded native record buffers plus retained dictionary buffers before decompression. Zero SHALL use 256 MiB and negative values SHALL error before data reads. The budget SHALL cover native buffers for all fields, including unselected ones, without claiming to limit process RSS or DataTable overhead.
+ReadOptions.MaxBatchBytes SHALL cap decoded native record buffers plus retained dictionary buffers before decompression, and each encoded message body. Zero SHALL use 256 MiB and negative values SHALL error before data reads. A larger value SHALL let a larger batch be read. The budget SHALL cover native buffers for all fields, including unselected ones, without claiming to limit process RSS or DataTable overhead.
 
 #### Scenario: Decoded length exceeds budget
 - **WHEN** a compressed buffer declares a decoded length above the budget or dictionary buffers leave insufficient room for a record
 - **THEN** reading fails explicitly before that allocation and no affected table is emitted
+
+#### Scenario: Batch above the default
+- **WHEN** a file holds one 288 MB batch and MaxBatchBytes is 512 MiB
+- **THEN** every row is read, and with the default the read fails naming MaxBatchBytes
 
 ### Requirement: Disjoint IPC block extents
 Stream readers SHALL reject overlapping or duplicate footer block extents, across both dictionary and record blocks, before reading native block bodies. Extent validation SHALL include metadata and body bytes, preserve footer record order and allow adjacent non-overlapping blocks.
@@ -59,13 +67,6 @@ Readers SHALL construct output tables without scanning all earlier column names 
 - **WHEN** a generated record has 65,536 uniquely named Null columns and reading has a short deadline
 - **THEN** reading completes with all names and nulls intact or terminates promptly with cancellation, without entering quadratic name collision checks
 
-### Requirement: Bounded native footer block entries
-Stream readers SHALL cap the aggregate dictionary and record block count at 65,536 before allocating, appending or sorting decoded block entries. Shared vectors SHALL count at every occurrence. Exceeding this limit SHALL fail before native body reads; inspection MAY report the larger batch count without materializing block entries.
-
-#### Scenario: Dictionary and record vectors share block entries
-- **WHEN** dictionary and record vectors each pass wire bounds but their combined entry count exceeds 65,536
-- **THEN** streaming rejects the count before constructing the decoded block collection or reading a body
-
 ### Requirement: Bounded variadic view-buffer counts
 Stream readers SHALL validate variadic view-buffer counts before native allocation and body reads, including unselected fields. Counts SHALL be nonnegative, their vector and aggregate SHALL not exceed 65,536, and their aggregate SHALL not exceed the message's declared buffer entries. Invalid counts SHALL produce an explicit error.
 
@@ -95,7 +96,7 @@ ReadOptions.MaxOutputBytes SHALL bound each table's cell slots (charged as 16 by
 - **THEN** reading fails before the excess allocation and emits no affected table
 
 ### Requirement: Faithful scalar cells and explicit unsupported types
-Readers SHALL preserve Parquet's supported scalar cell mappings and nil nulls, including int64 IDs beyond 2^53, binary byte slices, dates, decimals and dictionary values. Selected unsupported types, including lists, SHALL produce an error naming the field and type before any table is emitted. Inspection SHALL still describe those fields.
+Readers SHALL preserve Parquet's supported scalar cell mappings and nil nulls, including int64 IDs beyond 2^53, binary byte slices, dates, durations as time.Duration, decimals and dictionary values. A duration time.Duration cannot hold SHALL be an error. Selected unsupported types, including lists, SHALL produce an error naming the field and type before any table is emitted. Inspection SHALL still describe those fields.
 
 #### Scenario: Ordered dictionary and exact nullable IDs
 - **WHEN** reading nullable int64, UTF8, float64, int32 and ordered int8-to-UTF8 dictionary columns
@@ -105,6 +106,10 @@ Readers SHALL preserve Parquet's supported scalar cell mappings and nil nulls, i
 - **WHEN** a selected column is list of int64 or a nested list
 - **THEN** reading returns an explicit unsupported-type error and selecting only supported fields succeeds
 
+#### Scenario: Duration units
+- **WHEN** a duration column holds 1500 in seconds, milliseconds, microseconds or nanoseconds
+- **THEN** each cell is the time.Duration of 1500 of that unit
+
 ### Requirement: Zero-column row counts remain explicit
 A record with positive rows and zero columns SHALL return an explicit error instead of emitting DataTables with a different row count. Schema-only files with no records SHALL terminate successfully without tables.
 
@@ -113,12 +118,19 @@ A record with positive rows and zero columns SHALL return an explicit error inst
 - **THEN** the reader reports that DataTable cannot represent a nonempty zero-column record and emits no table for it
 
 ### Requirement: Cancellation errors and ownership
-Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, and never close caller-owned ReaderAt sources. Streams SHALL close both channels and report terminal errors through a buffered error channel. Tables and inspected schemas SHALL remain valid after reader cleanup without caller Release calls. Callers SHALL drain tables or cancel when stopping early.
+Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, report a source shorter than its given size as an error wrapping io.ErrUnexpectedEOF, and never close caller-owned ReaderAt sources. Stream and StreamFrom SHALL return lazy iter.Seq2[*insyra.DataTable, error] sequences, yield terminal errors once as (nil, error), and cancel and drain internal production before returning on early loop exit.
 
 #### Scenario: Cancellation and damaged files
 - **WHEN** a context is cancelled before reading or while a producer is blocked, or a source is truncated or not Arrow
 - **THEN** the operation terminates with the corresponding error and no panic or producer remains blocked
 
+#### Scenario: Wrong size
+- **WHEN** the size given is larger than the source
+- **THEN** the error wraps io.ErrUnexpectedEOF
+
+### Requirement: Output outlives the reader
+Tables SHALL survive reader cleanup without caller Release calls, and caller-owned sources SHALL be safe to close after iteration returns.
+
 #### Scenario: Retained output
-- **WHEN** a caller retains earlier tables and schema after reading completes
+- **WHEN** a caller retains earlier tables and file information after reading completes
 - **THEN** their values remain unchanged and independent of Arrow buffers and the caller-owned source remains open

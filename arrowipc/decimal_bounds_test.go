@@ -43,15 +43,15 @@ func TestUnsupportedDecimalParametersFailBeforeCells(t *testing.T) {
 				b.Field(1).(*array.Int64Builder).Append(7)
 			})
 			info, err := arrowipc.InspectFrom(context.Background(), bytes.NewReader(data), int64(len(data)))
-			if err != nil || !arrow.TypeEqual(info.Schema.Field(0).Type, typ) {
+			if err != nil || info.Columns[0].Type != typ.String() {
 				t.Fatalf("inspection lost decimal type: %v", err)
 			}
-			tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
+			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
 			got, err := drain(t, tables, errs)
 			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "amount") || !strings.Contains(err.Error(), "decimal") {
 				t.Fatalf("%s: %d tables, error %v", typ, len(got), err)
 			}
-			tables, errs = arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 1)
+			tables, errs = streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 1)
 			got, err = drain(t, tables, errs)
 			if err != nil || len(got) != 1 || got[0].GetColByNumber(0).Get(0) != int64(7) {
 				t.Fatalf("excluding unsupported decimal: %d tables, %v", len(got), err)

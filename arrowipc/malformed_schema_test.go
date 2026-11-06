@@ -71,10 +71,10 @@ func TestUnknownExtensionIsNotSilentlyReadAsStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := info.Schema.Field(0).Metadata.GetValue("ARROW:extension:name"); !ok {
+	if _, ok := info.Columns[0].Metadata["ARROW:extension:name"]; !ok {
 		t.Fatal("extension metadata lost during inspection")
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "special") || !strings.Contains(err.Error(), "extension") {
 		t.Fatalf("unknown extension: %d tables, %v", len(got), err)

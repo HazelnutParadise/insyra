@@ -40,6 +40,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：新增 `INT(x)`、`ROUNDUP(x, n)`、`ROUNDDOWN(x, n)`，行為跟 Excel 一樣。`ROUNDUP` 往離 0 遠的方向，`ROUNDDOWN` 往靠近 0 的方向，`INT` 跟 `FLOOR` 結果相同。
 - CCL：新增 Excel 365 的名字 `REGEXTEST`。`REGEX_MATCH` 棄用，會警告一次，0.4 移除，請改用 `REGEXTEST`。
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
+- `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變。`isr.Name` 現在回傳同一個型別（`isr.NameSelector` 是 `insyra.NameSelector` 的別名），與 0.4 相同，兩者在 `isr` 和 `arrowipc` 都能用。
 
 ### `ml` 與 `nn`
 
@@ -107,8 +108,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `arrowipc`
 
-- 新增唯讀 `arrowipc` 套件，不讀取資料即可檢查 Arrow IPC file／Feather V2 結構，並支援選欄與可取消的 DataTable 分批讀取，原生緩衝區與展開後輸出各有位元組上限。整數識別碼與空值保留精確內容，字典讀成對應值，不支援的選取型別會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。
-- 中繼資料會在配置前限制共用文字、解碼後的結構項目、原生區塊數與 view 緩衝區數量，並拒絕重疊區塊及不支援的十進位數 precision／scale。寬表格建立時會逐欄檢查取消狀態，選欄使用名稱索引，建立表格也不會反覆掃描先前欄名。
+- 新增唯讀 `arrowipc` 套件，不讀取資料即可檢查 Arrow IPC file／Feather V2 結構，並以 range-over-func 序列分批讀出 DataTable（`for table, err := range arrowipc.Stream(...)`），原生緩衝區與展開後輸出各有位元組上限。`ReadOptions.Columns` 使用 0.4 的欄位選擇規則：`"B"` 是第二欄，`insyra.Name("B")` 是名為 B 的欄，`int` 是位置。整數識別碼與空值保留精確內容，字典讀成對應值，時間長度讀成 `time.Duration`，同名欄位比照 `AppendCols` 改名，不支援的選取型別會明確回傳錯誤（[#377](https://github.com/HazelnutParadise/insyra/issues/377)）。
+- 中繼資料會在配置前限制共用文字、解碼後的結構項目與 view 緩衝區數量，並拒絕重疊區塊及不支援的十進位數 precision／scale。寬表格建立時會逐欄檢查取消狀態，選欄使用名稱索引，建立表格也不會反覆掃描先前欄名。
 - 字典 delta 訊息會在取得其內容前明確回傳不支援的錯誤，即使沒有選取該欄也一樣；仍可檢查結構，一般字典照常支援。
 
 ## v0.3.5

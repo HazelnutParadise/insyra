@@ -62,7 +62,7 @@ summarize(isr.DT.From(isr.CSV{FilePath: "data.csv"}))
 - `isr.CSV` - CSV file or string configuration with input/output options
 - `isr.JSON` - JSON file/data configuration (supports both file path and byte data)
 - `isr.Excel` - Excel file configuration with input options (supports XLAM/XLSM/XLSX/XLTM/XLTX)
-- `isr.Name` - Function to create named references for rows/columns
+- `isr.Name` - Function to create named references for rows/columns; it returns `insyra.NameSelector`, the same type `insyra.Name` builds
 
 ### Type Alias Details
 

@@ -32,7 +32,7 @@ func TestLateReadErrorIsNotLostAfterDeliveredBatches(t *testing.T) {
 	vector := tab.Vector(flatbuffers.UOffsetT(tab.Offset(10)))
 	second := int64(binary.LittleEndian.Uint64(footer[int(vector)+24:]))
 	src := brokenSecondRecord{data: data, start: second, end: int64(footerAt)}
-	tables, errs := arrowipc.StreamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 3)
+	tables, errs := streamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 3)
 	got, err := drain(t, tables, errs)
 	if !errors.Is(err, errBrokenRecord) {
 		t.Fatalf("late error: %v", err)
@@ -65,7 +65,7 @@ func TestFullBodyReadDoesNotHideSourceFailure(t *testing.T) {
 	vector := footer.Vector(flatbuffers.UOffsetT(footer.Offset(10)))
 	offset := int64(binary.LittleEndian.Uint64(footer.Bytes[vector : vector+8]))
 	meta := int64(binary.LittleEndian.Uint32(footer.Bytes[vector+8 : vector+12]))
-	tables, errs := arrowipc.StreamFrom(context.Background(), fullBodyError{data: data, offset: offset + meta}, int64(len(data)), arrowipc.ReadOptions{}, 2)
+	tables, errs := streamFrom(context.Background(), fullBodyError{data: data, offset: offset + meta}, int64(len(data)), arrowipc.ReadOptions{}, 2)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || !errors.Is(err, errBrokenRecord) {
 		t.Fatalf("full body source error lost: %d tables, %v", len(got), err)

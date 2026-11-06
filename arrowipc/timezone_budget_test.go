@@ -70,7 +70,7 @@ func TestTimestampTimezonesSurviveInspection(t *testing.T) {
 	}
 	clear(data)
 	for i, want := range []string{"UTC", "Asia/Taipei"} {
-		if got := info.Schema.Field(i).Type.(*arrow.TimestampType).TimeZone; got != want {
+		if got := info.Columns[i].Type; !strings.Contains(got, "tz="+want) {
 			t.Fatalf("timezone %d: %q", i, got)
 		}
 	}

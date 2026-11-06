@@ -155,7 +155,7 @@ func drain(t *testing.T, tables <-chan *insyra.DataTable, errs <-chan error) ([]
 func TestStreamFromPreservesScalarsBatchesAndOwnership(t *testing.T) {
 	data := scalarFixture(t)
 	source := &closableReaderAt{Reader: bytes.NewReader(data)}
-	tables, errs := arrowipc.StreamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 3)
+	tables, errs := streamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{}, 3)
 	got, err := drain(t, tables, errs)
 	if err != nil {
 		t.Fatal(err)
@@ -201,8 +201,8 @@ func TestStreamFromPreservesScalarsBatchesAndOwnership(t *testing.T) {
 
 func TestStreamSelectsColumnsInRequestOrder(t *testing.T) {
 	data := scalarFixture(t)
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{
-		Columns: []string{"state", "id"},
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{
+		Columns: namedColumns([]string{"state", "id"}),
 	}, 2)
 	got, err := drain(t, tables, errs)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestStreamPathAndInvalidColumnSelections(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	tables, errs := arrowipc.Stream(context.Background(), path, arrowipc.ReadOptions{}, 10)
+	tables, errs := streamPath(context.Background(), path, arrowipc.ReadOptions{}, 10)
 	got, err := drain(t, tables, errs)
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +245,7 @@ func TestStreamPathAndInvalidColumnSelections(t *testing.T) {
 	}
 
 	for _, columns := range [][]string{{"missing"}, {"id", "id"}} {
-		tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: columns}, 10)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns(columns)}, 10)
 		output, err := drain(t, tables, errs)
 		if err == nil || len(output) != 0 {
 			t.Fatalf("columns %v: got %d tables and error %v", columns, len(output), err)
@@ -262,7 +262,7 @@ func TestStreamRejectsAmbiguousSelectedName(t *testing.T) {
 		builder.Field(0).(*array.Int32Builder).Append(1)
 		builder.Field(1).(*array.Int32Builder).Append(2)
 	})
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"same"}}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"same"})}, 1)
 	got, err := drain(t, tables, errs)
 	if err == nil || len(got) != 0 || !strings.Contains(strings.ToLower(err.Error()), "same") {
 		t.Fatalf("ambiguous selection: tables=%d err=%v", len(got), err)
@@ -290,18 +290,18 @@ func TestInspectListAndStreamExplicitlyRefusesListTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !arrow.TypeEqual(info.Schema.Field(1).Type, arrow.ListOf(arrow.PrimitiveTypes.Int64)) ||
-		!arrow.TypeEqual(info.Schema.Field(2).Type, arrow.ListOf(arrow.ListOf(arrow.PrimitiveTypes.Int64))) {
-		t.Fatalf("inspection did not preserve list schema: %s", info.Schema)
+	if info.Columns[1].Type != arrow.ListOf(arrow.PrimitiveTypes.Int64).String() ||
+		info.Columns[2].Type != arrow.ListOf(arrow.ListOf(arrow.PrimitiveTypes.Int64)).String() {
+		t.Fatalf("inspection did not preserve list schema: %#v", info.Columns)
 	}
 	for _, column := range []string{"items", "nested"} {
-		tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{column}}, 1)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{column})}, 1)
 		got, err := drain(t, tables, errs)
 		if err == nil || len(got) != 0 || !strings.Contains(err.Error(), column) {
 			t.Fatalf("selected %s: tables=%d err=%v", column, len(got), err)
 		}
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"value"}}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"value"})}, 1)
 	got, err := drain(t, tables, errs)
 	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0].GetColByNumber(0).Data(), []any{int32(7)}) {
 		t.Fatalf("supported selection: tables=%d err=%v", len(got), err)
@@ -314,7 +314,7 @@ func TestStreamRejectsNilAndCancelledContexts(t *testing.T) {
 	cancel()
 	for name, ctx := range map[string]context.Context{"nil": nil, "cancelled": cancelled} {
 		t.Run(name, func(t *testing.T) {
-			tables, errs := arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 2)
+			tables, errs := streamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 2)
 			got, err := drain(t, tables, errs)
 			if err == nil || len(got) != 0 {
 				t.Fatalf("got %d tables and error %v", len(got), err)
@@ -348,7 +348,7 @@ func TestStreamCancellationWhileSendIsBlocked(t *testing.T) {
 		data: data, footerAt: int64(len(data)) - 10 - footerLen, bodyRead: make(chan struct{}),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	tables, errs := arrowipc.StreamFrom(ctx, source, int64(len(data)), arrowipc.ReadOptions{}, 10)
+	tables, errs := streamFrom(ctx, source, int64(len(data)), arrowipc.ReadOptions{}, 10)
 	select {
 	case <-source.bodyRead:
 	case <-time.After(5 * time.Second):
@@ -377,7 +377,7 @@ func TestStreamReportsTruncatedAndNonArrowSources(t *testing.T) {
 		"non-arrow": []byte("this is not an Arrow IPC file"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
+			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)
 			got, err := drain(t, tables, errs)
 			if err == nil || len(got) != 0 {
 				t.Fatalf("got %d tables and error %v", len(got), err)
@@ -388,7 +388,7 @@ func TestStreamReportsTruncatedAndNonArrowSources(t *testing.T) {
 
 func TestStreamFromDoesNotCloseSourceOnReadError(t *testing.T) {
 	source := &closableReaderAt{Reader: bytes.NewReader([]byte("not an Arrow IPC file"))}
-	tables, errs := arrowipc.StreamFrom(context.Background(), source, int64(source.Size()), arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), source, int64(source.Size()), arrowipc.ReadOptions{}, 1)
 	_, err := drain(t, tables, errs)
 	if err == nil {
 		t.Fatal("expected invalid-source error")
@@ -399,7 +399,7 @@ func TestStreamFromDoesNotCloseSourceOnReadError(t *testing.T) {
 }
 
 func TestStreamChannelsCloseOnInvalidInput(t *testing.T) {
-	tables, errs := arrowipc.StreamFrom(context.Background(), readerAtPanic{}, 64, arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), readerAtPanic{}, 64, arrowipc.ReadOptions{}, 1)
 	_, err := drain(t, tables, errs)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "reader") {
 		t.Fatalf("panic source error=%v", err)
