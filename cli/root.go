@@ -32,6 +32,12 @@ func NewRootCommand() *cobra.Command {
 		Short:        "Insyra CLI and REPL for data analysis",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// A command that parses its own flags opens its environment in
+			// wrapRawArgCommand, once the root flags are peeled off, so a
+			// broken default environment does not stop `--env other ...`.
+			if cmd.DisableFlagParsing {
+				return nil
+			}
 			return openEnvironment(execCtx)
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
@@ -96,14 +102,12 @@ func openEnvironment(execCtx *commands.ExecContext) error {
 func wrapRawArgCommand(sub *cobra.Command, execCtx *commands.ExecContext) {
 	original := sub.RunE
 	sub.RunE = func(cmd *cobra.Command, args []string) error {
-		rest, changed, err := consumeRootFlags(args)
+		rest, _, err := consumeRootFlags(args)
 		if err != nil {
 			return err
 		}
-		if changed {
-			if err := openEnvironment(execCtx); err != nil {
-				return err
-			}
+		if err := openEnvironment(execCtx); err != nil {
+			return err
 		}
 		return original(cmd, rest)
 	}

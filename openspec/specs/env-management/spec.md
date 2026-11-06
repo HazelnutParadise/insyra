@@ -226,3 +226,10 @@ The system SHALL treat a refusal to create the state lock as a held lock to wait
 #### Scenario: Twelve saves at once on Windows
 - **WHEN** twelve processes save one environment at the same moment
 - **THEN** every save succeeds and every variable is present afterwards
+
+### Requirement: A new environment's files are never seen part-written
+Create SHALL make each default file appear whole, so a session opening the environment while another creates it reads a complete `state.json`.
+
+#### Scenario: Two sessions open a missing environment
+- **WHEN** two sessions open the same missing environment at once
+- **THEN** both open it, and neither reports that `state.json` cannot be read
