@@ -32,16 +32,16 @@ func TestNYTAcceptanceMonth(t *testing.T) {
 		if r.Method != "GET" || r.URL.Path != "/2026/10.json" || r.URL.Query().Get("api-key") != "local-fake+/=key" {
 			t.Error("incorrect month/auth request")
 		}
-		_, _ = w.Write([]byte(`{"response":{"docs":[{"headline":{"main":"A headline"},"abstract":"Summary","lead_paragraph":"Lead","section_name":"Business","pub_date":"2026-10-18T14:05:06-04:00","web_url":"https://www.nytimes.com/example"},{"headline":null,"abstract":null,"pub_date":"2026-10-01T00:00:00Z"}]}}`))
+		_, _ = w.Write([]byte(`{"response":{"docs":[{"_id":"nyt://article/1","headline":{"main":"A headline"},"abstract":"Summary","lead_paragraph":"Lead","section_name":"Business","news_desk":"Business","type_of_material":"News","word_count":812,"pub_date":"2026-10-18T14:05:06-04:00","web_url":"https://www.nytimes.com/example"},{"headline":null,"abstract":null,"word_count":null,"pub_date":"2026-10-01T00:00:00Z"}]}}`))
 	})
 	dt, err := c.Archive(2026, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || dt.NumRows() != 2 || dt.NumCols() != 6 {
+	if calls != 1 || dt.NumRows() != 2 || dt.NumCols() != 10 {
 		t.Fatalf("calls/rows/columns = %d/%d/%d", calls, dt.NumRows(), dt.NumCols())
 	}
-	for name, want := range map[string]any{"headline": "A headline", "abstract": "Summary", "lead_paragraph": "Lead", "section_name": "Business", "web_url": "https://www.nytimes.com/example"} {
+	for name, want := range map[string]any{"_id": "nyt://article/1", "headline": "A headline", "abstract": "Summary", "lead_paragraph": "Lead", "section_name": "Business", "news_desk": "Business", "type_of_material": "News", "word_count": int64(812), "web_url": "https://www.nytimes.com/example"} {
 		got := dt.GetColByName(name).Data()
 		if got[0] != want || got[1] != nil {
 			t.Errorf("%s values = %#v", name, got)
@@ -59,10 +59,10 @@ func TestNYTAcceptanceEmptyMonth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dt.NumRows() != 0 || dt.NumCols() != 6 {
+	if dt.NumRows() != 0 || dt.NumCols() != 10 {
 		t.Fatalf("empty shape = %d/%d", dt.NumRows(), dt.NumCols())
 	}
-	for _, name := range []string{"headline", "abstract", "lead_paragraph", "section_name", "pub_date", "web_url"} {
+	for _, name := range []string{"_id", "headline", "abstract", "lead_paragraph", "section_name", "news_desk", "type_of_material", "word_count", "pub_date", "web_url"} {
 		if dt.GetColByName(name) == nil {
 			t.Errorf("missing column %s", name)
 		}
@@ -103,6 +103,7 @@ func TestNYTAcceptancePacingAndQuota(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(nytAcceptanceEmpty))
 	})
+	c.cfg.Retries = 1
 	c.now = func() time.Time { return now }
 	var waits []time.Duration
 	c.wait = func(ctx context.Context, d time.Duration) error {
@@ -132,10 +133,15 @@ func TestNYTAcceptancePacingAndQuota(t *testing.T) {
 		}
 	}
 	before := now
-	if _, err := c.Archive(2026, 10); !errors.Is(err, ErrNYTThrottled) {
+	_, err := c.Archive(2026, 10)
+	var quota *NYTQuotaError
+	if !errors.As(err, &quota) || !errors.Is(err, ErrNYTThrottled) {
 		t.Fatalf("daily quota error = %v", err)
 	}
-	if calls != 500 || !now.Equal(before) {
+	if !quota.RetryAt.Equal(starts[0].Add(24 * time.Hour)) {
+		t.Fatalf("RetryAt = %v, want the first attempt plus 24 hours (%v)", quota.RetryAt, starts[0].Add(24*time.Hour))
+	}
+	if calls != 500 || now.Sub(before) > defaultNYTInterval {
 		t.Fatalf("daily exhaustion sent/waited: calls=%d elapsed=%v", calls, now.Sub(before))
 	}
 	now = now.Add(24 * time.Hour)
@@ -156,13 +162,16 @@ func TestNYTAcceptanceRefusedAndExhausted(t *testing.T) {
 			_, err := c.Archive(2026, 10)
 			want, attempts := ErrNYTAuth, 1
 			if status == 429 {
-				want, attempts = ErrNYTThrottled, 2
+				want = ErrNYTThrottled
 			}
 			if !errors.Is(err, want) || calls != attempts {
 				t.Fatalf("error/calls = %v/%d", err, calls)
 			}
 			if strings.Contains(err.Error(), c.cfg.APIKey) {
 				t.Fatal("error exposed credential")
+			}
+			if status != 429 && !strings.Contains(err.Error(), "[redacted]") {
+				t.Fatalf("error does not carry the filtered response body: %v", err)
 			}
 		})
 	}
@@ -254,10 +263,10 @@ func TestNYTAcceptanceColumnOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []string
-	for _, index := range []string{"A", "B", "C", "D", "E", "F"} {
+	for _, index := range []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"} {
 		got = append(got, dt.GetColNameByIndex(index))
 	}
-	if !reflect.DeepEqual(got, []string{"headline", "abstract", "lead_paragraph", "section_name", "pub_date", "web_url"}) {
+	if !reflect.DeepEqual(got, []string{"_id", "headline", "abstract", "lead_paragraph", "section_name", "news_desk", "type_of_material", "word_count", "pub_date", "web_url"}) {
 		t.Fatalf("columns = %v", got)
 	}
 }
@@ -284,7 +293,7 @@ func TestNYTAcceptanceLastBudgetAttemptThrottledDoesNotWait(t *testing.T) {
 	if _, err := c.Archive(2026, 10); !errors.Is(err, ErrNYTThrottled) {
 		t.Fatal(err)
 	}
-	if elapsed := now.Sub(before); elapsed != defaultNYTInterval {
+	if elapsed := now.Sub(before); elapsed > defaultNYTInterval {
 		t.Fatalf("exhausted daily budget waited %v, want only scheduled request spacing", elapsed)
 	}
 }

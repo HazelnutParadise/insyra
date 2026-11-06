@@ -39,8 +39,8 @@ func TestNYTConfigDefaultsAndValidation(t *testing.T) {
 	if client.cfg.Interval != 12100*time.Millisecond {
 		t.Error("zero Interval did not default to 12.1 seconds")
 	}
-	if client.cfg.Retries != 1 {
-		t.Error("zero Retries did not default to one retry")
+	if client.cfg.Retries != 0 {
+		t.Error("zero Retries did not stay zero")
 	}
 
 	configs := []NYTConfig{
@@ -212,7 +212,7 @@ func TestNYTConcurrentCallsSharePacing(t *testing.T) {
 	results := make(chan error, 2)
 	for month := 1; month <= 2; month++ {
 		go func(month int) {
-			_, err := client.ArchiveContext(context.Background(), time.Now().Year(), month)
+			_, err := client.ArchiveContext(context.Background(), time.Now().Year()-1, month)
 			results <- err
 		}(month)
 	}
@@ -236,17 +236,10 @@ func TestNYTConcurrentCallsSharePacing(t *testing.T) {
 	if len(startsCopy) != 2 {
 		t.Fatalf("recorded %d request starts, want 2", len(startsCopy))
 	}
-	if startsCopy[1].Sub(startsCopy[0]) < defaultNYTInterval {
-		t.Error("concurrent calls were not spaced by the configured interval")
-	}
-	foundPacingWait := false
-	for _, wait := range waitsCopy {
-		if wait >= defaultNYTInterval {
-			foundPacingWait = true
-		}
-	}
-	if !foundPacingWait {
-		t.Error("concurrent calls did not wait for client pacing")
+	// The fake clock is shared, so the starts the handler records cannot show
+	// the spacing; the schedule can: the second call waits one whole interval.
+	if len(waitsCopy) != 1 || waitsCopy[0] != defaultNYTInterval {
+		t.Errorf("pacing waits = %v, want one wait of %v", waitsCopy, defaultNYTInterval)
 	}
 }
 
@@ -257,7 +250,8 @@ func TestNYTCancelsLongRetryAfter(t *testing.T) {
 		w.Header().Set("Retry-After", "3600")
 		w.WriteHeader(http.StatusTooManyRequests)
 	})
-	client.now = func() time.Time { return time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC) }
+	fixed := time.Now()
+	client.now = func() time.Time { return fixed }
 	enteredWait := make(chan struct{})
 	var requestedWait time.Duration
 	client.wait = func(ctx context.Context, d time.Duration) error {
@@ -266,7 +260,9 @@ func TestNYTCancelsLongRetryAfter(t *testing.T) {
 		return sleepContext(ctx, d)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// A Retry-After this long is the daily quota, waited for only because the
+	// deadline is after it.
+	ctx, cancel := context.WithDeadline(context.Background(), fixed.Add(2*time.Hour))
 	result := make(chan error, 1)
 	go func() {
 		_, err := client.ArchiveContext(ctx, time.Now().Year(), 1)

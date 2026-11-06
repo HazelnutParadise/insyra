@@ -2,9 +2,7 @@
 
 ## Purpose
 The CLI's named environments: creating, listing, opening, renaming, deleting and describing them, how their variables, history and config are stored and restored between commands, the default environment, and how a variable the environment cannot store is reported.
-
 ## Requirements
-
 ### Requirement: Environment create
 系統 SHALL 提供 `env create <name>` 命令建立新環境。
 
@@ -216,3 +214,24 @@ When the environment already exists, `Create` SHALL return an error for which `e
 #### Scenario: Creating an environment twice
 - **WHEN** `Create("known")` is called after an earlier successful `Create("known")` on the same manager
 - **THEN** `errors.Is(err, ErrEnvironmentExists)` is true
+
+### Requirement: An unreadable state file stops the command
+When an environment's `state.json` exists but cannot be read, the system SHALL stop before running the command and SHALL report an error naming the file and the cause, and SHALL leave the file unchanged.
+
+#### Scenario: Truncated state file
+- **WHEN** `state.json` is cut off mid-object and a command is run on that environment
+- **THEN** the command fails with an error naming the file, and the file's bytes are unchanged
+
+### Requirement: A missing state file starts an empty environment
+When an environment has no `state.json`, the system SHALL start it with no variables and SHALL NOT report an error.
+
+#### Scenario: No state file
+- **WHEN** the environment's `state.json` does not exist and a command is run
+- **THEN** the command runs with no variables
+
+### Requirement: A new environment's files are never seen part-written
+Create SHALL make each default file appear whole, so a session opening the environment while another creates it reads a complete `state.json`.
+
+#### Scenario: Two sessions open a missing environment
+- **WHEN** two sessions open the same missing environment at once
+- **THEN** both open it, and neither reports that `state.json` cannot be read

@@ -1,11 +1,11 @@
 package env
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -367,11 +367,15 @@ func (m *Manager) Export(name, outputPath string) error {
 		configBytes = []byte("{}")
 	}
 
-	payload := ExportPayload{
+	storedState, err := stateToFile(state)
+	if err != nil {
+		return err
+	}
+	payload := exportFile{
 		SchemaVersion: 1,
 		ExportedAt:    time.Now().UTC().Format(time.RFC3339),
 		Environment:   name,
-		State:         state,
+		State:         storedState,
 		History:       history,
 		Config:        json.RawMessage(configBytes),
 	}
@@ -397,13 +401,8 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 		return "", err
 	}
 
-	var payload ExportPayload
-	// Numbers stay json.Number through the decode, so an integer beyond 2^53 is
-	// written back out as the same literal instead of a float64 that has
-	// already lost it.
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&payload); err != nil {
+	var payload exportFile
+	if err := decodeJSON(raw, &payload); err != nil {
 		return "", fmt.Errorf("invalid export payload: %w", err)
 	}
 
@@ -438,18 +437,15 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 		}
 	}
 
-	state := payload.State
-	if state == nil {
-		state = &State{Variables: map[string]SerializedVariable{}}
-	}
-	if state.Variables == nil {
-		state.Variables = map[string]SerializedVariable{}
-	}
+	state := stateFromFile(payload.State)
 	if state.LastAccess.IsZero() {
 		state.LastAccess = time.Now().UTC().Truncate(time.Second)
 	}
-
-	stateBytes, err := json.MarshalIndent(state, "", "  ")
+	storedState, err := stateToFile(state)
+	if err != nil {
+		return "", err
+	}
+	stateBytes, err := json.MarshalIndent(storedState, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -558,7 +554,7 @@ func writeDefaultFiles(envPath string) error {
 		{"config.json", "{}\n", 0o644},
 	}
 	for _, f := range files {
-		handle, err := os.OpenFile(filepath.Join(envPath, f.name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, f.perm)
+		err := createWhole(filepath.Join(envPath, f.name), f.data, f.perm)
 		if errors.Is(err, fs.ErrExist) {
 			info, statErr := os.Lstat(filepath.Join(envPath, f.name))
 			if statErr == nil && info.Mode().IsRegular() {
@@ -572,14 +568,54 @@ func writeDefaultFiles(envPath string) error {
 		if err != nil {
 			return err
 		}
-		_, writeErr := handle.WriteString(f.data)
-		closeErr := handle.Close()
-		if writeErr != nil {
-			return writeErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
 	}
 	return nil
+}
+
+// createWhole creates path holding data, failing with fs.ErrExist when it is
+// already there. A reader never sees the file part-written: data goes to a
+// temporary file first, which is then linked into place. On a file system
+// without hard links it falls back to writing the file in place.
+func createWhole(path, data string, perm os.FileMode) error {
+	tmp, tmpPath, err := createTempWithPerm(path, perm)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmpPath) }()
+	_, writeErr := tmp.WriteString(data)
+	closeErr := tmp.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	linkErr := os.Link(tmpPath, path)
+	if linkErr == nil || errors.Is(linkErr, fs.ErrExist) {
+		return linkErr
+	}
+	handle, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	_, writeErr = handle.WriteString(data)
+	closeErr = handle.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
+// createTempWithPerm creates a new file beside path with perm, which the umask
+// narrows as it does for any created file.
+func createTempWithPerm(path string, perm os.FileMode) (*os.File, string, error) {
+	for range 100 {
+		name := filepath.Join(filepath.Dir(path), fmt.Sprintf(".%s.%d.tmp", filepath.Base(path), rand.Uint64()))
+		file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return file, name, err
+	}
+	return nil, "", fmt.Errorf("cannot create a temporary file beside %s", path)
 }
