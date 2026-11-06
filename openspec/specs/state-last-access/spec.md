@@ -26,7 +26,7 @@ The state reader MUST load a lastAccess that is not RFC3339 text JSON can write 
 - **THEN** variables restore, LastAccess is zero, and the next save keeps the variables
 
 ### Requirement: Compatible output and preserved variables
-State JSON MUST write lastAccess as an empty string for zero time and an RFC3339 string otherwise, readable by 0.3.6. Load/save and export/import MUST preserve variable values, including integers above 2^53 and unreadable variable representations.
+The state file and the export file MUST write lastAccess as an empty string for zero time and an RFC3339 string otherwise, readable by 0.3.6. Load/save and export/import MUST preserve variable values, including integers above 2^53 and unreadable variable representations.
 
 #### Scenario: Cross-version state
 - **WHEN** 0.4 reads a state file produced by the old writer and exports or saves its variables
