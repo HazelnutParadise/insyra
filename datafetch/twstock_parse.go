@@ -45,6 +45,9 @@ var twseDailyHeaderAliases = map[string]string{
 var tpexDailyHeaderAliases = map[string]string{
 	"日 期":  "Date",
 	"成交張數": "Volume",
+	// Months before about 2025 head the same column 成交仟股 (thousands of
+	// shares), which is also one lot, so the conversion to shares is the same.
+	"成交仟股": "Volume",
 	"成交仟元": "Turnover",
 	"開盤":   "Open",
 	"最高":   "High",
@@ -222,13 +225,20 @@ func mapHeaders(fields []string, aliases map[string]string, required []string) (
 	return indexes, nil
 }
 
+// requiredHeaderName returns the alphabetically first header aliased to name,
+// so the message does not depend on map order when several headers map to one
+// column.
 func requiredHeaderName(name string, aliases map[string]string) string {
+	found := ""
 	for header, alias := range aliases {
-		if alias == name {
-			return header
+		if alias == name && (found == "" || header < found) {
+			found = header
 		}
 	}
-	return name
+	if found == "" {
+		return name
+	}
+	return found
 }
 
 func cell(row []string, index int) string {
