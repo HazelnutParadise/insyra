@@ -101,7 +101,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.Stream()` 與 `client.FutOpt.Stream()` 連上富果的 WebSocket 即時串流（成交、K 線、五檔、綜合報價、指數）：用 `Subscribe`、`Unsubscribe` 依頻道與代號訂閱，從 `Messages()` 收資料，`Collect` 可直接收成表格。斷線會自動重連並重新訂閱；讀得太慢時丟掉最舊的訊息（`Dropped()` 計數），不卡住連線（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.NYT(NYTConfig{APIKey: key})` 透過 `Archive` 與 `ArchiveContext` 讀取紐約時報每月文章的 id、標題、摘要、首段、版別、部門、文章類型、字數與發布時間，並提供保守的請求間隔、每分鐘限制的重試、取消功能；每日額度用完時回傳 `NYTQuotaError`，其中的 `RetryAt` 是可以再試的時間，Context 的期限夠長時會自動等到那時（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。
-- `TWStock` 的 `DailyPrices` 與 `DailyPricesAdjusted` 遇到證交所拒絕查詢的日期時會明說：區間早於 2010 年 1 月（證交所日價從 2010-01-04 起）或晚於當月時，回傳的錯誤可用 `errors.Is(err, datafetch.ErrTWStockRefused)` 比對，訊息寫出股票代號與被拒絕的月份，也不再重試。`TWMarketAuto` 遇到這種月份會改查櫃買中心；櫃買中心約 2025 年以前的月份成交量欄名是「成交仟股」，現在也讀得到，不再因 `required header "成交張數" is missing` 失敗（[#688](https://github.com/HazelnutParadise/insyra/issues/688)）。
+- `TWStock` 的 `DailyPrices` 與 `DailyPricesAdjusted` 遇到證交所拒絕查詢的日期時會明說：區間早於 2010 年 1 月（證交所日價從 2010-01-04 起）或晚於當月時，回傳的錯誤可用 `errors.Is(err, datafetch.ErrTWStockRefused)` 比對，訊息寫出股票代號與被拒絕的月份，也不再重試；其他 `TWStock` 方法收到同樣的回應時也會符合 `ErrTWStockRefused`，同樣不再重試。`TWMarketAuto` 遇到這種月份會改查櫃買中心；櫃買中心約 2025 年以前的月份成交量欄名是「成交仟股」，現在也讀得到，不再因 `required header "成交張數" is missing` 失敗（[#688](https://github.com/HazelnutParadise/insyra/issues/688)）。
 
 ### 容器映像
 

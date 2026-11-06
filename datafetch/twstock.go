@@ -341,9 +341,9 @@ func (t *TWStockClient) dailyPricesMonth(ctx context.Context, code string, month
 		}
 		// TPEx keeps months TWSE refuses (it serves 2009 and earlier), so a
 		// refusal falls through to TPEx like no data does, and is reported only
-		// when TPEx has nothing for the month either.
+		// when TPEx has nothing for the month either or refuses it too.
 		tpexRows, tpexErr := t.dailyPricesMonth(ctx, code, month, TWMarketTPEx)
-		if errors.Is(err, ErrTWStockRefused) && errors.Is(tpexErr, errTWStockNoData) {
+		if errors.Is(err, ErrTWStockRefused) && (errors.Is(tpexErr, errTWStockNoData) || errors.Is(tpexErr, ErrTWStockRefused)) {
 			return nil, err
 		}
 		return tpexRows, tpexErr
