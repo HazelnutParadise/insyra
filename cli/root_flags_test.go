@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -37,5 +39,40 @@ func TestRootFlagsBeforeRawArgCommand(t *testing.T) {
 		if _, leaked := defVars["ex"]; leaked {
 			t.Fatal("ex was written to the default environment")
 		}
+	}
+}
+
+// A raw-argument command run with --env opens only that environment, so an
+// unreadable default environment does not stop it.
+func TestRawArgCommandIgnoresABrokenDefaultEnvironment(t *testing.T) {
+	base := t.TempDir()
+	env.Default().SetBasePath(base)
+	t.Cleanup(func() { env.Default().SetBasePath("") })
+	if err := env.Default().EnsureDefaultEnvironment(); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.Default().Create("good"); err != nil {
+		t.Fatal(err)
+	}
+	defaultPath, err := env.Default().ResolveEnvPath("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(defaultPath, "state.json"), []byte(`{"variables":{`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"--env", "good", "newdl", "7", "as", "z"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--env good newdl failed because of the default environment: %v", err)
+	}
+	vars, err := env.Default().RestoreVariables("good")
+	if err != nil || vars["z"] == nil {
+		t.Fatalf("z not stored in good: %v, %v", vars, err)
+	}
+	cmd = NewRootCommand()
+	cmd.SetArgs([]string{"newdl", "7", "as", "z"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("newdl on the broken default environment succeeded")
 	}
 }
