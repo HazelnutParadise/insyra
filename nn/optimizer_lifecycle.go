@@ -1,18 +1,11 @@
 package nn
 
-// ClearOptions selects which gradients survive Tape.Clear.
+// ClearOptions selects which gradients survive one Tape.Clear call.
 type ClearOptions struct {
 	// KeepGradients keeps only parameter gradients, usable by Grad and the
 	// built-in optimizers. The next successful Backward replaces them.
 	KeepGradients bool
 }
-
-// SetClearOptions configures every subsequent Clear. The zero options discard
-// all gradients. Close always releases all gradients, regardless of this policy.
-func (t *Tape) SetClearOptions(options ClearOptions) { t.clearOptions = options }
-
-// GetClearOptions returns the current Clear policy.
-func (t *Tape) GetClearOptions() ClearOptions { return t.clearOptions }
 
 // SetFrozen controls whether SGD, SGDMomentum, Adam and AdamW skip this
 // parameter. Its optimizer state stays for unfreezing. Gradients are still

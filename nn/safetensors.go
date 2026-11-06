@@ -43,7 +43,7 @@ func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 		return nil, fmt.Errorf("safetensors header length %d exceeds input size %d", headerLength, len(file)-8)
 	}
 	headerEnd := 8 + int(headerLength)
-	entries, err := parseSafeTensorHeader(file[8:headerEnd])
+	entries, _, err := parseSafeTensorHeader(file[8:headerEnd])
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +138,12 @@ func loadSafeTensorData(entries []safeTensorEntry, data []byte) (tensors map[str
 // data region are built, so the result is deterministic. The writer emits no
 // metadata and never leaves gaps between tensor regions.
 func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error {
+	return saveSafeTensors(w, tensors, nil)
+}
+
+// saveSafeTensors is SaveSafeTensors writing metadata, when it is not empty,
+// as the header's __metadata__ entry.
+func saveSafeTensors(w io.Writer, tensors map[string]*Tensor, metadata map[string]string) error {
 	if w == nil {
 		return fmt.Errorf("save safetensors: writer is nil")
 	}
@@ -218,7 +224,16 @@ func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error {
 			}
 		}
 	}
-	headerJSON, err := json.Marshal(header)
+	var headerValue any = header
+	if len(metadata) > 0 {
+		withMetadata := make(map[string]any, len(header)+1)
+		for name, entry := range header {
+			withMetadata[name] = entry
+		}
+		withMetadata["__metadata__"] = metadata
+		headerValue = withMetadata
+	}
+	headerJSON, err := json.Marshal(headerValue)
 	if err != nil {
 		return fmt.Errorf("marshal safetensors header: %w", err)
 	}
@@ -265,66 +280,66 @@ type rawSafeTensorEntry struct {
 	DataOffsets json.RawMessage `json:"data_offsets"`
 }
 
-func parseSafeTensorHeader(header []byte) ([]safeTensorEntry, error) {
+func parseSafeTensorHeader(header []byte) ([]safeTensorEntry, map[string]string, error) {
 	if len(header) == 0 || header[0] != '{' {
-		return nil, fmt.Errorf("invalid safetensors JSON header: header must begin with '{'")
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: header must begin with '{'")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(header))
 	token, err := decoder.Token()
 	if err != nil {
-		return nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
 	}
 	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
-		return nil, fmt.Errorf("invalid safetensors JSON header: header is not an object")
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: header is not an object")
 	}
 
 	entries := make([]safeTensorEntry, 0)
+	var metadata map[string]string
 	seen := make(map[string]struct{})
 	for decoder.More() {
 		keyToken, err := decoder.Token()
 		if err != nil {
-			return nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
+			return nil, nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
 		}
 		name, ok := keyToken.(string)
 		if !ok {
-			return nil, fmt.Errorf("invalid safetensors JSON header: tensor name is not a string")
+			return nil, nil, fmt.Errorf("invalid safetensors JSON header: tensor name is not a string")
 		}
 		if _, duplicate := seen[name]; duplicate {
-			return nil, fmt.Errorf("tensor %q is declared more than once", name)
+			return nil, nil, fmt.Errorf("tensor %q is declared more than once", name)
 		}
 		seen[name] = struct{}{}
 
 		var raw json.RawMessage
 		if err := decoder.Decode(&raw); err != nil {
-			return nil, fmt.Errorf("invalid safetensors JSON header for tensor %q: %w", name, err)
+			return nil, nil, fmt.Errorf("invalid safetensors JSON header for tensor %q: %w", name, err)
 		}
 		if name == "__metadata__" {
-			var metadata map[string]string
 			trimmed := bytes.TrimSpace(raw)
 			if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(trimmed, &metadata) != nil {
-				return nil, fmt.Errorf("__metadata__ is not a string-to-string object")
+				return nil, nil, fmt.Errorf("__metadata__ is not a string-to-string object")
 			}
 			continue
 		}
 		entry, err := parseSafeTensorEntry(name, raw)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		entries = append(entries, entry)
 	}
 	if token, err := decoder.Token(); err != nil {
-		return nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
 	} else if delimiter, ok := token.(json.Delim); !ok || delimiter != '}' {
-		return nil, fmt.Errorf("invalid safetensors JSON header: object is not closed")
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: object is not closed")
 	}
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return nil, fmt.Errorf("invalid safetensors JSON header: trailing JSON value")
+			return nil, nil, fmt.Errorf("invalid safetensors JSON header: trailing JSON value")
 		}
-		return nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
+		return nil, nil, fmt.Errorf("invalid safetensors JSON header: %w", err)
 	}
-	return entries, nil
+	return entries, metadata, nil
 }
 
 func parseSafeTensorEntry(name string, raw json.RawMessage) (safeTensorEntry, error) {

@@ -28,9 +28,10 @@ type optimizerStateReadDescriptor struct {
 }
 
 // optimizerStateReadCheckpoint bounds reads using the registered parameters,
-// validates wire descriptors before payload allocation, and reads one trailing
-// byte at most. It never mutates target parameters.
-func optimizerStateReadCheckpoint(r io.Reader, targets []optimizerStateTarget) ([]safeTensorEntry, []byte, error) {
+// checks the format version, the precision and every wire descriptor before
+// payload allocation, and reads one trailing byte at most. It is the only place
+// the file's layout is validated, and it never mutates target parameters.
+func optimizerStateReadCheckpoint(r io.Reader, targets []optimizerStateTarget, precision string) ([]safeTensorEntry, []byte, error) {
 	if r == nil {
 		return nil, nil, fmt.Errorf("optimizer state: reader is nil")
 	}
@@ -89,14 +90,24 @@ func optimizerStateReadCheckpoint(r io.Reader, targets []optimizerStateTarget) (
 	if reader.err != nil {
 		return nil, nil, fmt.Errorf("optimizer state: read checkpoint header: %w", reader.err)
 	}
-	entries, err := parseSafeTensorHeader(header)
+	entries, metadata, err := parseSafeTensorHeader(header)
 	if err != nil {
 		return nil, nil, fmt.Errorf("optimizer state: invalid SafeTensors header: %w", err)
 	}
+	// The version comes first, so a file from a newer release is reported as
+	// such rather than by the first tensor this release does not know.
+	version, ok := metadata[optimizerStateVersionKey]
+	if !ok {
+		return nil, nil, fmt.Errorf("optimizer state: not an optimizer-state file (no %s in its metadata)", optimizerStateVersionKey)
+	}
+	if version != optimizerStateVersion {
+		return nil, nil, fmt.Errorf("optimizer state: unsupported version %q, this release reads version %s", version, optimizerStateVersion)
+	}
+	if metadata[optimizerStatePrecisionKey] != precision {
+		return nil, nil, fmt.Errorf("optimizer state: checkpoint precision %q does not match tape precision %q", metadata[optimizerStatePrecisionKey], precision)
+	}
 
 	allowed := make(map[string]optimizerStateReadDescriptor)
-	allowed["version"] = optimizerStateReadDescriptor{dtype: "I64", required: true}
-	allowed["precision"] = optimizerStateReadDescriptor{dtype: "I64", required: true}
 	for _, target := range targets {
 		prefix := makeOptimizerStatePrefix(target.name)
 		shape := target.parameter.value.shape
@@ -107,8 +118,7 @@ func optimizerStateReadCheckpoint(r io.Reader, targets []optimizerStateTarget) (
 			required bool
 		}{
 			{name: prefix + "shape", dtype: "I64", shape: []int{len(shape)}, required: true},
-			{name: prefix + "dtype", dtype: "I64", required: true},
-			{name: prefix + "step", dtype: "I64", shape: []int{2}, required: true},
+			{name: prefix + "step", dtype: "I64", required: true},
 			{name: prefix + "adam_m", dtype: "F32", shape: shape},
 			{name: prefix + "adam_v", dtype: "F32", shape: shape},
 			{name: prefix + "velocity", dtype: "F32", shape: shape},
