@@ -204,7 +204,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 所有接受數字的指令參數，現在也可以填數字變數的名稱：`sample frac f`、`kmeans … k`、`shift x n`、`ttest … mu`、`quant` 各形式等，會使用該變數的值；過去填非數字的名稱會報錯。數字變數可由 `sum`、`mean`、`median`、`mode`、`stdev`、`var`、`min`、`max`、`range` 結尾加上 `as <var>` 產生（照常印出結果，只有寫了 `as` 才存下），並可用 `show <var>` 顯示。能解析成數字的字串仍視為數字，所以原本能用的寫法意義不變。
 - 在 Windows 上儲存環境的 `state.json` 時，如果當下有別的程序或執行緒正開著這個檔案，不會再存檔失敗：取代檔案的改名動作會重試最多 2 秒。其他平台不受影響。
 - **BREAKING（行為）**：`plot scatter` 遇到表格前兩欄裡不是數字的格子時回傳錯誤，指出是哪一欄（`X` 或 `Y`）、第幾列；以前會畫在 0。兩欄的長度也必須相同。`plot line` 和 `plot bar` 遇到空的 DataList 會回傳錯誤。（[#413](https://github.com/HazelnutParadise/insyra/issues/413)）
-- **BREAKING**：`State.LastAccess`（包含 `engine/dsl.State` 與 `cli/env.State`）由 `string` 改為 `time.Time`。請用 `IsZero()` 檢查未知時間，需要文字時使用 `Format(time.RFC3339)`。既有 JSON 的空字串與 RFC3339 時間仍可載入，無效時間字串會讀成零值，變數不會遺失。檔案仍以字串儲存時間，0.3.6 仍可讀取。（#261）
+- **BREAKING**：`State.LastAccess`（包含 `engine/dsl.State` 與 `cli/env.State`）由 `string` 改為 `time.Time`。請用 `IsZero()` 檢查未知時間，需要文字時使用 `Format(time.RFC3339)`。既有 JSON 的空字串與 RFC3339 時間仍可載入，讀不懂的時間會讀成零值，變數不會遺失。讀 `state.json` 請用 `LoadState`，不要直接解碼成 `State`，`State` 自己的 JSON 依 `time.Time` 的規則。檔案仍以字串儲存時間，0.3.6 仍可讀取。（#261）
+- `state.json` 讀不了（被截斷、手動改成不合法的 JSON）時，指令現在會停下來並報錯，錯誤訊息指出檔名。以前指令會拿一份空的變數去跑，存檔時把檔案整個蓋掉，環境裡所有變數就此消失；`env open` 還會把前一個環境的變數帶進剛打開的環境。現在什麼都不執行，檔案維持原樣，可以讓你修復。完全沒有 `state.json` 的環境仍然從空的開始。`NewSession` 也會回傳同樣的錯誤，它們用的檢查是 `Manager.OpenVariables`。
 
 ### `ml` 與 `nn`
 - **BREAKING（行為改變，簽章不變）**：`Classes()` 不再回傳 nil。`ml` 與 `nn` 共十個分類器型別，在模型尚未 fit、或 pipeline 包的不是分類器時，改為回傳長度 0 的 `*insyra.DataList`，並把原因記在它的 `Err()` 上。過去 nil 的 `*insyra.DataList` 呼叫任何方法都會 panic，連 `Err()` 也不例外，也就是說「問它出了什麼事」這個最安全的第一步，本身就是崩潰的原因。**簽章沒變，所以什麼都不會編譯失敗：寫成 `if classes == nil` 的程式照樣能編，但那個分支從此永遠不會執行。** 請改成 `if classes.Err() != nil`。

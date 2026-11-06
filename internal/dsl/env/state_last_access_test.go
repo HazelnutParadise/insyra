@@ -33,10 +33,7 @@ func TestStateLastAccessLoadsLegacyFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, ok := any(state.LastAccess).(time.Time)
-			if !ok {
-				t.Fatalf("LastAccess = %T, want time.Time", state.LastAccess)
-			}
+			got := state.LastAccess
 			var want time.Time
 			if tc.want != "" {
 				want, err = time.Parse(time.RFC3339, tc.want)
@@ -75,7 +72,7 @@ func TestStateLastAccessLoadsLegacyFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			importedTime := any(imported.LastAccess).(time.Time)
+			importedTime := imported.LastAccess
 			if !want.IsZero() && !importedTime.Equal(want) {
 				t.Fatalf("import time = %v, want %v", importedTime, want)
 			}
@@ -118,7 +115,7 @@ func TestStateLastAccessOldWriterFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stamp, ok := any(state.LastAccess).(time.Time); !ok || stamp.IsZero() {
+	if state.LastAccess.IsZero() {
 		t.Fatalf("LastAccess = %#v", state.LastAccess)
 	}
 	vars, err := mgr.RestoreVariables("default")
@@ -132,32 +129,51 @@ func TestStateLastAccessOldWriterFixture(t *testing.T) {
 
 func TestStateLastAccessWritesLegacyShape(t *testing.T) {
 	for _, stamp := range []string{"", "2026-10-01T12:34:56Z", "2026-10-01T12:34:56.123456789+08:00"} {
-		var state State
-		if err := json.Unmarshal([]byte(`{"variables":{},"lastAccess":"`+stamp+`"}`), &state); err != nil {
+		mgr := newStateTestManager(t)
+		path, err := mgr.ResolveEnvPath("default")
+		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := any(state.LastAccess).(time.Time); !ok {
-			t.Fatalf("LastAccess = %T", state.LastAccess)
+		raw := []byte(`{"variables":{},"lastAccess":"` + stamp + `"}`)
+		if err := os.WriteFile(filepath.Join(path, "state.json"), raw, 0600); err != nil {
+			t.Fatal(err)
 		}
-		raw, err := json.Marshal(state)
+		export := filepath.Join(t.TempDir(), "export.json")
+		if err := mgr.Export("default", export); err != nil {
+			t.Fatal(err)
+		}
+		exported, err := os.ReadFile(export)
 		if err != nil {
 			t.Fatal(err)
 		}
 		// The old State definition must still decode the new output.
 		var old struct {
-			Variables  map[string]SerializedVariable `json:"variables"`
-			LastAccess string                        `json:"lastAccess"`
+			State struct {
+				Variables  map[string]SerializedVariable `json:"variables"`
+				LastAccess string                        `json:"lastAccess"`
+			} `json:"state"`
 		}
-		if err := json.Unmarshal(raw, &old); err != nil {
+		if err := json.Unmarshal(exported, &old); err != nil {
 			t.Fatal(err)
 		}
-		if old.LastAccess != stamp {
-			t.Fatalf("timestamp = %q, want %q", old.LastAccess, stamp)
+		if old.State.LastAccess != stamp {
+			t.Fatalf("timestamp = %q, want %q", old.State.LastAccess, stamp)
 		}
 	}
 }
 
-func TestStateLastAccessRejectsExistingStructuralErrors(t *testing.T) {
+func TestStateLastAccessRefusesUnrepresentableTime(t *testing.T) {
+	for _, stamp := range []time.Time{
+		time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 1, 0, 0, 0, 0, time.FixedZone("invalid", 24*60*60)),
+	} {
+		if _, err := encodeLastAccess(stamp); err == nil {
+			t.Fatalf("encoded invalid RFC3339 time %v", stamp)
+		}
+	}
+}
+
+func TestStateLastAccessOfAnotherJSONTypeIsUnknown(t *testing.T) {
 	for _, value := range []string{`123`, `true`, `{}`, `[]`} {
 		mgr := newStateTestManager(t)
 		path, err := mgr.ResolveEnvPath("default")
@@ -168,26 +184,48 @@ func TestStateLastAccessRejectsExistingStructuralErrors(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(path, "state.json"), raw, 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := mgr.LoadState("default"); err == nil {
-			t.Fatalf("accepted %s", value)
+		state, err := mgr.LoadState("default")
+		if err != nil {
+			t.Fatalf("lastAccess %s: %v", value, err)
 		}
-		if _, err := mgr.RestoreVariables("default"); err == nil {
-			t.Fatalf("restored %s", value)
+		if !state.LastAccess.IsZero() {
+			t.Fatalf("lastAccess %s: LastAccess = %v, want zero", value, state.LastAccess)
 		}
-		if !bytes.Equal(readStateFile(t, mgr, "default"), raw) {
-			t.Fatal("read changed file")
+		vars, err := mgr.RestoreVariables("default")
+		if err != nil {
+			t.Fatalf("lastAccess %s: %v", value, err)
+		}
+		if vars["x"] != int64(1) {
+			t.Fatalf("lastAccess %s: x = %#v", value, vars["x"])
+		}
+		if err := mgr.SaveState("default", vars); err != nil {
+			t.Fatal(err)
+		}
+		again, err := mgr.RestoreVariables("default")
+		if err != nil || again["x"] != int64(1) {
+			t.Fatalf("lastAccess %s: after save x = %#v, err %v", value, again["x"], err)
 		}
 	}
 }
 
-func TestStateLastAccessRefusesUnrepresentableTime(t *testing.T) {
-	for _, stamp := range []time.Time{
-		time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 1, 1, 0, 0, 0, 0, time.FixedZone("invalid", 24*60*60)),
-	} {
-		state := State{LastAccess: stamp}
-		if _, err := json.Marshal(state); err == nil {
-			t.Fatalf("marshaled invalid RFC3339 time %v", stamp)
-		}
+func TestStateEmbeddedInAnotherStructKeepsItsFields(t *testing.T) {
+	type labelled struct {
+		State
+		Label string `json:"label"`
+	}
+	in := labelled{
+		State: State{Variables: map[string]SerializedVariable{}, LastAccess: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)},
+		Label: "kept",
+	}
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out labelled
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Label != "kept" || !out.LastAccess.Equal(in.LastAccess) {
+		t.Fatalf("round trip = %+v from %s", out, raw)
 	}
 }
