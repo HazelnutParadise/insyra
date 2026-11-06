@@ -1,7 +1,6 @@
 package env
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -367,11 +366,15 @@ func (m *Manager) Export(name, outputPath string) error {
 		configBytes = []byte("{}")
 	}
 
-	payload := ExportPayload{
+	storedState, err := stateToFile(state)
+	if err != nil {
+		return err
+	}
+	payload := exportFile{
 		SchemaVersion: 1,
 		ExportedAt:    time.Now().UTC().Format(time.RFC3339),
 		Environment:   name,
-		State:         state,
+		State:         storedState,
 		History:       history,
 		Config:        json.RawMessage(configBytes),
 	}
@@ -397,13 +400,8 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 		return "", err
 	}
 
-	var payload ExportPayload
-	// Numbers stay json.Number through the decode, so an integer beyond 2^53 is
-	// written back out as the same literal instead of a float64 that has
-	// already lost it.
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&payload); err != nil {
+	var payload exportFile
+	if err := decodeJSON(raw, &payload); err != nil {
 		return "", fmt.Errorf("invalid export payload: %w", err)
 	}
 
@@ -438,18 +436,15 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 		}
 	}
 
-	state := payload.State
-	if state == nil {
-		state = &State{Variables: map[string]SerializedVariable{}}
-	}
-	if state.Variables == nil {
-		state.Variables = map[string]SerializedVariable{}
-	}
+	state := stateFromFile(payload.State)
 	if state.LastAccess.IsZero() {
 		state.LastAccess = time.Now().UTC().Truncate(time.Second)
 	}
-
-	stateBytes, err := json.MarshalIndent(state, "", "  ")
+	storedState, err := stateToFile(state)
+	if err != nil {
+		return "", err
+	}
+	stateBytes, err := json.MarshalIndent(storedState, "", "  ")
 	if err != nil {
 		return "", err
 	}

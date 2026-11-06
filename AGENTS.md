@@ -519,12 +519,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: a per-environment lock file held from restore to save, or a unique temporary name per writer plus a check that the file has not changed since it was read. The lock serialises commands, which a user running commands in parallel may not expect, so decide which.
 - **Status**: pending
 
-### [2026-09-27] — an unreadable `state.json` is overwritten by the next command
-- **Where**: `cli/root.go` `openEnvironment`, `cli/repl/repl.go` `Start`, `internal/dsl/session.go` `NewSession`, and `env open` in `internal/dsl/commands/env.go`
-- **What**: when `RestoreVariables` fails, the first three start from an empty variable map without saying so, and the save after the next command writes that map over the file, so every variable in the environment is lost. Measured on 2026-09-27 with the CLI built from `dev` at 550cf94: after `newdl 1 2 3 as x`, truncating `state.json` mid-object and running `newdl 9 as y` left a `state.json` holding only `y`. `env open` fails differently, going by its code: when the opened environment's state cannot be read, it keeps the previous environment's variables, and the next save writes them into the environment just opened. `cli-env-typed-state` does not make this more likely, because a file it writes always decodes, but it does not change it.
-- **Suggestion**: stop before running a command against an environment whose state could not be read, naming the file and the error, or move the unreadable file aside before saving over it. Either changes what a command does in a damaged environment, so decide which first.
-- **Status**: pending
-
 ### [2026-09-27] — Auto reads an ISO-2022-KR or ISO-2022-CN file as UTF-8
 - **Where**: `utils.go` `DetectEncoding`, whose UTF-8 check runs before chardet is asked; `internal/csv/decoder.go` `decoders`
 - **What**: both encodings use only 7-bit bytes, so `DetectEncoding` accepts such a file as UTF-8 before chardet, which knows both, sees it. Measured on 2026-09-27: a 30-line Korean CSV written in ISO-2022-KR is detected as `utf-8`, and `csvxl.ReadCSVToString` returns its `ESC $ ) C` header and shift codes inside the cells with a nil error. x/text has no decoder for either, so naming the encoding fails with the unsupported-encoding error. `Docs/csvxl.md` states this.

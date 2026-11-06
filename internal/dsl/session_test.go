@@ -374,3 +374,33 @@ func TestDSLSessionExecuteFileStopsAtANestedExit(t *testing.T) {
 		t.Errorf("Execute(exit) after the file = %v, want the nothing-to-end error", err)
 	}
 }
+
+func TestNewSessionStopsOnAnUnreadableStateAndLeavesItAlone(t *testing.T) {
+	mgr := env.NewManager(t.TempDir(), "")
+	session, err := NewSession(mgr, "default", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Execute("newdl 1 2 3 as x"); err != nil {
+		t.Fatal(err)
+	}
+	envPath, err := mgr.ResolveEnvPath("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(envPath, "state.json")
+	full, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := full[:len(full)/2]
+	if err := os.WriteFile(path, broken, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSession(mgr, "default", nil); err == nil || !strings.Contains(err.Error(), "state.json") {
+		t.Fatalf("NewSession on an unreadable state = %v, want an error naming state.json", err)
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(after, broken) {
+		t.Fatal("the unreadable state.json was changed")
+	}
+}
