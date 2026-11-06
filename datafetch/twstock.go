@@ -87,6 +87,14 @@ var errTWStockNoData = errors.New("datafetch: TWStock no data")
 // a larger Interval and Retries on TWStockConfig, not a change to the call.
 var ErrTWStockThrottled = errors.New("datafetch: TWStock request throttled by the source")
 
+// ErrTWStockRefused matches (with errors.Is) an error returned because the
+// exchange's site refused the dates asked for, answering 查詢日期小於… or
+// 查詢日期大於今日. It is not retried. TWSE's daily prices, behind DailyPrices
+// and DailyPricesAdjusted, start in January 2010 (查詢日期小於99年1月4日 for any
+// earlier month) and end with the current month; their error also names the
+// stock and the month refused, so a caller can move from or to and ask again.
+var ErrTWStockRefused = errors.New("datafetch: TWStock source refused the date range")
+
 // errTWStockNotCreated is what every method of a TWStockClient that did not
 // come from TWStock returns.
 var errTWStockNotCreated = errors.New("datafetch: TWStockClient was not created with TWStock")
@@ -264,7 +272,11 @@ type dailyPriceRecord struct {
 }
 
 // DailyPrices returns code's daily prices for the inclusive [from, to]
-// range, sorted by date. It is DailyPricesContext with context.Background().
+// range, sorted by date. TWSE serves them from 2010-01-04: a range reaching
+// back before January 2010 on TWMarketTWSE returns an error matching
+// ErrTWStockRefused, never a shortened table. TWMarketAuto asks TPEx for such a
+// month and reports the refusal only when TPEx has nothing either. It is
+// DailyPricesContext with context.Background().
 func (t *TWStockClient) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
 	return t.DailyPricesContext(context.Background(), code, from, to, market)
 }
@@ -324,16 +336,23 @@ func (t *TWStockClient) dailyPriceRows(ctx context.Context, method, code string,
 func (t *TWStockClient) dailyPricesMonth(ctx context.Context, code string, month time.Time, market TWMarket) ([]dailyPriceRecord, error) {
 	if market == TWMarketAuto {
 		rows, err := t.dailyPricesMonth(ctx, code, month, TWMarketTWSE)
-		if !errors.Is(err, errTWStockNoData) {
+		if !errors.Is(err, errTWStockNoData) && !errors.Is(err, ErrTWStockRefused) {
 			return rows, err
 		}
-		return t.dailyPricesMonth(ctx, code, month, TWMarketTPEx)
+		// TPEx keeps months TWSE refuses (it serves 2009 and earlier), so a
+		// refusal falls through to TPEx like no data does, and is reported only
+		// when TPEx has nothing for the month either.
+		tpexRows, tpexErr := t.dailyPricesMonth(ctx, code, month, TWMarketTPEx)
+		if errors.Is(err, ErrTWStockRefused) && errors.Is(tpexErr, errTWStockNoData) {
+			return nil, err
+		}
+		return tpexRows, tpexErr
 	}
 	var response twStockResponse
 	if market == TWMarketTWSE {
 		values := url.Values{"date": {month.Format("20060102")}, "stockNo": {code}, "response": {"json"}}
 		if err := t.doJSON(ctx, requestURL(t.twseBaseURL, "/rwd/zh/afterTrading/STOCK_DAY", values), &response); err != nil {
-			return nil, err
+			return nil, stockDayRefusal(code, month, response.Stat, err)
 		}
 		if err := responseStatus(response.Stat); err != nil {
 			return nil, err
@@ -596,8 +615,9 @@ func exRightsTable(rows []exRightsRecord) *insyra.DataTable {
 // factor and the adjusted OHLC prices. Every bar strictly before an ex-date in
 // [from, to] is multiplied by that ex-date's factor, so the last bar keeps the
 // quoted price and a return across an ex-date is the true holder return.
-// Distributions after to are not applied. It is DailyPricesAdjustedContext with
-// context.Background().
+// Distributions after to are not applied. Like DailyPrices, a range reaching
+// back before January 2010 returns an error matching ErrTWStockRefused. It is
+// DailyPricesAdjustedContext with context.Background().
 func (t *TWStockClient) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
 	return t.DailyPricesAdjustedContext(context.Background(), code, from, to, market)
 }
@@ -690,12 +710,35 @@ func scalePrice(value any, factor float64) any {
 	return price * factor
 }
 
+// stockDayRefusal names the stock and the month in err when err is STOCK_DAY
+// refusing that month, and returns any other err as it is. Measured on
+// 2026-11-07, the site judges by month: 20100101 is answered, 20091201 gets
+// 查詢日期小於99年1月4日, and a month after the current one gets 查詢日期大於今日.
+func stockDayRefusal(code string, month time.Time, stat string, err error) error {
+	if !errors.Is(err, ErrTWStockRefused) {
+		return err
+	}
+	hint := ""
+	if strings.Contains(stat, "查詢日期小於") {
+		hint = "; TWSE daily prices start on 2010-01-04"
+	} else if strings.Contains(stat, "查詢日期大於") {
+		hint = "; TWSE daily prices end with the current month"
+	}
+	return &finalError{err: fmt.Errorf("%w: TWSE STOCK_DAY for %s from %s to %s: %s%s",
+		ErrTWStockRefused, code, month.Format("2006-01-02"), month.AddDate(0, 1, -1).Format("2006-01-02"), strings.TrimSpace(stat), hint)}
+}
+
 func responseStatus(stat string) error {
 	if strings.EqualFold(strings.TrimSpace(stat), "ok") {
 		return nil
 	}
 	if strings.Contains(stat, "沒有") || strings.Contains(stat, "查無") || strings.Contains(stat, "no data") {
 		return errTWStockNoData
+	}
+	// The site's answer to a date outside what it serves, such as
+	// 查詢日期小於99年1月4日 or 查詢日期大於今日. Asking again cannot help.
+	if strings.Contains(stat, "查詢日期小於") || strings.Contains(stat, "查詢日期大於") {
+		return &finalError{err: fmt.Errorf("%w: %s", ErrTWStockRefused, strings.TrimSpace(stat))}
 	}
 	return fmt.Errorf("datafetch: TWStock payload status %q", stat)
 }

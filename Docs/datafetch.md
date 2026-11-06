@@ -702,6 +702,8 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 
 `DailyPrices` requests one month at a time, filters to the inclusive `[from, to]` range, and sorts by `Date` ascending.
 
+**How far back daily prices go.** TWSE serves `STOCK_DAY` daily prices from 2010-01-04 and judges by month: measured on 2026-11-07, January 2010 is answered and any earlier month gets 「查詢日期小於99年1月4日」, while a month after the current one gets 「查詢日期大於今日」. `DailyPrices` and `DailyPricesAdjusted` then return an error matching `errors.Is(err, datafetch.ErrTWStockRefused)` that names the stock, the month and the site's text, never a table cut short, and do not retry it; move `from` to 2010-01-04 or later and ask again. TPEx keeps earlier months (8069 is served back to at least 2005), so `TWMarketAuto` asks TPEx for a month TWSE refuses and reports the refusal only when TPEx has nothing either. For a TWSE stock before 2010, read `FinMind`'s `TaiwanStockPrice` dataset instead, which served 2330 for December 2009 on the same day; its columns differ from `DailyPrices`'s and its prices are not adjusted.
+
 | Method | Columns |
 | :--- | :--- |
 | `DailyPrices` | `Date` (`time.Time`), `Code` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`), `Market` (`string`) |
@@ -715,7 +717,7 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 | `AdvanceDecline` | one row: `Date` (`time.Time`), `Advancing`, `AdvancingLimit`, `Declining`, `DecliningLimit`, `Unchanged`, `NoTrade`, `NoReference` (`int64`), `Source` (`string`) |
 | `OddLotQuotes` | `Date` (`time.Time`), `Code`, `Name` (`string`), `Volume` (`int64`, shares), `Transactions`, `Turnover` (`int64`), `BidPrice`, `AskPrice` (`float64`), `BidVolume`, `AskVolume` (`int64`), plus `Open`, `Close`, `High`, `Low` (`float64`) for `TWOddLotIntraday` or `Price` for `TWOddLotAfterHours` |
 
-`--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` and `成交仟元`; margin balances retain the source endpoint's units.
+`--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` (`成交仟股` in months before about 2025, also thousands of shares) and `成交仟元`; margin balances retain the source endpoint's units.
 
 ### Any day's closes and advancing and declining counts
 

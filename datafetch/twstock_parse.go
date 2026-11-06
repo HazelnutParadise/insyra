@@ -45,6 +45,9 @@ var twseDailyHeaderAliases = map[string]string{
 var tpexDailyHeaderAliases = map[string]string{
 	"日 期":  "Date",
 	"成交張數": "Volume",
+	// Months before about 2025 head the same column 成交仟股 (thousands of
+	// shares), which is also one lot, so the conversion to shares is the same.
+	"成交仟股": "Volume",
 	"成交仟元": "Turnover",
 	"開盤":   "Open",
 	"最高":   "High",
