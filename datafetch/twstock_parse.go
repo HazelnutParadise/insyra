@@ -225,13 +225,20 @@ func mapHeaders(fields []string, aliases map[string]string, required []string) (
 	return indexes, nil
 }
 
+// requiredHeaderName returns the alphabetically first header aliased to name,
+// so the message does not depend on map order when several headers map to one
+// column.
 func requiredHeaderName(name string, aliases map[string]string) string {
+	found := ""
 	for header, alias := range aliases {
-		if alias == name {
-			return header
+		if alias == name && (found == "" || header < found) {
+			found = header
 		}
 	}
-	return name
+	if found == "" {
+		return name
+	}
+	return found
 }
 
 func cell(row []string, index int) string {

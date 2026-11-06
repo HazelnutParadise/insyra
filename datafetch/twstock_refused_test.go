@@ -124,3 +124,14 @@ func TestTWStockAutoReachesTPExHistoryBeforeTheFloor(t *testing.T) {
 		t.Fatalf("15,450 thousand shares should be 15450000 shares, got %v", got)
 	}
 }
+
+func TestTWStockAutoKeepsTheNamedRefusalWhenTPExRefusesToo(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	future := `{"stat":"查詢日期大於今日，請重新查詢!","total":0}`
+	transport.replies[stockDayKey("20300101", "2330")] = []fixtureReply{{status: http.StatusOK, body: []byte(future)}}
+	transport.replies[tpexDailyKey("2030/01/01", "2330")] = []fixtureReply{{status: http.StatusOK, body: []byte(future)}}
+	_, err := stock.DailyPrices("2330", dateUTC(2030, time.January, 1), dateUTC(2030, time.January, 31), TWMarketAuto)
+	if !errors.Is(err, ErrTWStockRefused) || !strings.Contains(err.Error(), "2330") || !strings.Contains(err.Error(), "2030-01-01") {
+		t.Fatalf("both refusing should keep TWSE's error naming the stock and month: %v", err)
+	}
+}
