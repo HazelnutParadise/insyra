@@ -4,7 +4,7 @@ The review of the merged optimizer-state work (#673, #674) found that `Clear`'s 
 
 ## What Changes
 
-- **BREAKING (unreleased)**: `Tape.Clear(opts ...ClearOptions)`; `SetClearOptions` and `GetClearOptions` are removed. The options apply to that call; more than one is an error reported by the next `Param` or `Backward`.
+- **BREAKING (unreleased)**: `Tape.Clear(opts ...ClearOptions)`; `SetClearOptions` and `GetClearOptions` are removed. The options apply to that call; more than one makes every later `Param` and `Backward` fail.
 - `ClipGradNorm` leaves frozen parameters out of the norm and does not scale their gradients.
 - Optimizer-state format version 2: version and precision in the SafeTensors `__metadata__`, read first; `P/dtype` removed; `P/step` one I64 scalar. Precision is `exact` or `float32`, the latter shared by `Float32` and `Float32Rounded`. The header is validated once.
 - `Docs/nn.md` says dropout's random numbers cannot be resumed instead of asking callers to save them.

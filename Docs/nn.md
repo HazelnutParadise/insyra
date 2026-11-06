@@ -976,8 +976,9 @@ tape.Clear(nn.ClearOptions{KeepGradients: true}) // releases graph history and i
 tape.Clear() // discards all gradients
 ```
 
-The options apply to that call only. More than one options value is an error,
-reported by the next `Param`, `Backward` or `BackwardFrom`. Retention does not
+The options apply to that call only. More than one options value clears
+everything and makes the tape unusable: every later `Param`, `Backward` and
+`BackwardFrom` returns that error. Retention does not
 accumulate gradients across Backward calls: the next successful Backward
 replaces them. A retained gradient reused as an input to a later graph stays
 alive through repeated Backward calls on that graph, and is released when Clear

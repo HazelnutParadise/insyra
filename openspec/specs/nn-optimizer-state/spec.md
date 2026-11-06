@@ -34,7 +34,7 @@ Load SHALL reject unsupported versions, invalid names, missing or extra slots, i
 - **THEN** their old optimizer slots are cleared without changing weights or gradients
 
 ### Requirement: Bounded optimizer checkpoint input
-Load SHALL check the format version in the header metadata before any other part of the file. It SHALL bound header allocation from registered names and ranks, allowing 64 KiB for metadata and whitespace, reject unknown keys and incompatible wire descriptors before reading payload, read only the validated parameter-sized payload plus at most one trailing byte, and decode without a second whole-file copy. Invalid or oversized input SHALL leave all parameters unchanged.
+Load SHALL check the format version in the header metadata before any tensor entry is checked against the parameters. It SHALL bound header allocation from registered names and ranks, allowing 64 KiB for metadata and whitespace, reject unknown keys and incompatible wire descriptors before reading payload, read only the validated parameter-sized payload plus at most one trailing byte, and decode without a second whole-file copy. Invalid or oversized input SHALL leave all parameters unchanged.
 
 #### Scenario: Oversized or unknown header
 - **WHEN** the stream declares a header exceeding the model-derived budget or contains unknown keys or incompatible wire shapes
@@ -49,7 +49,7 @@ Load SHALL check the format version in the header metadata before any other part
 - **THEN** Load reports the unsupported version
 
 ### Requirement: Explicit Clear gradient policy
-Clear SHALL take an optional ClearOptions that applies to that call only, discarding all gradients without one. KeepGradients SHALL keep parameter gradients. More than one ClearOptions SHALL be an error reported by the next Param, Backward or BackwardFrom. Clear SHALL release graph history and intermediate resources while preserving parameters and optimizer state. Retained gradients SHALL be replaced by the next successful Backward; Close SHALL release them.
+Clear SHALL take an optional ClearOptions that applies to that call only, discarding all gradients without one. KeepGradients SHALL keep parameter gradients. More than one ClearOptions SHALL make every later Param, Backward and BackwardFrom return an error. Clear SHALL release graph history and intermediate resources while preserving parameters and optimizer state. Retained gradients SHALL be replaced by the next successful Backward; Close SHALL release them.
 
 #### Scenario: Repeated cleanup cycles
 - **WHEN** forward, backward, update and Clear run repeatedly
