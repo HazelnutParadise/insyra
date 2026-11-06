@@ -118,13 +118,19 @@ A record with positive rows and zero columns SHALL return an explicit error inst
 - **THEN** the reader reports that DataTable cannot represent a nonempty zero-column record and emits no table for it
 
 ### Requirement: Cancellation errors and ownership
-Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, report a source shorter than its given size as an error wrapping io.ErrUnexpectedEOF, and never close caller-owned ReaderAt sources. Stream and StreamFrom SHALL return lazy iter.Seq2[*insyra.DataTable, error] sequences, yield terminal errors once as (nil, error), and cancel and drain internal production before returning on early loop exit. Tables SHALL survive reader cleanup without caller Release calls. Caller-owned sources SHALL be safe to close after iteration returns.
+Readers SHALL reject nil or cancelled contexts, report malformed/truncated input as errors, report a source shorter than its given size as an error wrapping io.ErrUnexpectedEOF, and never close caller-owned ReaderAt sources. Stream and StreamFrom SHALL return lazy iter.Seq2[*insyra.DataTable, error] sequences, yield terminal errors once as (nil, error), and cancel and drain internal production before returning on early loop exit.
 
 #### Scenario: Cancellation and damaged files
 - **WHEN** a context is cancelled before reading or while a producer is blocked, or a source is truncated or not Arrow
 - **THEN** the operation terminates with the corresponding error and no panic or producer remains blocked
 
+#### Scenario: Wrong size
+- **WHEN** the size given is larger than the source
+- **THEN** the error wraps io.ErrUnexpectedEOF
+
+### Requirement: Output outlives the reader
+Tables SHALL survive reader cleanup without caller Release calls, and caller-owned sources SHALL be safe to close after iteration returns.
+
 #### Scenario: Retained output
 - **WHEN** a caller retains earlier tables and file information after reading completes
 - **THEN** their values remain unchanged and independent of Arrow buffers and the caller-owned source remains open
-
