@@ -31,6 +31,17 @@ func NewIntervalLimiterWithClock(interval time.Duration, now func() time.Time, s
 	return &IntervalLimiter{interval: interval, now: now, sleep: sleep}
 }
 
+// Next returns the earliest time the next Wait would let a call start.
+func (l *IntervalLimiter) Next() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	if l.nextAllowed.Before(now) {
+		return now
+	}
+	return l.nextAllowed
+}
+
 func (l *IntervalLimiter) Wait(ctx context.Context) error {
 	if l.interval <= 0 {
 		return nil

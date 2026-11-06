@@ -169,3 +169,70 @@ func TestNYTConnectionErrorKeepsTheCauseWithoutTheURL(t *testing.T) {
 		t.Fatalf("error carries the URL or key: %v", err)
 	}
 }
+
+// The key is removed before the reason is cut to 300 bytes, so a key that
+// crosses the cut leaves no part of itself behind.
+func TestNYTStatusReasonCutDoesNotLeaveHalfAKey(t *testing.T) {
+	c := nytAcceptanceClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(strings.Repeat("x", 290) + r.URL.Query().Get("api-key") + strings.Repeat("y", 50)))
+	})
+	_, err := c.Archive(2026, 10)
+	if err == nil {
+		t.Fatal("error status accepted")
+	}
+	for i := 4; i <= len(c.cfg.APIKey); i++ {
+		if strings.Contains(err.Error(), c.cfg.APIKey[:i]) {
+			t.Fatalf("error carries %q of the key: %v", c.cfg.APIKey[:i], err)
+		}
+	}
+}
+
+// RetryAt is when a request can actually start: a budget that frees up before
+// the next request slot reports the slot, so a deadline between the two
+// returns the quota error at once instead of waiting into the deadline.
+func TestNYTQuotaRetryAtIncludesTheNextRequestSlot(t *testing.T) {
+	calls := 0
+	c := nytAcceptanceClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(nytAcceptanceEmpty))
+	})
+	now := time.Now()
+	c.now = func() time.Time { return now }
+	c.wait = func(ctx context.Context, d time.Duration) error { now = now.Add(d); return ctx.Err() }
+	if _, err := c.Archive(2026, 10); err != nil {
+		t.Fatal(err)
+	}
+	fillNYTBudget(c, now.Add(-24*time.Hour+2*time.Second))
+	ctx, cancel := context.WithDeadline(context.Background(), now.Add(5*time.Second))
+	defer cancel()
+	start := now
+	_, err := c.ArchiveContext(ctx, 2026, 10)
+	var quota *NYTQuotaError
+	if !errors.As(err, &quota) {
+		t.Fatalf("error = %v, want a *NYTQuotaError", err)
+	}
+	if !quota.RetryAt.Equal(start.Add(defaultNYTInterval)) {
+		t.Fatalf("RetryAt = %v, want the next slot %v", quota.RetryAt, start.Add(defaultNYTInterval))
+	}
+	if calls != 1 || !now.Equal(start) {
+		t.Fatalf("sent %d requests and waited %v", calls, now.Sub(start))
+	}
+}
+
+// A per-minute retry the deadline cannot reach is reported as throttling.
+func TestNYTRetryBeyondTheDeadlineReturnsThrottled(t *testing.T) {
+	c := nytAcceptanceClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	c.cfg.Retries = 2
+	c.wait = func(context.Context, time.Duration) error {
+		t.Error("waited for a retry the deadline cannot reach")
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := c.ArchiveContext(ctx, 2026, 10); !errors.Is(err, ErrNYTThrottled) {
+		t.Fatalf("error = %v, want ErrNYTThrottled", err)
+	}
+}
