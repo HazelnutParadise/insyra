@@ -23,7 +23,7 @@ require (
 	github.com/Danny-Dasilva/fhttp v0.0.0-20260106165651-41258808b131 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
-	github.com/andybalholm/brotli v1.2.6 // indirect
+	github.com/andybalholm/brotli v1.2.8 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/apache/thrift v0.25.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f // indirect
