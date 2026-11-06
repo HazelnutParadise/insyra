@@ -1012,8 +1012,12 @@ func fetchMonth() error {
     if errors.Is(err, datafetch.ErrNYTAuth) {
         return fmt.Errorf("check that the key has Archive access: %w", err)
     }
+    var quota *datafetch.NYTQuotaError
+    if errors.As(err, &quota) {
+        return fmt.Errorf("daily quota used up; try again after %s: %w", quota.RetryAt.Local().Format(time.Kitchen), err)
+    }
     if errors.Is(err, datafetch.ErrNYTThrottled) {
-        return fmt.Errorf("quota exhausted; try again later: %w", err)
+        return fmt.Errorf("rate limited; try again in a minute: %w", err)
     }
     if err != nil {
         return err
@@ -1023,24 +1027,28 @@ func fetchMonth() error {
 }
 ```
 
-`client.Archive(year, month)` uses `context.Background()`. `ArchiveContext(ctx, year, month)` lets cancellation or a deadline stop queueing, pacing, retries, and the HTTP request. Use a year from 1851 through the current year and a month from 1 through 12. A successful month uses one HTTP GET, with no pagination; retries use additional requests. These are article metadata, not full article bodies.
+`client.Archive(year, month)` uses `context.Background()`. `ArchiveContext(ctx, year, month)` lets cancellation or a deadline stop pacing, retries, quota waits and the HTTP request. Use a year from 1851 on and a month from 1 through 12, not later than the current month. NYT documents the archive as going back to 1851. A successful month uses one HTTP GET, with no pagination; retries use additional requests. These are article metadata, not full article bodies.
 
 | Column | Value |
 | :--- | :--- |
+| `_id` | NYT's article identifier, such as `nyt://article/…`, for removing duplicates or matching other NYT APIs |
 | `headline` | `headline.main`, as text |
 | `abstract` | Article abstract |
 | `lead_paragraph` | Lead paragraph |
 | `section_name` | Section name |
+| `news_desk` | The desk that produced the article |
+| `type_of_material` | Such as `News`, `Op-Ed` or `Review` |
+| `word_count` | `int64` |
 | `pub_date` | `time.Time`, preserving the publication timestamp and offset; accepts RFC 3339 and colonless offsets such as `+0000` |
 | `web_url` | Article URL |
 
-Rows retain provider order. Missing or `null` text fields become `nil`. An empty `response.docs` array returns zero rows with all six columns. A missing/malformed article array or invalid publication timestamp is an error. Responses larger than 128 MiB are rejected.
+Rows retain provider order. A missing or `null` field becomes `nil`, `pub_date` included. An empty `response.docs` array returns zero rows with all ten columns. A missing or malformed article array, a `null` article, and a `pub_date` or `word_count` that is present but cannot be read are errors. Responses larger than 128 MiB are rejected.
 
-**Configuration.** `NYTConfig` has required `APIKey`, optional `BaseURL` (default `https://api.nytimes.com/svc/archive/v1`), `Timeout` (per HTTP attempt, default 30 seconds), `Interval` (default 12.1 seconds, cannot be shorter), and `Retries` (extra attempts after HTTP 429; zero selects one retry, negative is invalid). BaseURL must use HTTPS, except for literal loopback IP addresses (`127.0.0.1` or `::1`) used by local test servers. Timeout does not include pacing or retry waits. The client refuses redirects and never logs the API key or includes it in returned errors. Reuse the client across months: its quota accounting is shared by concurrent calls on that client, but not by other clients, processes, or NYT APIs.
+**Configuration.** `NYTConfig` has required `APIKey`, optional `BaseURL` (default `https://api.nytimes.com/svc/archive/v1`), `Timeout` (per HTTP attempt, default 30 seconds), `Interval` (default 12.1 seconds, cannot be shorter), and `Retries` (retries after HTTP 429 from the per-minute limit; zero means none, negative is invalid). BaseURL must use HTTPS, except for literal loopback IP addresses (`127.0.0.1` or `::1`) used by local test servers. Timeout does not include pacing or retry waits. The client refuses redirects and never includes the API key in returned errors; an error status carries the start of NYT's response with the key removed. Reuse the client across months: its quota accounting is shared by concurrent calls on that client, but not by other clients, processes, or NYT APIs.
 
-**Limits and retries.** The client conservatively spaces request starts by 12.1 seconds (under five per minute) and permits at most 500 HTTP attempts in a rolling 24-hour window, counting retries and failures. It returns `ErrNYTThrottled` immediately when that local daily budget is exhausted. On HTTP 429 it waits at least 61 seconds, or longer if `Retry-After` asks, then retries up to `Retries` times. Persistent 429 returns `ErrNYTThrottled` rather than waiting until the next day. A caller's Context can stop every wait, including a long `Retry-After`. HTTP 401/403 returns `ErrNYTAuth` without retry. Test these errors with `errors.Is`.
+**Limits and retries.** NYT answers HTTP 429 when a key passes its per-minute or per-day limit, without publishing the numbers in its API description; the client keeps under five requests a minute and 500 a day, the limits measured for [#460](https://github.com/HazelnutParadise/insyra/issues/460). It spaces request starts by 12.1 seconds and permits at most 500 HTTP attempts in a rolling 24-hour window, counting retries and failures. On HTTP 429 it waits 61 seconds, or as long as `Retry-After` asks up to two minutes, then retries up to `Retries` times, and returns `ErrNYTThrottled` if NYT still refuses. HTTP 401/403 returns `ErrNYTAuth` without retry.
 
-The five-per-minute and approximately 500-per-day figures come from the report measured on 2026-10-18 for [issue #460](https://github.com/HazelnutParadise/insyra/issues/460), which also reported no quota headers. They are conservative client policy, not a guaranteed NYT allowance. Checked on 2026-11-02: the [official OpenAPI](https://github.com/nytimes/public_api_specs/blob/master/archive_api/archive_api.yaml) documents HTTP 429 for either minute or daily limits, without numerical quotas; the [legacy official guide](https://github.com/nytimes/public_api_specs/blob/master/archive_api/archive_api.md) still says 2,000 per day and warns that limits can change. The current portal FAQ could not be verified. Usage elsewhere with the same key can still cause 429. The official guide warns that one month's response can be about 20 MB. Tests use local fake servers and need neither a key nor internet access.
+The daily quota is reported as a `*NYTQuotaError`, which also matches `ErrNYTThrottled`. It comes from the client's own 500-attempt count, or from a 429 whose `Retry-After` is longer than two minutes. Its `RetryAt` is when a request should be allowed again. When the Context has a deadline at or after `RetryAt`, the call waits until then and tries again; without a deadline, or with an earlier one, it returns the error at once, so `Archive` never waits for the next day. Usage elsewhere with the same key can still cause 429. One month's response can be about 20 MB.
 
 ## Japan Exchange Group (JPX)
 

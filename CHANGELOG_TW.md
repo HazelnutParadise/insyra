@@ -271,7 +271,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.Fugle` 的 `client.Stock.OwnershipETFHoldings`、`OwnershipInstitutionalTrades`、`OwnershipDirectorHoldings`、`OwnershipTDCCDistribution` 以長表格回傳 ETF 每日持股、三大法人每日買賣超、董監經理人每月持股與集保股權分散表，各有 `Context` 版本；一年以上的區間會自動切段再接起來（需要開發者或進階方案）（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - `datafetch.Fugle` 的 `client.Stock.Stream()` 與 `client.FutOpt.Stream()` 連上富果的 WebSocket 即時串流（成交、K 線、五檔、綜合報價、指數）：用 `Subscribe`、`Unsubscribe` 依頻道與代號訂閱，從 `Messages()` 收資料，`Collect` 可直接收成表格。斷線會自動重連並重新訂閱；讀得太慢時丟掉最舊的訊息（`Dropped()` 計數），不卡住連線（[#440](https://github.com/HazelnutParadise/insyra/issues/440)）。
 - 富果串流的 `Subscribe`、`Unsubscribe` 已經收到回覆時，如果連線同一瞬間斷掉，可能回報連線中斷。現在會採用已收到的回覆。
-- `datafetch.NYT(NYTConfig{APIKey: key})` 透過 `Archive` 與 `ArchiveContext` 讀取紐約時報每月文章的標題、摘要、首段、版別與發布時間，並提供保守的請求間隔、有限次數的配額重試、取消功能，以及可區分的驗證與配額錯誤（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。
+- `datafetch.NYT(NYTConfig{APIKey: key})` 透過 `Archive` 與 `ArchiveContext` 讀取紐約時報每月文章的 id、標題、摘要、首段、版別、部門、文章類型、字數與發布時間，並提供保守的請求間隔、每分鐘限制的重試、取消功能；每日額度用完時回傳 `NYTQuotaError`，其中的 `RetryAt` 是可以再試的時間，Context 的期限夠長時會自動等到那時（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。
 
 ### `stats`
 - **BREAKING**：`FactorAnalysis` 在 `Rotation.Method: FactorRotationOblimin` 且 `Rotation.Restarts` 大於 1 時，現在真的會做參數所描述的搜尋。Oblimin 過去每一輪都自己建一個單位矩陣當起點，忽略傳進來的起點，所以 `Restarts: 20` 是把同一份計算跑 20 次再回傳第一個結果，實測 20 個起點花 202 ms 回傳和 9.9 ms 一模一樣的答案。現在它和其他九個方法一樣從每個起點各旋轉一次，而且 `Delta: 0` 時與同樣 `Restarts` 的 Quartimin 結果逐位元相同，因為兩者本來就是同一個準則。在測試套件的 12 個生成資料集上，載荷最多移動 1.2e-5；在過因子的模型上（用三因子資料抽四個因子），額外的起點會找到單位矩陣起點到不了的另一個盆地，準則值低 47 倍。那個解的因子相關也高達 0.905：`Restarts` 要的是最低的準則值，不保證那個解就是你要的，這對任何多起點的斜交旋轉都成立。預設的 `Restarts: 1` 不變。SPSS 的 Direct Oblimin 是單起點，`Restarts: 1` 仍然是。
