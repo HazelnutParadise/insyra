@@ -42,7 +42,7 @@ func TestDictionaryNullValueAndNullIndexRemainNull(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), arrowipc.ReadOptions{}, 2)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), arrowipc.ReadOptions{}, 2)
 	got, err := drain(t, tables, errs)
 	if err != nil {
 		t.Fatal(err)

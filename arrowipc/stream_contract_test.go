@@ -97,7 +97,7 @@ func TestSelectedBatchesOwnExactCells(t *testing.T) {
 	data := streamFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	tables, errs := arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: selectedScalarColumns}, 2)
+	tables, errs := streamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns(selectedScalarColumns)}, 2)
 	got, err := collectTables(t, tables, errs)
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestUnsupportedSelectionAndInvalidOptions(t *testing.T) {
 		{[]string{"id", "id"}, 2, "id"}, {[]string{"id"}, 0, "batchSize"}, {[]string{"id"}, -1, "batchSize"},
 	} {
 		t.Run(tc.match, func(t *testing.T) {
-			tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: tc.columns}, tc.size)
+			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns(tc.columns)}, tc.size)
 			got, err := collectTables(t, tables, errs)
 			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), tc.match) {
 				t.Fatalf("tables=%d err=%v, want %s", len(got), err, tc.match)
@@ -166,14 +166,14 @@ func TestStreamCancellation(t *testing.T) {
 	data := streamFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	tables, errs := arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 1)
+	tables, errs := streamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 1)
 	got, err := collectTables(t, tables, errs)
 	if len(got) != 0 || !errors.Is(err, context.Canceled) {
 		t.Fatalf("pre-cancel: %d %v", len(got), err)
 	}
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
-	tables, errs = arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 1)
+	tables, errs = streamFrom(ctx, bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 1)
 	select {
 	case _, ok := <-tables:
 		if !ok {
@@ -199,7 +199,7 @@ func TestPathAndCallerOwnedSource(t *testing.T) {
 	if err != nil || info.NumBatches != 3 {
 		t.Fatalf("inspect: %#v %v", info, err)
 	}
-	tables, errs := arrowipc.Stream(context.Background(), path, arrowipc.ReadOptions{Columns: []string{"id"}}, 4)
+	tables, errs := streamPath(context.Background(), path, arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 4)
 	got, err := collectTables(t, tables, errs)
 	if err != nil || len(got) != 3 {
 		t.Fatalf("path: %d %v", len(got), err)
@@ -216,7 +216,7 @@ func TestPathAndCallerOwnedSource(t *testing.T) {
 	if _, err := arrowipc.InspectFrom(context.Background(), f, int64(len(data))); err != nil {
 		t.Fatal(err)
 	}
-	tables, errs = arrowipc.StreamFrom(context.Background(), f, int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 4)
+	tables, errs = streamFrom(context.Background(), f, int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 4)
 	if _, err := collectTables(t, tables, errs); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestInvalidSourcesAndContexts(t *testing.T) {
 			if _, err := arrowipc.InspectFrom(context.Background(), bytes.NewReader(data), int64(len(data))); err == nil {
 				t.Fatal("inspection succeeded")
 			}
-			tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 2)
+			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 2)
 			if got, err := collectTables(t, tables, errs); err == nil || len(got) != 0 {
 				t.Fatalf("tables=%d err=%v", len(got), err)
 			}
@@ -247,7 +247,7 @@ func TestInvalidSourcesAndContexts(t *testing.T) {
 		bytes.NewReader(valid), int64(len(valid))); err == nil {
 		t.Fatal("nil context accepted")
 	}
-	tables, errs := arrowipc.StreamFrom(nil, //nolint:staticcheck // Test the documented nil-context rejection.
+	tables, errs := streamFrom(nil, //nolint:staticcheck // Test the documented nil-context rejection.
 		bytes.NewReader(valid), int64(len(valid)), arrowipc.ReadOptions{}, 1)
 	if got, err := collectTables(t, tables, errs); err == nil || len(got) != 0 {
 		t.Fatalf("nil context: %d %v", len(got), err)

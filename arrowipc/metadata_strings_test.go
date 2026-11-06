@@ -102,8 +102,7 @@ func TestSharedMetadataStringWithinBudgetRemainsReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	clear(data)
-	got := info.Schema.Metadata()
-	if value, ok := got.GetValue("second"); !ok || value != "shared" {
+	if value, ok := info.Metadata["second"]; !ok || value != "shared" {
 		t.Fatalf("shared metadata was not preserved: %q, %v", value, ok)
 	}
 }

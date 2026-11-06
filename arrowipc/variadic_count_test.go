@@ -37,7 +37,7 @@ func TestUnselectedViewVariadicCountsFailBeforeBodyReads(t *testing.T) {
 			at := record.Vector(slot)
 			binary.LittleEndian.PutUint64(msg[at:], uint64(count))
 			source := &watchedIPCBody{Reader: bytes.NewReader(data), start: int64(offset + metadata), end: int64(offset+metadata) + body}
-			tables, errs := arrowipc.StreamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}}, 1)
+			tables, errs := streamFrom(context.Background(), source, int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"})}, 1)
 			got, err := drain(t, tables, errs)
 			if count == 0 {
 				if err != nil || len(got) != 1 || got[0].GetColByNumber(0).Get(0) != int64(7) {

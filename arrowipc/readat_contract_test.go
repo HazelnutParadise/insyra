@@ -25,7 +25,7 @@ func TestReaderAtMayReturnEOFWithFullRead(t *testing.T) {
 	if _, err := arrowipc.InspectFrom(context.Background(), src, int64(len(data))); err != nil {
 		t.Fatal(err)
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{}, 2)
+	tables, errs := streamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{}, 2)
 	got, err := drain(t, tables, errs)
 	if err != nil || len(got) == 0 {
 		t.Fatalf("full read + EOF: %d tables, %v", len(got), err)
@@ -63,7 +63,7 @@ func TestFullReadDoesNotHideJoinedSourceError(t *testing.T) {
 	if !errors.Is(err, errChecksum) {
 		t.Fatalf("source error was lost: %v", err)
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{}, 1)
+	tables, errs := streamFrom(context.Background(), src, int64(len(data)), arrowipc.ReadOptions{}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || !errors.Is(err, errChecksum) {
 		t.Fatalf("source error lost in stream: %d, %v", len(got), err)

@@ -38,7 +38,7 @@ func TestDecodedBatchByteBudgetPrecedesDecompression(t *testing.T) {
 	if !changed {
 		t.Fatal("fixture has no compressed buffers")
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: []string{"id"}, MaxBatchBytes: 1024}, 1)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{Columns: namedColumns([]string{"id"}), MaxBatchBytes: 1024}, 1)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxBatchBytes") {
 		t.Fatalf("decoded budget: %d tables, %v", len(got), err)
@@ -47,7 +47,7 @@ func TestDecodedBatchByteBudgetPrecedesDecompression(t *testing.T) {
 func TestNativeByteBudgetAndNegativeOption(t *testing.T) {
 	data := scalarFixture(t)
 	for _, limit := range []int64{-1, 1} {
-		tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: limit}, 1)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: limit}, 1)
 		got, err := drain(t, tables, errs)
 		if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxBatchBytes") {
 			t.Fatalf("budget %d: %d tables, %v", limit, len(got), err)
@@ -67,7 +67,7 @@ func TestRetainedDictionaryConsumesDecodedBudget(t *testing.T) {
 		}
 	})
 	for _, limit := range []int64{2000, 3000} {
-		tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: limit}, 100)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: limit}, 100)
 		got, err := drain(t, tables, errs)
 		if limit == 2000 {
 			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxBatchBytes") {

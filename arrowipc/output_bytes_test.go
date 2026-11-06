@@ -25,7 +25,7 @@ func TestOutputByteBudgetBoundsDictionaryExpansion(t *testing.T) {
 					}
 				}
 			})
-			tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: 4096, MaxOutputBytes: 1024}, 32)
+			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxBatchBytes: 4096, MaxOutputBytes: 1024}, 32)
 			got, err := drain(t, tables, errs)
 			if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxOutputBytes") {
 				t.Fatalf("expanded dictionary: %d tables, %v", len(got), err)
@@ -39,7 +39,7 @@ func TestOutputByteBudgetIncludesNullCellSlots(t *testing.T) {
 	data := writeRecords(t, schema, func(b *array.RecordBuilder) {
 		b.Field(0).AppendNulls(100)
 	})
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxOutputBytes: 512}, 100)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxOutputBytes: 512}, 100)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxOutputBytes") {
 		t.Fatalf("null cell slots: %d tables, %v", len(got), err)
@@ -52,7 +52,7 @@ func TestOutputByteBudgetBoundaryAndNegativeLimit(t *testing.T) {
 		b.Field(0).(*array.StringBuilder).Append(strings.Repeat("x", 128))
 	})
 	for _, limit := range []int64{-1, 143, 144} {
-		tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxOutputBytes: limit}, 1)
+		tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{MaxOutputBytes: limit}, 1)
 		got, err := drain(t, tables, errs)
 		if limit == 144 {
 			if len(got) != 1 || err != nil {
@@ -85,14 +85,14 @@ func TestLargeNullRecordStaysBoundedAndCancellable(t *testing.T) {
 	if data.Len() > 4096 {
 		t.Fatalf("null fixture unexpectedly large: %d bytes", data.Len())
 	}
-	tables, errs := arrowipc.StreamFrom(context.Background(), bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, rows)
+	tables, errs := streamFrom(context.Background(), bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, rows)
 	got, err := drain(t, tables, errs)
 	if len(got) != 0 || err == nil || !strings.Contains(err.Error(), "MaxOutputBytes") {
 		t.Fatalf("oversized output: %d tables, %v", len(got), err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	tables, errs = arrowipc.StreamFrom(ctx, bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, 1)
+	tables, errs = streamFrom(ctx, bytes.NewReader(data.Bytes()), int64(data.Len()), arrowipc.ReadOptions{}, 1)
 	first, ok := <-tables
 	if !ok || first == nil || first.GetColByNumber(0).Len() != 1 || first.GetColByNumber(0).Get(0) != nil {
 		cancel()

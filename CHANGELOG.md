@@ -40,6 +40,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `INT(x)`, `ROUNDUP(x, n)` and `ROUNDDOWN(x, n)`, as in Excel. `ROUNDUP` rounds away from zero and `ROUNDDOWN` toward zero, and `INT` gives what `FLOOR` gives.
 - CCL: `REGEXTEST` is Excel 365's name for `REGEX_MATCH`, which is deprecated in its favour, logs one warning, and is removed in 0.4.
 - CCL: `CEIL` and `FLOOR` take an optional positive multiple: `CEIL(12, 5)` is 15 and `FLOOR(12, 5)` is 10. `AVERAGE`, `POWER`, `CEILING`, `REPT` and other Excel names CCL spells differently now say which name to write.
+- `insyra.Name("price")` marks a column selector as a name rather than an Excel-style index, the 0.4 selector rule. `arrowipc.ReadOptions.Columns` takes it; other selectors on this line are unchanged.
 
 ### `ml` and `nn`
 
@@ -107,7 +108,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `arrowipc`
 
-- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading data and streams selected columns as cancellable DataTable batches, with separate native-buffer and expanded-output byte limits. Integer IDs and nulls stay exact, dictionaries decode to values, and unsupported selected types return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
+- Read-only `arrowipc` inspects Arrow IPC file / Feather V2 schemas without reading data and streams selected columns as a range-over-func sequence of DataTable batches (`for table, err := range arrowipc.Stream(...)`), with separate native-buffer and expanded-output byte limits. `ReadOptions.Columns` takes the 0.4 selectors: `"B"` is the second column, `insyra.Name("B")` the column named B, and an `int` a position. Integer IDs and nulls stay exact, dictionaries decode to values, durations read as `time.Duration`, fields sharing a name are renamed as `AppendCols` renames them, and unsupported selected types return explicit errors ([#377](https://github.com/HazelnutParadise/insyra/issues/377)).
 - Metadata validation bounds aliased strings, decoded schema entries, native block counts and variadic view buffers before allocation. It rejects overlapping blocks and unsupported decimal precision/scale. Wide table assembly checks cancellation between columns and uses indexed name selection and construction without quadratic name scans.
 - Dictionary delta messages are explicitly unsupported before their body is fetched, including unselected columns; schema inspection and ordinary dictionaries remain available.
 

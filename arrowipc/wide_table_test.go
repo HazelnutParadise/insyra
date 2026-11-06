@@ -35,13 +35,13 @@ func TestWideTableConstructionRespectsCancellation(t *testing.T) {
 		reverse bool
 	}{
 		{name: "default"},
-		{name: "named-reverse", options: arrowipc.ReadOptions{Columns: names}, reverse: true},
+		{name: "named-reverse", options: arrowipc.ReadOptions{Columns: namedColumns(names)}, reverse: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			started := time.Now()
-			tables, errs := arrowipc.StreamFrom(ctx, bytes.NewReader(data), int64(len(data)), tc.options, 1)
+			tables, errs := streamFrom(ctx, bytes.NewReader(data), int64(len(data)), tc.options, 1)
 			got, err := drain(t, tables, errs)
 			elapsed := time.Since(started)
 			if elapsed > 3*time.Second {
