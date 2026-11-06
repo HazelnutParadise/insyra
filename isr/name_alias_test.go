@@ -11,7 +11,8 @@ import (
 // works wherever the library takes a name.
 func TestIsrNameIsInsyraName(t *testing.T) {
 	selector := isr.Name("price")
-	var _ insyra.NameSelector = selector // the same type, not a conversion
+	takesInsyraSelector := func(insyra.NameSelector) {}
+	takesInsyraSelector(selector) // compiles only when the types are the same
 	if selector != insyra.Name("price") || selector.Value() != "price" {
 		t.Fatalf("isr.Name(%q) = %#v", "price", selector)
 	}
