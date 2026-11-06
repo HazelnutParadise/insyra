@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/arrowipc"
 	insyraparquet "github.com/HazelnutParadise/insyra/parquet"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -68,33 +70,17 @@ func TestParquetScalarParity(t *testing.T) {
 			if err = iw.Close(); err != nil {
 				t.Fatal(err)
 			}
-			pqSchema, pqRecord := schema, rec
-			if tc.typ.ID() == arrow.DURATION {
-				// Arrow's Parquet writer refuses Duration. Store the raw unit
-				// counts as int64, the cell representation parquet.getVal uses.
-				pqSchema = arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.PrimitiveTypes.Int64, Nullable: true}}, nil)
-				pb := array.NewRecordBuilder(memory.DefaultAllocator, pqSchema)
-				defer pb.Release()
-				pb.Field(0).(*array.Int64Builder).AppendValues([]int64{123456, 0, 0}, []bool{true, false, true})
-				pqRecord = pb.NewRecordBatch()
-				defer pqRecord.Release()
-			}
 			path := filepath.Join(t.TempDir(), "reference.parquet")
-			f, err := os.Create(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			pw, err := pqarrow.NewFileWriter(pqSchema, f, arrowparquet.NewWriterProperties(), pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema()))
-			if err != nil {
-				_ = f.Close()
-				t.Fatal(err)
-			}
-			if err = pw.Write(pqRecord); err != nil {
-				_ = pw.Close()
-				t.Fatal(err)
-			}
-			if err = pw.Close(); err != nil {
-				t.Fatal(err)
+			if tc.typ.ID() == arrow.DURATION {
+				// Arrow's Parquet writer refuses Duration. Insyra's Parquet
+				// writer stores a time.Duration column with its unit, and its
+				// reader returns time.Duration again: that is the reference.
+				durations := insyra.NewDataList(123456*time.Microsecond, nil, time.Duration(0)).SetName("value")
+				if err := insyraparquet.Write(insyra.NewDataTable(durations), path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				writeParquetReference(t, path, schema, rec)
 			}
 			reference, err := insyraparquet.Read(context.Background(), path, insyraparquet.ReadOptions{})
 			if err != nil {
@@ -119,5 +105,25 @@ func TestParquetScalarParity(t *testing.T) {
 				t.Fatalf("null became %T(%v)", got[1], got[1])
 			}
 		})
+	}
+}
+
+func writeParquetReference(t *testing.T, path string, schema *arrow.Schema, rec arrow.RecordBatch) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pw, err := pqarrow.NewFileWriter(schema, f, arrowparquet.NewWriterProperties(), pqarrow.NewArrowWriterProperties(pqarrow.WithStoreSchema()))
+	if err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err = pw.Write(rec); err != nil {
+		_ = pw.Close()
+		t.Fatal(err)
+	}
+	if err = pw.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

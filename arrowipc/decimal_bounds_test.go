@@ -43,7 +43,7 @@ func TestUnsupportedDecimalParametersFailBeforeCells(t *testing.T) {
 				b.Field(1).(*array.Int64Builder).Append(7)
 			})
 			info, err := arrowipc.InspectFrom(context.Background(), bytes.NewReader(data), int64(len(data)))
-			if err != nil || !arrow.TypeEqual(info.Schema.Field(0).Type, typ) {
+			if err != nil || info.Columns[0].Type != typ.String() {
 				t.Fatalf("inspection lost decimal type: %v", err)
 			}
 			tables, errs := streamFrom(context.Background(), bytes.NewReader(data), int64(len(data)), arrowipc.ReadOptions{}, 1)

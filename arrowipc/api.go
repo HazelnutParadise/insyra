@@ -24,11 +24,25 @@ type ReadOptions struct {
 }
 
 // FileInfo describes metadata without reading record or dictionary values.
-// Schema is independent of the reader lifetime and needs no Release call.
 type FileInfo struct {
-	Schema     *arrow.Schema
+	// Columns lists every top-level field in file order, including fields
+	// Stream cannot read.
+	Columns []ColumnInfo
+	// Metadata is the schema's custom key-value metadata, nil when it has none.
+	Metadata   map[string]string
 	NumBatches int
 	Version    string
+}
+
+// ColumnInfo describes one top-level field.
+type ColumnInfo struct {
+	Name string
+	// Type is Arrow's text for the field type, such as "int64",
+	// "timestamp[ms, tz=UTC]" or "dictionary<values=utf8, indices=int8, ordered=true>".
+	Type     string
+	Nullable bool
+	// Metadata is the field's custom key-value metadata, nil when it has none.
+	Metadata map[string]string
 }
 
 // Inspect reads only the header, trailer and footer of path.
@@ -36,12 +50,36 @@ func Inspect(path string) (FileInfo, error) { return InspectContext(context.Back
 
 // InspectContext is Inspect with cancellation.
 func InspectContext(ctx context.Context, path string) (FileInfo, error) {
-	return inspectFile(ctx, path)
+	schema, batches, version, err := inspectFile(ctx, path)
+	if err != nil {
+		return FileInfo{}, err
+	}
+	return newFileInfo(schema, batches, version), nil
 }
 
 // InspectFrom inspects a caller-owned random-access source of the given size.
 func InspectFrom(ctx context.Context, r io.ReaderAt, size int64) (FileInfo, error) {
-	return inspectSource(ctx, r, size)
+	meta, err := inspectSource(ctx, r, size)
+	if err != nil {
+		return FileInfo{}, err
+	}
+	return newFileInfo(meta.schema, meta.batches, meta.version), nil
+}
+
+func newFileInfo(schema *arrow.Schema, batches int, version string) FileInfo {
+	info := FileInfo{NumBatches: batches, Version: version, Metadata: metadataMap(schema.Metadata())}
+	info.Columns = make([]ColumnInfo, schema.NumFields())
+	for i, field := range schema.Fields() {
+		info.Columns[i] = ColumnInfo{Name: field.Name, Type: field.Type.String(), Nullable: field.Nullable, Metadata: metadataMap(field.Metadata)}
+	}
+	return info
+}
+
+func metadataMap(metadata arrow.Metadata) map[string]string {
+	if metadata.Len() == 0 {
+		return nil
+	}
+	return metadata.ToMap()
 }
 
 // Stream returns a lazy sequence of independently owned DataTable batches.

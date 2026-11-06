@@ -17,24 +17,36 @@ func selectColumns(schema *arrow.Schema, requested []any) ([]selectedColumn, err
 		}
 	}
 	selected := make([]selectedColumn, 0, len(requested))
-	seen := make(map[string]struct{}, len(requested))
+	taken := make(map[string]struct{}, len(requested))
+	chosen := make(map[int]struct{}, len(requested))
 	for _, selector := range requested {
 		index, err := columnIndex(schema, selector)
 		if err != nil {
 			return nil, err
 		}
 		field := schema.Field(index)
-		if _, exists := seen[field.Name]; exists {
-			return nil, fmt.Errorf("arrowipc: duplicate or ambiguous selected column %q", field.Name)
+		if _, exists := chosen[index]; exists {
+			return nil, fmt.Errorf("arrowipc: column %q (position %d) is selected more than once", field.Name, index)
 		}
-		seen[field.Name] = struct{}{}
+		chosen[index] = struct{}{}
+		// Repeated names are renamed name_1, name_2, ..., as DataTable.AppendCols does.
+		name := field.Name
+		if name != "" {
+			for counter := 1; ; counter++ {
+				if _, exists := taken[name]; !exists {
+					break
+				}
+				name = fmt.Sprintf("%s_%d", field.Name, counter)
+			}
+			taken[name] = struct{}{}
+		}
 		if err := checkExtension(field); err != nil {
 			return nil, err
 		}
 		if !supportedCellType(field.Type) {
 			return nil, fmt.Errorf("arrowipc: unsupported selected column %q type %s", field.Name, field.Type)
 		}
-		selected = append(selected, selectedColumn{index: index, field: field})
+		selected = append(selected, selectedColumn{index: index, field: field, name: name})
 	}
 	return selected, nil
 }
