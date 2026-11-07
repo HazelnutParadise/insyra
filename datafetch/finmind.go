@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
@@ -54,6 +55,10 @@ type FinMindConfig struct {
 type FinMindClient struct {
 	base    *TWStockClient
 	baseURL string
+
+	// namesMu guards names, the contract names read by contractName.
+	namesMu sync.Mutex
+	names   map[string]string
 }
 
 // FinMind creates a client for the FinMind v4 data API.
@@ -107,6 +112,16 @@ func (c *FinMindClient) DatasetContext(ctx context.Context, name, dataID string,
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("datafetch: FinMind dataset name is empty")
 	}
+	columns, rows, err := c.rows(ctx, name, dataID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	return finMindTable(columns, rows), nil
+}
+
+// rows requests a dataset and returns its columns, in the order FinMind sends
+// them, and its rows.
+func (c *FinMindClient) rows(ctx context.Context, name, dataID string, from, to time.Time) ([]string, []map[string]any, error) {
 	values := url.Values{"dataset": {name}}
 	if dataID != "" {
 		values.Set("data_id", dataID)
@@ -142,9 +157,9 @@ func (c *FinMindClient) DatasetContext(ctx context.Context, name, dataID string,
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return finMindTable(columns, rows), nil
+	return columns, rows, nil
 }
 
 // parseFinMind reads the envelope {"msg", "status", "data": [...]} and the rows
