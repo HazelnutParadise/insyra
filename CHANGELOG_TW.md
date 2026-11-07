@@ -53,6 +53,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `PrecisionFloat32Rounded` 的交叉熵（主機與裝置都是）在標籤領先超過約 16.6 時，不再丟掉標籤的梯度：改為 `upstream/rows` 乘以 `-(o/s)`，`o` 是其他類別指數的精確總和，不再用 `p - 1`。**破壞性變更**：標籤的梯度對每個輸入的位元都不同，這個模式下先前記錄的執行無法重現。此模式的損失不變，在 margin 超過約 16.6 後仍會被捨入成 0。`nn.Tape.Softmax` 的反向也不再以同樣方式丟掉最大機率那一項的梯度。（Barron，[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）
 
 - `PrecisionFloat32Rounded`：`SoftTargetCrossEntropy` 與 `DistillationLoss` 現在可在裝置與主機上以固定的正確捨入運算序列執行，位元一致，蒸餾採用 Barron 論文的梯度（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。此模式的交叉熵損失改用其他類別指數總和的 `log1p`，不再用總和的 `log`，所以標籤領先超過約 16.6 時損失不再顯示 0。**破壞性變更**：此模式下 `SoftmaxCrossEntropy` 的損失在兩種算法不同之處位元不同，先前在這個模式下記錄的執行無法重現。
+- `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。在 M3 上，節點數 1 萬、入邊 100 以上時，前向加總比 8 核 CPU 快 2 到 10 倍。
 
 ### `stats`
 
@@ -88,6 +89,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 與 DirectX 12 上，裝置端 `MatMul`（`nn` 的大型矩陣乘法）與最近鄰候選清單會先等輸入資料上傳完成，kernel 才讀取。gogpu 對儲存緩衝區的佇列寫入不保證排在後續指令之前，kernel 可能讀到舊資料；Metal 不受影響（[#572](https://github.com/HazelnutParadise/insyra/issues/572)）。
 - 在 Vulkan 上，使用者自訂的 kernel 會加上越界檢查後再編譯：讀超過緩衝區尾端回傳 0、寫超過尾端不做事，跟 Metal 一樣，不會再蓋到權重、優化器狀態等其他常駐緩衝區（[#555](https://github.com/HazelnutParadise/insyra/issues/555)）。
 - 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
+- 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
 
 ### `datafetch`
 

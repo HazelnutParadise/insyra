@@ -2,9 +2,7 @@
 
 ## Purpose
 A sparse edge-sum operation for graphs given as edge lists: each node sums its weighted incoming edges without a dense N×N matrix, with a reverse rule for the edge weights and the node values. Every output and gradient is the correctly rounded exact sum of its products, which does not depend on how the work is split and which a device kernel can reproduce bit for bit.
-
 ## Requirements
-
 ### Requirement: An edge topology is validated once and never changes
 
 `NewEdgeTopology(nodes, sources, targets)` SHALL refuse a non-positive `nodes`, `sources` and `targets` of different lengths, and any index outside `[0, nodes)`, naming the offending edge. It SHALL copy the slices it is given, so changing them afterwards does not change the topology. An empty edge list SHALL be allowed.
@@ -80,6 +78,7 @@ The result of `EdgeSum` SHALL NOT depend on the order of the edges, the order of
 #### Scenario: Edge order does not matter
 - **WHEN** the same edges are given to `NewEdgeTopology` in a different order, with their weights permuted to match
 - **THEN** every output is bit-identical
+
 ### Requirement: The reverse rule is the exact sum too
 
 `Tape.EdgeSum` SHALL record the operation so that the gradient of `values[..., s]` is the sum over edges with source `s` of `weights[e]·upstream[..., targets[e]]`, and the gradient of `weights[e]` is the sum over the batch of `upstream[b, targets[e]]·values[b, sources[e]]`, each gradient the correctly rounded exact sum of its products under the same rules as the forward pass.
@@ -91,3 +90,23 @@ The result of `EdgeSum` SHALL NOT depend on the order of the edges, the order of
 #### Scenario: Gradients against an exact oracle
 - **WHEN** the tape's gradients are compared with the `math/big` exact sums of their products rounded to float32
 - **THEN** they are bit-identical
+
+### Requirement: EdgeSum runs on a device with the host's bits
+
+`Tape.EdgeSum` on weights and values on one device, on a tape in `accel.PrecisionFloat32Rounded`, SHALL run on that device when the topology was moved there with `EdgeTopology.To`, and its output and both gradients SHALL stay on the device and equal the host's bits. Device operands with a topology on the host SHALL be refused with an error that names `To`, and a released topology SHALL be refused.
+
+#### Scenario: Same bits as the host
+
+- **WHEN** a topology, weights and values with cancelling, subnormal, overflowing, NaN, infinite and signed-zero entries run through `Tape.EdgeSum` and its backward pass on a device and on the host
+- **THEN** the output, the weight gradient and the value gradient have the same bits
+
+#### Scenario: Topology left on the host
+
+- **WHEN** weights and values are on a device and the topology is not
+- **THEN** `Tape.EdgeSum` returns an error saying to move the topology with `To`
+
+#### Scenario: Moving to the host
+
+- **WHEN** `EdgeTopology.To` is given the zero Device
+- **THEN** it returns the topology itself, and `Release` does nothing
+

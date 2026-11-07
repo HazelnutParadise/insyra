@@ -59,7 +59,7 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 | M33 | Edge sums are exact | planning | done | `EdgeSum` and both gradients return the correctly rounded exact sum of their products, equal to a `math/big` oracle on random, cancelling, subnormal, overflowing, NaN/Inf and signed-zero inputs, with the CPU cost against the previous fixed-order version measured |
 | M34 | `Tanh` is correctly rounded | planning | done | `nn.Tanh` equals the correctly rounded `tanh` on all 2^32 float32 inputs, checked exhaustively against a high-precision oracle, and the number of inputs that changed is recorded |
 | M35 | Device arithmetic is exact | planning | done | a WGSL library that decodes float32 bit patterns, forms exact products, accumulates them in integer limbs and rounds once to nearest-even returns the CPU's bits on adversarial and random inputs on the M3 |
-| M36 | `EdgeSum` runs on the device | planning | pending (v0.3.6) | production kernels for `EdgeSum` and both gradients, built on M35, that read their inputs from and write their results to device buffers, equal to the CPU bit for bit, with kernel time measured on a ladder against the all-core CPU; `nn` uses them through M38's device tensors, never with a per-call upload |
+| M36 | `EdgeSum` runs on the device | planning | done (v0.3.6, change `accel-device-edge-sum`) | `accel.RoundedEdgeSum` and both gradients on resident inputs equal `nn.EdgeSum` bit for bit on the M3; `Tape.EdgeSum` uses them through a topology moved with `EdgeTopology.To`; kernel times recorded below |
 | M37 | `Tanh` runs on the device | planning | pending (v0.3.6) | the device `tanh`, in integer arithmetic, equals `nn.Tanh` on all 2^32 inputs |
 | M38 | Tensors stay on the device | planning | in progress (v0.3.5 shipped residency, MatMul, Add, SoftmaxCrossEntropy and the SGD, Adam and AdamW steps; the rest moves to v0.3.6): residency, MatMul, Add and SGD done in `device-resident-tape-step`; the other operations follow | `nn` tensors carry the device they live on; `To` and `ToHost` move them explicitly; operations with device kernels, `EdgeSum` and its gradients first, keep their results there, others run on the host with a report, strict mode refuses; one tape differentiates across devices; a recurrent step's speed on the device is measured against the all-core CPU |
 | M39 | Device state survives a restart | planning | pending (v0.3.6) | device-resident tensors export and import with version, shape, dtype and topology checked before anything is written; a new process continues to the same next step bit for bit |
@@ -71,10 +71,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
 ## Next Verifiable Output
-M36: device kernels for `EdgeSum` and both gradients, on inputs already on the device, return `nn.EdgeSum`'s and the tape's bits, and their kernel time is recorded on a ladder against the all-core CPU.
+M37: the device `tanh`, in integer arithmetic, equals `nn.Tanh` on all 2^32 inputs.
 
 ## Next Ticket
-M36, not yet proposed: the device `EdgeSum` kernels on resident inputs, for v0.3.6; v0.3.5 shipped device-resident tape training (#498). Then M37 through M39 in order. M33 to M35 are done and ship in v0.3.4.
+M37, not yet proposed: the device `tanh`, for v0.3.6. Then M39. M33 to M36 are done; M38 continues operation by operation.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -86,6 +86,11 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: M36 is done. `EdgeSum` and both gradients run on resident inputs through `accel.RoundedEdgeSum*` and a topology moved explicitly with `EdgeTopology.To` and freed with `Release`, bit for bit equal to the host on the M3. On an M3 against all 8 cores, with inputs already on the device, the forward sum is 2 to 10 times faster from 10,000 nodes of in-degree 100 upward, and every batch-16 backward pass is 3 to 20 times faster; a batch-1 backward on a small graph is slower, because the weight gradient rounds one product per edge in a 27-digit register.
+  rationale: the 2026-09-26 gate asked whether the kernel still loses once the inputs stay on the device; it does not, except for the batch-1 weight gradient, which only runs when the caller has already moved the tensors and is recorded in `Docs/nn.md`. The topology is moved explicitly rather than cached, so its memory budget, device loss and ownership follow tensors (reviewed with Fable). Full ladder in `openspec/changes/archive/*-accel-device-edge-sum/design.md`.
+  timestamp: 2026-11-07
+  impacted_ticket_ids: accel-device-edge-sum (M36); M37, M38
 
 - decision: `dev`, the 0.3.x line, requires Go 1.26: the `go` directive moves from 1.25.12 to 1.26.9 in `require-go-1-26`, and the modules the 1.25 directive held back move in their own changes after it.
   rationale: Go 1.25 left support when Go 1.27 was released. On 2026-10-08 eleven standard-library advisories reachable from insyra code were published with fixes only in go1.26.9 and go1.27.2, and the `x/net` fix for five of them declares `go 1.26.0`, so the Vulnerability Scan could not turn green on 1.25 and no release could ship. The owner decided on 2026-10-10, recorded on #203.
