@@ -80,7 +80,7 @@ func TestFinMindInstitutionalFuturesMatchesTAIFEX(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstitutionalFutures error: %v", err)
 	}
-	assertSameTable(t, got, taifexReference(t, "inst_futures_tx_utf8.csv", false))
+	assertSameTable(t, got, taifexReference(t, "inst_futures_tx_utf8.csv.txt", false))
 }
 
 func TestFinMindInstitutionalOptionsMatchesTAIFEX(t *testing.T) {
@@ -93,7 +93,7 @@ func TestFinMindInstitutionalOptionsMatchesTAIFEX(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstitutionalOptions error: %v", err)
 	}
-	assertSameTable(t, got, taifexReference(t, "inst_options_txo_utf8.csv", true))
+	assertSameTable(t, got, taifexReference(t, "inst_options_txo_utf8.csv.txt", true))
 }
 
 func TestFinMindInstitutionalNamesAreReadOncePerClient(t *testing.T) {
