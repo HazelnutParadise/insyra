@@ -479,6 +479,8 @@ var expm1RoundedKernel = &kernel{name: "rounded-expm1", nRead: 2, nWrite: 1, fix
 
 var log1pRoundedKernel = &kernel{name: "rounded-log1p", nRead: 2, nWrite: 1, fixed: true, body: unaryRoundedBody("log1p_rounded")}
 
+var tanhRoundedKernel = &kernel{name: "rounded-tanh", nRead: 2, nWrite: 1, fixed: true, body: unaryRoundedBody("tanh_rounded")}
+
 func unaryRoundedBody(fn string) string {
 	return `
 struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
@@ -503,6 +505,10 @@ func Expm1Rounded(a *Buffer) (*Buffer, error) { return unaryRounded(expm1Rounded
 
 // Log1pRounded computes log(1+x) for each element, correctly rounded.
 func Log1pRounded(a *Buffer) (*Buffer, error) { return unaryRounded(log1pRoundedKernel, a) }
+
+// TanhRounded computes tanh(x) for each element, correctly rounded, the bits
+// nn.Tanh returns on the host.
+func TanhRounded(a *Buffer) (*Buffer, error) { return unaryRounded(tanhRoundedKernel, a) }
 
 // ExpRounded computes e^x for each element, correctly rounded.
 func ExpRounded(a *Buffer) (*Buffer, error) { return unaryRounded(expRoundedKernel, a) }

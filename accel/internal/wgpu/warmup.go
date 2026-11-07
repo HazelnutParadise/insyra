@@ -8,7 +8,7 @@ import "sync"
 var builtinKernels = []*kernel{
 	matMulRoundedKernel, addRoundedKernel, sumRowsRoundedKernel, sgdRoundedKernel,
 	adamRoundedKernel, divRoundedKernel, sqrtRoundedKernel,
-	expRoundedKernel, logRoundedKernel, expm1RoundedKernel, log1pRoundedKernel,
+	expRoundedKernel, logRoundedKernel, expm1RoundedKernel, log1pRoundedKernel, tanhRoundedKernel,
 	sceMaxKernel, sceExpKernel, sceRowKernel, sceMeanKernel, sceGradKernel,
 	sceStatsKernel, sceDivKernel, sceSoftLossKernel, sceMassKernel, sceSoftUKernel,
 	sceTotalKernel, sceSoftGradKernel, sceDeltaKernel, sceDistMeanKernel,

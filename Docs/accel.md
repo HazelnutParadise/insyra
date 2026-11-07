@@ -127,6 +127,7 @@ The surviving operation resolves that rather than trading it away: the device ra
 | `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. |
 | `DeviceMatMul` | 2-D `float32` matrix product | Returns an error for the caller's exact CPU fallback and records device status in `accel.Default().Report()`. |
 | `RoundedEdgeSum`, `RoundedEdgeSumGradValues`, `RoundedEdgeSumGradWeights` | sums along the edges of a `DeviceEdgeTopology`, on resident buffers shaped `[batch, nodes]` | Each output is the exact sum of its products rounded once, the bits `nn.EdgeSum` gives on the host. `NewDeviceEdgeTopology` uploads the edge list once; `Release` frees it. |
+| `RoundedTanh` | `tanh` of each element of a resident buffer | The bits `nn.Tanh` gives on the host, for every float32 input. |
 
 Three other operations existed and were removed once measured against a host using every core it has: a column sum at 0.7x, a squared-distance matrix whose readback grew with the answer, and a single-precision nearest query no `float64` caller could use. Nothing is added back without that measurement.
 
