@@ -1146,14 +1146,22 @@ func sigmoidVJP(output, upstream *Tensor) *Tensor {
 // that these conversions round and cannot be fused with adjacent operations, so
 // every platform returns RN(upstream · RN(1 − RN(y·y))) under IEEE 754 reproducible
 // evaluation (§11).
-// tanhVJPRounded is tanhVJP in PrecisionFloat32Rounded, where a zero result is
-// +0 at every step, the bits accel.RoundedTanhGrad gives on a device.
+// tanhVJPRounded is tanhVJP in PrecisionFloat32Rounded, where a result that is
+// exactly zero is +0 (ENG.md), the bits accel.RoundedTanhGrad gives on a
+// device. Only the last product can be exactly zero with a negative sign under
+// IEEE rules: y*y is never negative and 1 - y*y is +0 when it cancels. A
+// nonzero product that underflows keeps its sign, since it is not exactly zero.
 func tanhVJPRounded(output, upstream *Tensor) *Tensor {
 	gradient, _ := newZeroFloat32Tensor(output.shape)
 	for index, value := range output.data {
-		square := roundedZero(float32(value * value))
-		complement := roundedZero(float32(1 - square))
-		gradient.data[index] = roundedZero(float32(upstream.data[index] * complement))
+		square := float32(value * value)
+		complement := float32(1 - square)
+		u := upstream.data[index]
+		product := float32(u * complement)
+		if product == 0 && (u == 0 || complement == 0) {
+			product = 0
+		}
+		gradient.data[index] = product
 	}
 	return gradient
 }

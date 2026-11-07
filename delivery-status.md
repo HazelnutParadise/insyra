@@ -87,8 +87,8 @@ golangci-lint also runs nilerr, bodyclose, rowserrcheck, sqlclosecheck and error
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
-- decision: `Tape.Tanh` runs on resident tensors (M38, change `nn-device-tanh`). The forward is `accel.RoundedTanh`; the gradient is `accel.RoundedTanhGrad`, `RN(upstream · RN(1 − RN(y·y)))` with each step an exact register rounded once. In the rounded modes a zero at any step is `+0` on the host as well, the rule `roundedZero` already applies elsewhere, so the two agree; the default tape keeps IEEE's `-0`. A two-step `MatMul`/`Add`/`Tanh`/`MatMul` SGD tape equals the host bit for bit on the M3.
-  rationale: the exact register returns `+0` for any zero, so matching IEEE's `-0` on the device would need sign bookkeeping the rest of the mode does not do; aligning the host to the mode's rule is one `roundedZero` per step and changes only the sign of a zero.
+- decision: `Tape.Tanh` runs on resident tensors (M38, change `nn-device-tanh`). The forward is `accel.RoundedTanh`; the gradient is `accel.RoundedTanhGrad`, `RN(upstream · RN(1 − RN(y·y)))` with each step an exact register rounded once. In the rounded modes a gradient that is exactly zero is `+0` on the host as well, the rule ENG.md sets for every device result ("a result that is exactly zero is `+0`"), so the two agree; a nonzero gradient that underflows keeps its sign, and the default tape keeps IEEE's `-0`. A two-step `MatMul`/`Add`/`Tanh`/`MatMul` SGD tape equals the host bit for bit on the M3.
+  rationale: the exact register returns `+0` for an exact zero and keeps the sign of a rounded one, which is ENG.md's rule; only the last product can be an exact zero that IEEE signs `-0`, so the host checks that one case.
   timestamp: 2026-11-07
   impacted_ticket_ids: nn-device-tanh (M38)
 

@@ -90,21 +90,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `}
 
 // tanhGradRoundedKernel: params = length, 0, 0, stride. g = RN(u * RN(1 -
-// RN(y*y))) with each step an exact register rounded once, so a product is
-// IEEE multiplication; a zero result is +0, the PrecisionFloat32Rounded rule.
+// RN(y*y))) with each step an exact register rounded once: IEEE
+// multiplication and subtraction, except that an exactly-zero result is +0,
+// the PrecisionFloat32Rounded rule. A nonzero product that underflows keeps
+// its sign.
 var tanhGradRoundedKernel = &kernel{name: "rounded-tanh-grad", nRead: 2, nWrite: 1, body: `
 struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> y: array<u32>;
 @group(0) @binding(1) var<storage, read> u: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
 @group(0) @binding(3) var<uniform> p: Params;
-
-fn positive_zero(x: u32) -> u32 {
-    if (x == 0x80000000u) {
-        return 0u;
-    }
-    return x;
-}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -116,14 +111,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var r: ExactRegister;
     exact_clear(&r);
     exact_add_product(&r, yi, yi);
-    let square = positive_zero(exact_round(r));
+    let square = exact_round(r);
     exact_clear(&r);
     exact_add_product(&r, 0x3f800000u, 0x3f800000u);
     exact_add_product(&r, square, 0xbf800000u);
-    let complement = positive_zero(exact_round(r));
+    let complement = exact_round(r);
     exact_clear(&r);
     exact_add_product(&r, u[i], complement);
-    c[i] = positive_zero(exact_round(r));
+    c[i] = exact_round(r);
 }
 `}
 
