@@ -518,9 +518,10 @@ nothing: both keep returning what the last successful pass computed.
 `Parameter.Update` writes a parameter from its gradient for an optimizer the
 tape does not have; see `CustomOptimizer` above.
 `Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
-it is the same bits on every platform. In `PrecisionFloat32Rounded` a zero at
-any step is `+0`, as in every operation of that mode, which is what lets the
-device give the same bits. Exact-form GELU is differentiable; the tanh
+it is the same bits on every platform. In `PrecisionFloat32Rounded` a gradient
+that is exactly zero is `+0`, as every exactly-zero result of that mode is,
+which is what lets the device give the same bits; one that underflows to zero
+keeps its sign. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
 
 `Embedding` is also a tape operation. `tape.Embedding(table, indices)` looks up

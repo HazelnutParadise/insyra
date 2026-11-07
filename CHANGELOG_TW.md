@@ -243,7 +243,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`Clear(ClearOptions{KeepGradients: true})` 讓那一次清除保留參數梯度（不帶參數的 `Clear()` 仍會清掉），`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態，`ClipGradNorm` 也不把凍結參數算進範數或縮放。`Float32` 與 `Float32Rounded` 的 tape 跑的是同一套 Adam，可以互相讀取對方存的最佳化器狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
 - `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
 - `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。
-- `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度裡的零現在是 `+0`，和這個模式的其他結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號。預設的 tape 不變。
+- `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度剛好等於零時現在是 `+0`，和這個模式其他剛好為零的結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號；小到捨入成零的梯度保留原本的正負號。預設的 tape 不變。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。

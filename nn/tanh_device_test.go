@@ -99,8 +99,10 @@ func TestRoundedTanhStepOnTheDeviceEqualsTheHostBitForBit(t *testing.T) {
 func TestRoundedTanhGradientOnTheDeviceEqualsTheHost(t *testing.T) {
 	device := residentTestDevice(t)
 	negZero := float32(math.Copysign(0, -1))
-	inputs := []float32{0, negZero, 20, -20, 0.5, -3, float32(math.Inf(1)), float32(math.NaN()), 1e-40}
-	ups := []float32{-1, -2, -0.5, 3, negZero, 1e-38, -1e-30, 2, 7}
+	// The last two products underflow: about -0.42 of the smallest subnormal,
+	// which rounds to -0 and is not exactly zero.
+	inputs := []float32{0, negZero, 20, -20, 0.5, -3, float32(math.Inf(1)), float32(math.NaN()), 1e-40, 1, -1}
+	ups := []float32{-1, -2, -0.5, 3, negZero, 1e-38, -1e-30, 2, 7, -1e-45, -1e-45}
 	rng := rand.New(rand.NewSource(5))
 	for i := 0; i < 4000; i++ {
 		inputs = append(inputs, float32(rng.NormFloat64()*4))
@@ -169,14 +171,17 @@ func TestRoundedTanhGradientOnTheDeviceEqualsTheHost(t *testing.T) {
 	same("gradient", devG, hostG)
 }
 
-// In PrecisionFloat32Rounded a zero gradient is +0, as every other operation
-// in that mode gives; the default tape keeps IEEE's -0.
+// In PrecisionFloat32Rounded an exactly-zero gradient is +0, as every other
+// operation in that mode gives; the default tape keeps IEEE's -0. A nonzero
+// gradient that underflows to zero keeps its sign in both.
 func TestRoundedTanhGradientZeroIsPositive(t *testing.T) {
-	x, err := NewTensor([]int{2}, []float32{20, -20}) // tanh rounds to +-1, so 1 - y*y is 0
+	// tanh rounds to +-1 for the first two, so 1 - y*y is exactly 0; for the
+	// third, 1 - y*y is about 0.42 and the product underflows.
+	x, err := NewTensor([]int{3}, []float32{20, -20, 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := NewTensor([]int{2}, []float32{-1, -3})
+	u, err := NewTensor([]int{3}, []float32{-1, -3, -1e-45})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,10 +206,13 @@ func TestRoundedTanhGradientZeroIsPositive(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i, v := range g.data {
+		for i, v := range g.data[:2] {
 			if v != 0 || math.Signbit(float64(v)) == rounded {
 				t.Errorf("rounded=%v: gradient[%d] = %g (sign bit %v)", rounded, i, v, math.Signbit(float64(v)))
 			}
+		}
+		if v := g.data[2]; v != 0 || !math.Signbit(float64(v)) {
+			t.Errorf("rounded=%v: an underflowing negative gradient is %g (sign bit %v), want -0", rounded, v, math.Signbit(float64(v)))
 		}
 		tape.Close()
 	}

@@ -7,17 +7,16 @@ import (
 	"testing"
 )
 
-// tanhGradReference is RN(u * RN(1 - RN(y*y))) in Go float32, each zero +0.
+// tanhGradReference is RN(u * RN(1 - RN(y*y))) in Go float32, with an
+// exactly-zero product +0; a nonzero product that underflows keeps its sign.
 func tanhGradReference(y, u float32) float32 {
-	pz := func(x float32) float32 {
-		if x == 0 {
-			return 0
-		}
-		return x
+	square := float32(y * y)
+	complement := float32(1 - square)
+	product := float32(u * complement)
+	if product == 0 && (u == 0 || complement == 0) {
+		return 0
 	}
-	square := pz(float32(y * y))
-	complement := pz(float32(1 - square))
-	return pz(float32(u * complement))
+	return product
 }
 
 func TestTanhGradRoundedMatchesFloat32Steps(t *testing.T) {
@@ -25,7 +24,7 @@ func TestTanhGradRoundedMatchesFloat32Steps(t *testing.T) {
 	bits := math.Float32frombits
 	negZero := float32(math.Copysign(0, -1))
 	special := []float32{0, negZero, 1, -1, bits(0x3f7fffff), bits(0xbf7fffff), bits(1), bits(0x80000001),
-		bits(0x1f800000), 0.5, -0.5, 2, 1e20, float32(math.Inf(1)), float32(math.Inf(-1)), float32(math.NaN())}
+		bits(0x1f800000), 0.75, -0.75, 0.5, -0.5, 2, 1e20, float32(math.Inf(1)), float32(math.Inf(-1)), float32(math.NaN())}
 	var ys, us []float32
 	for _, y := range special {
 		for _, u := range special {
