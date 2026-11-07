@@ -274,11 +274,22 @@ func (t *Tape) Sigmoid(input *Tensor) (*Tensor, error) {
 
 // Tanh runs the existing Tanh kernel and records its VJP.
 func (t *Tape) Tanh(input *Tensor) (*Tensor, error) {
+	resident, err := t.residency("tanh", input)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.tanhResident(input)
+	}
 	output, err := Tanh(input)
 	if err != nil {
 		return nil, err
 	}
+	rounded := t.rounded()
 	t.record("Tanh", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		if rounded {
+			return []*Tensor{tanhVJPRounded(output, upstream)}, nil
+		}
 		return []*Tensor{tanhVJP(output, upstream)}, nil
 	})
 	return output, nil
@@ -1135,6 +1146,18 @@ func sigmoidVJP(output, upstream *Tensor) *Tensor {
 // that these conversions round and cannot be fused with adjacent operations, so
 // every platform returns RN(upstream · RN(1 − RN(y·y))) under IEEE 754 reproducible
 // evaluation (§11).
+// tanhVJPRounded is tanhVJP in PrecisionFloat32Rounded, where a zero result is
+// +0 at every step, the bits accel.RoundedTanhGrad gives on a device.
+func tanhVJPRounded(output, upstream *Tensor) *Tensor {
+	gradient, _ := newZeroFloat32Tensor(output.shape)
+	for index, value := range output.data {
+		square := roundedZero(float32(value * value))
+		complement := roundedZero(float32(1 - square))
+		gradient.data[index] = roundedZero(float32(upstream.data[index] * complement))
+	}
+	return gradient
+}
+
 func tanhVJP(output, upstream *Tensor) *Tensor {
 	gradient, _ := newZeroFloat32Tensor(output.shape)
 	for index, value := range output.data {

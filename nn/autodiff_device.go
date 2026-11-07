@@ -264,6 +264,40 @@ func (t *Tape) addResident(a, b *Tensor) (*Tensor, error) {
 	return output, nil
 }
 
+// tanhResident applies tanh to a resident float32 tensor and records a VJP
+// that stays on the device; both are the bits the host gives in this mode.
+func (t *Tape) tanhResident(input *Tensor) (*Tensor, error) {
+	if input.dtype != DTypeFloat32 {
+		return nil, fmt.Errorf("autodiff tanh on a device needs a float32 input, got %s", dtypeName(input.dtype))
+	}
+	values, err := accel.RoundedTanh(input.device)
+	if err != nil {
+		return nil, err
+	}
+	output, err := newResidentTensor(input.shape, values)
+	if err != nil {
+		values.Release()
+		return nil, err
+	}
+	t.own(output)
+	t.record("Tanh", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		if !upstream.onDevice() {
+			return nil, fmt.Errorf("tanh upstream must be on the device")
+		}
+		gradient, err := accel.RoundedTanhGrad(output.device, upstream.device)
+		if err != nil {
+			return nil, err
+		}
+		dInput, err := newResidentTensor(input.shape, gradient)
+		if err != nil {
+			gradient.Release()
+			return nil, err
+		}
+		return []*Tensor{t.own(dInput)}, nil
+	})
+	return output, nil
+}
+
 // --- host arithmetic in PrecisionFloat32Rounded -----------------------------
 
 // roundedZero turns a negative zero into +0: in this mode an exactly-zero

@@ -380,6 +380,21 @@ func RoundedTanh(x *DeviceBuffer) (*DeviceBuffer, error) {
 	return x.wrap(out)
 }
 
+// RoundedTanhGrad returns the gradient of tanh for each element from its
+// output y and the upstream gradient: RN(upstream * RN(1 - RN(y*y))), each step
+// rounded once and a zero result +0, the bits nn's PrecisionFloat32Rounded tape
+// gives on the host.
+func RoundedTanhGrad(y, upstream *DeviceBuffer) (*DeviceBuffer, error) {
+	if err := sameDevice(y, upstream); err != nil {
+		return nil, err
+	}
+	out, err := wgpu.TanhGradRounded(y.inner, upstream.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return y.wrap(out)
+}
+
 // SoftmaxCrossEntropyState holds what the gradient of a cross-entropy loss
 // reuses from its forward pass, so each exponential is computed once. It
 // occupies device memory until Release is called.

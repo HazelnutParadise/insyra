@@ -54,6 +54,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `PrecisionFloat32Rounded`：`SoftTargetCrossEntropy` 與 `DistillationLoss` 現在可在裝置與主機上以固定的正確捨入運算序列執行，位元一致，蒸餾採用 Barron 論文的梯度（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。此模式的交叉熵損失改用其他類別指數總和的 `log1p`，不再用總和的 `log`，所以標籤領先超過約 16.6 時損失不再顯示 0。**破壞性變更**：此模式下 `SoftmaxCrossEntropy` 的損失在兩種算法不同之處位元不同，先前在這個模式下記錄的執行無法重現。
 - `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。
+- `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度裡的零現在是 `+0`，和這個模式的其他結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號。預設的 tape 不變。
 
 ### `stats`
 
@@ -91,6 +92,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
 - 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
 - 新增 `accel.RoundedTanh`，在常駐 GPU 的陣列上計算 `tanh`，每個 float32 輸入的結果都和主機上 `nn.Tanh` 逐位元相同。
+- 新增 `accel.RoundedTanhGrad`，在常駐 GPU 的資料上由 `tanh` 的輸出與上游梯度算出梯度，位元和 `nn` 在 `PrecisionFloat32Rounded` 下於 CPU 算的相同。
 
 ### `datafetch`
 
