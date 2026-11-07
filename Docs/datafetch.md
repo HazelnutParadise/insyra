@@ -847,9 +847,9 @@ How far back each table goes was measured on 2026-10-20 and is the exchange's, n
 ```go
 fm, _ := datafetch.FinMind(datafetch.FinMindConfig{})
 early, err := fm.InstitutionalFutures("TX",
-    time.Date(2018, 6, 1, 0, 0, 0, 0, time.UTC), time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC))
+    time.Date(2018, 6, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(-3, 0, 6))
 tf, _ := datafetch.TAIFEX(datafetch.TWStockConfig{Interval: time.Second})
-recent, err := tf.InstitutionalFuturesHistory(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), time.Now())
+recent, err := tf.InstitutionalFuturesHistory(time.Now().AddDate(-3, 0, 7), time.Now())
 // recent holds every contract; keep the rows whose Contract is "臺股期貨" before joining.
 ```
 
@@ -876,7 +876,7 @@ InstitutionalFutures(contract string, from, to time.Time) (*insyra.DataTable, er
 InstitutionalOptions(contract string, from, to time.Time) (*insyra.DataTable, error)
 ```
 
-These two, with `...Context` forms, read `TaiwanFuturesInstitutionalInvestors` and `TaiwanOptionInstitutionalInvestors` for one contract and return them in the columns of `TAIFEXClient.InstitutionalFutures` and `InstitutionalOptions`, to reach back before the three years the exchange's website serves. `contract` is the exchange's product code (`"TX"`, `"MTX"`, `"TMF"`, `"TXO"`) and is required; a zero `from` or `to` leaves that end open. FinMind has TX from 2018-06-05. `Contract` is the exchange's name for it (`臺股期貨`), `Trader` the exchange's name for the group (FinMind's `外資` is `外資及陸資`), `CallPut` is `"CALL"` or `"PUT"`, and the rows run by date, then calls before puts, then 自營商, 投信, 外資及陸資, as the exchange's do. FinMind has no net columns, so the Net columns are Long minus Short: the counts equal the exchange's, and `TradeNetValue` and `OINetValue` can differ from the exchange's by 1 (thousand NT dollars), because the exchange subtracts before rounding to thousands. Each call makes two requests the first time on a client, one for the contract names and one for the data, and both count toward the plan's limit.
+These two, with `...Context` forms, read `TaiwanFuturesInstitutionalInvestors` and `TaiwanOptionInstitutionalInvestors` for one contract and return them in the columns of `TAIFEXClient.InstitutionalFutures` and `InstitutionalOptions`, to reach back before the three years the exchange's website serves. `contract` is the exchange's product code (`"TX"`, `"MTX"`, `"TMF"`, `"TXO"`) and is required; FinMind keys the data by it, so another source's alias, such as `"TXF"` for TX, returns an empty table; a zero `from` or `to` leaves that end open. FinMind has TX from 2018-06-05. `Contract` is the exchange's name for it (`臺股期貨`), from FinMind's list of contracts, which is read again when a code is not in it, and corrected where FinMind's name is not the exchange's (GTF is `櫃買指數期貨`, which FinMind calls `櫃買期貨`), `Trader` the exchange's name for the group (FinMind's `外資` is `外資及陸資`), `CallPut` is `"CALL"` or `"PUT"`, and the rows run by date, then calls before puts, then 自營商, 投信, 外資及陸資, as the exchange's do. FinMind has no net columns, so the Net columns are Long minus Short: the counts equal the exchange's, and `TradeNetValue` and `OINetValue` can differ from the exchange's by 1 (thousand NT dollars), because the exchange subtracts before rounding to thousands. The first call on a client makes two requests, one for the contract names and one for the data, and both count toward the plan's limit.
 
 **Errors you can tell apart.** `errors.Is(err, datafetch.ErrFinMindLimit)` means the plan's request limit was reached (HTTP 402); `errors.Is(err, datafetch.ErrFinMindLevel)` means the plan does not allow the request, such as a free account asking for a dataset above its level, or one that needs a `dataID` without giving it. Neither is retried, since waiting or upgrading is the fix, not repeating the call. Other failures, such as an unknown dataset (HTTP 422, whose message lists the valid names), are ordinary errors.
 

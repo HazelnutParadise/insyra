@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
@@ -56,9 +55,11 @@ type FinMindClient struct {
 	base    *TWStockClient
 	baseURL string
 
-	// namesMu guards names, the contract names read by contractName.
-	namesMu sync.Mutex
-	names   map[string]string
+	// namesLock, a channel of one, guards names, the contract names read by
+	// contractName; a channel so that a caller waiting for it can give up when
+	// its context is done.
+	namesLock chan struct{}
+	names     map[string]string
 }
 
 // FinMind creates a client for the FinMind v4 data API.
@@ -73,7 +74,7 @@ func FinMind(cfg FinMindConfig) (*FinMindClient, error) {
 	if cfg.Token != "" {
 		base.headers = map[string]string{"Authorization": "Bearer " + cfg.Token}
 	}
-	return &FinMindClient{base: base, baseURL: "https://api.finmindtrade.com"}, nil
+	return &FinMindClient{base: base, baseURL: "https://api.finmindtrade.com", namesLock: make(chan struct{}, 1)}, nil
 }
 
 var errFinMindNotCreated = errors.New("datafetch: FinMindClient was not created with FinMind")

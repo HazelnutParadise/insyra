@@ -26,7 +26,8 @@ func (c *FinMindClient) InstitutionalFutures(contract string, from, to time.Time
 // Unlike TAIFEXClient.InstitutionalFutures, which gives the latest day of every
 // contract, this gives one contract over a range of days. contract is the
 // exchange's product code, such as "TX" (臺股期貨), "MTX" or "TMF", and is
-// required. A zero from or to leaves that end open. FinMind has this data from
+// required; FinMind keys the data by it, so another source's alias, such as
+// "TXF" for TX, returns an empty table. A zero from or to leaves that end open. FinMind has this data from
 // 2018-06-05 (measured for TX), which reaches back before the three years the
 // exchange's website serves.
 //
@@ -198,12 +199,28 @@ func finMindInt(row map[string]any, key string) (int64, error) {
 	return n, nil
 }
 
+// taifexContractNames corrects FinMind's TaiwanFutOptDailyInfo where its name
+// for a contract is not the exchange's, so that Contract joins with the TAIFEX
+// tables. Every other futures and options code had the exchange's name when
+// the two were compared on 2026-11-07.
+var taifexContractNames = map[string]string{
+	"TaiwanFuturesDaily\x00GTF": "櫃買指數期貨", // FinMind: 櫃買期貨
+}
+
 // contractName returns the exchange's name for a futures or options product
-// code, from FinMind's TaiwanFutOptDailyInfo, which is read once per client.
+// code. The names come from FinMind's TaiwanFutOptDailyInfo, read on a
+// client's first call and again when a code is not in the names read before,
+// such as a contract listed since.
 func (c *FinMindClient) contractName(ctx context.Context, kind, code string) (string, error) {
-	c.namesMu.Lock()
-	defer c.namesMu.Unlock()
-	if c.names == nil {
+	select {
+	case c.namesLock <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	defer func() { <-c.namesLock }()
+	key := kind + "\x00" + code
+	name, ok := c.names[key]
+	if !ok {
 		_, rows, err := c.rows(ctx, "TaiwanFutOptDailyInfo", "", time.Time{}, time.Time{})
 		if err != nil {
 			return "", fmt.Errorf("datafetch: FinMind contract names: %w", err)
@@ -212,16 +229,20 @@ func (c *FinMindClient) contractName(ctx context.Context, kind, code string) (st
 		for _, row := range rows {
 			rowKind, _ := row["type"].(string)
 			rowCode, _ := row["code"].(string)
-			name, _ := row["name"].(string)
-			if rowKind != "" && rowCode != "" && name != "" {
-				names[rowKind+"\x00"+rowCode] = name
+			rowName, _ := row["name"].(string)
+			if rowKind != "" && rowCode != "" && rowName != "" {
+				names[rowKind+"\x00"+rowCode] = rowName
+			}
+		}
+		for k, v := range taifexContractNames {
+			if _, listed := names[k]; listed {
+				names[k] = v
 			}
 		}
 		c.names = names
-	}
-	name, ok := c.names[kind+"\x00"+code]
-	if !ok {
-		return "", fmt.Errorf("datafetch: FinMind has no %s contract with code %q", strings.TrimPrefix(strings.TrimSuffix(kind, "Daily"), "Taiwan"), code)
+		if name, ok = names[key]; !ok {
+			return "", fmt.Errorf("datafetch: FinMind has no %s contract with code %q", strings.TrimPrefix(strings.TrimSuffix(kind, "Daily"), "Taiwan"), code)
+		}
 	}
 	return name, nil
 }
