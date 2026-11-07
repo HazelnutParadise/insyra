@@ -143,9 +143,9 @@ kernel with an error that names `ToHost`; nothing reads back by itself.
 Tensors count against the device's memory budget, and a buffer that is
 garbage-collected without `Release` is freed with a warning.
 
-In this release the precision mode covers `MatMul` and `Add` (a second operand
-that matches the first or repeats over its trailing dimensions) with their
-gradients, gradient accumulation, `SGD`, `Adam`, `AdamW` and `SoftmaxCrossEntropy`, in 2-D. In this
+In this release the precision mode covers `MatMul`, `Add` (a second operand
+that matches the first or repeats over its trailing dimensions) and `Tanh` with
+their gradients, gradient accumulation, `SGD`, `Adam`, `AdamW` and `SoftmaxCrossEntropy`, in 2-D. In this
 mode `Adam` and `AdamW` are defined entirely in float32: each step is one
 correctly rounded operation or an exact two-term sum rounded once, and the
 constants (`1-beta`, the bias corrections, `lr*weightDecay`) are rounded once
@@ -518,7 +518,9 @@ nothing: both keep returning what the last successful pass computed.
 `Parameter.Update` writes a parameter from its gradient for an optimizer the
 tape does not have; see `CustomOptimizer` above.
 `Tape.Tanh`'s gradient rounds every step to float32 without fusing any two, so
-it is the same bits on every platform. Exact-form GELU is differentiable; the tanh
+it is the same bits on every platform. In `PrecisionFloat32Rounded` a zero at
+any step is `+0`, as in every operation of that mode, which is what lets the
+device give the same bits. Exact-form GELU is differentiable; the tanh
 approximation is refused by the tape until its VJP is covered.
 
 `Embedding` is also a tape operation. `tape.Embedding(table, indices)` looks up
