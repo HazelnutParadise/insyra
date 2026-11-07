@@ -9,9 +9,10 @@ import (
 // weights[e]*vectors[b*nodes+ends[e]] over the edges e listed for t in
 // edges[offsets[t]:offsets[t+1]], and rounds once. Grouped by target with
 // ends = sources it is nn's EdgeSum; grouped by source with ends = targets it
-// is the gradient of the values. params = nodes, total, 0, stride.
+// is the gradient of the values. params = nodes, total, base, stride: one
+// launch covers the outputs from base on.
 var edgeSumRoundedKernel = &kernel{name: "rounded-edge-sum", nRead: 5, nWrite: 1, body: `
-struct Params { nodes: u32, total: u32, unused: u32, stride: u32, }
+struct Params { nodes: u32, total: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> offsets: array<u32>;
 @group(0) @binding(1) var<storage, read> edges: array<u32>;
 @group(0) @binding(2) var<storage, read> ends: array<u32>;
@@ -22,7 +23,7 @@ struct Params { nodes: u32, total: u32, unused: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.total) {
         return;
     }
@@ -40,9 +41,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // edgeSumWeightsRoundedKernel gives the gradient of each edge's weight: the
 // exact sum over the batch of upstream[b*nodes+targets[e]] *
-// values[b*nodes+sources[e]], rounded once. params = edges, nodes, batch, stride.
+// values[b*nodes+sources[e]], rounded once. params = edges, nodes, batch,
+// stride, base: one launch covers the edges from base on.
 var edgeSumWeightsRoundedKernel = &kernel{name: "rounded-edge-sum-weights", nRead: 4, nWrite: 1, body: `
-struct Params { edges: u32, nodes: u32, batch: u32, stride: u32, }
+struct Params { edges: u32, nodes: u32, batch: u32, stride: u32, base: u32, }
 @group(0) @binding(0) var<storage, read> sources: array<u32>;
 @group(0) @binding(1) var<storage, read> targets: array<u32>;
 @group(0) @binding(2) var<storage, read> values: array<u32>;
@@ -52,7 +54,7 @@ struct Params { edges: u32, nodes: u32, batch: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let e = gid.x + gid.y * p.stride;
+    let e = p.base + gid.x + gid.y * p.stride;
     if (e >= p.edges) {
         return;
     }
@@ -66,6 +68,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     c[e] = exact_round(r);
 }
 `}
+
+// edgeSumLaunchProducts bounds the products one launch sums, a quarter of a
+// second's work on a GT 1030.
+var edgeSumLaunchProducts = 1 << 24
+
+// edgeSumLaunchSpan is how many outputs one launch covers when each sums
+// perOutput products: at least one workgroup's worth.
+func edgeSumLaunchSpan(perOutput int) int {
+	return max(64, edgeSumLaunchProducts/max(perOutput, 1))
+}
 
 // EdgeSumRounded sums, for every row b of vectors (shaped [batch,nodes]) and
 // every node, the products of weights and vectors along the edges grouped
@@ -89,11 +101,18 @@ func EdgeSumRounded(offsets, edges, ends, weights, vectors *Buffer, nodes, batch
 	if total == 0 {
 		return out, nil
 	}
-	gx, gy, stride := elementwiseGroups(total)
-	params := [16]uint32{uint32(nodes), uint32(total), 0, stride}
-	if err := edgeSumRoundedKernel.run([]*Buffer{offsets, edges, ends, weights, vectors}, []*Buffer{out}, params, gx, gy); err != nil {
-		out.Release()
-		return nil, err
+	// Each launch is its own submission and sums about edgeSumLaunchProducts
+	// products, so no single dispatch runs long enough for Windows to reset the
+	// device (about two seconds; a GT 1030 summed 160M products in 1.95 s).
+	degree := (edges.Len() + nodes - 1) / nodes
+	for base := 0; base < total; base += edgeSumLaunchSpan(degree) {
+		count := min(total-base, edgeSumLaunchSpan(degree))
+		gx, gy, stride := elementwiseGroups(count)
+		params := [16]uint32{uint32(nodes), uint32(total), uint32(base), stride}
+		if err := edgeSumRoundedKernel.run([]*Buffer{offsets, edges, ends, weights, vectors}, []*Buffer{out}, params, gx, gy); err != nil {
+			out.Release()
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -115,11 +134,14 @@ func EdgeSumWeightsRounded(sources, targets, values, upstream *Buffer, nodes, ba
 	if edges == 0 {
 		return out, nil
 	}
-	gx, gy, stride := elementwiseGroups(edges)
-	params := [16]uint32{uint32(edges), uint32(nodes), uint32(batch), stride}
-	if err := edgeSumWeightsRoundedKernel.run([]*Buffer{sources, targets, values, upstream}, []*Buffer{out}, params, gx, gy); err != nil {
-		out.Release()
-		return nil, err
+	for base := 0; base < edges; base += edgeSumLaunchSpan(batch) {
+		count := min(edges-base, edgeSumLaunchSpan(batch))
+		gx, gy, stride := elementwiseGroups(count)
+		params := [16]uint32{uint32(edges), uint32(nodes), uint32(batch), stride, uint32(base)}
+		if err := edgeSumWeightsRoundedKernel.run([]*Buffer{sources, targets, values, upstream}, []*Buffer{out}, params, gx, gy); err != nil {
+			out.Release()
+			return nil, err
+		}
 	}
 	return out, nil
 }
