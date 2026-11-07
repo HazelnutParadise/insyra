@@ -67,9 +67,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation
 }
 `}
 
-// addRoundedKernel: params = length, bLength, 0, stride. out[i] = a[i] + b[i % bLength].
+// addRoundedKernel: params = end, bLength, base, stride. out[i] = a[i] + b[i % bLength].
 var addRoundedKernel = &kernel{name: "rounded-add", nRead: 2, nWrite: 1, body: `
-struct Params { length: u32, b_length: u32, unused: u32, stride: u32, }
+struct Params { length: u32, b_length: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read> b: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -77,7 +77,7 @@ struct Params { length: u32, b_length: u32, unused: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -89,13 +89,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `}
 
-// tanhGradRoundedKernel: params = length, 0, 0, stride. g = RN(u * RN(1 -
-// RN(y*y))) with each step an exact register rounded once: IEEE
+// tanhGradRoundedKernel: params = end, 0, base, stride (see runElementwise).
+// g = RN(u * RN(1 - RN(y*y))) with each step an exact register rounded once: IEEE
 // multiplication and subtraction, except that an exactly-zero result is +0,
 // the PrecisionFloat32Rounded rule. A nonzero product that underflows keeps
 // its sign.
 var tanhGradRoundedKernel = &kernel{name: "rounded-tanh-grad", nRead: 2, nWrite: 1, body: `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> y: array<u32>;
 @group(0) @binding(1) var<storage, read> u: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -103,7 +103,7 @@ struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -144,17 +144,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `}
 
-// sgdRoundedKernel: params = length, negated rate bits, 0, stride.
+// sgdRoundedKernel: params = end, negated rate bits, base, stride.
 // w[i] = w[i] + (-rate) * g[i], rounded once, in place.
 var sgdRoundedKernel = &kernel{name: "rounded-sgd", nRead: 1, nWrite: 1, body: `
-struct Params { length: u32, neg_rate: u32, unused: u32, stride: u32, }
+struct Params { length: u32, neg_rate: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> g: array<u32>;
 @group(0) @binding(1) var<storage, read_write> w: array<u32>;
 @group(0) @binding(2) var<uniform> p: Params;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -165,6 +165,34 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     w[i] = exact_round(r);
 }
 `}
+
+// Launch spans for the elementwise kernels, in elements. Windows resets a GPU
+// whose dispatch runs about two seconds, so a long array is split into
+// launches, each its own submission. Measured on the M3 at 2^24 elements: the
+// fixed-point tanh took 2.85 s, exp 1.40 s, the tanh gradient 0.36 s and the
+// rounded add 0.16 s. fixedLaunchSpan keeps a fixed-point launch near 45 ms
+// there and exactLaunchSpan an exact-register one below 50 ms, so even a card
+// several times slower stays far from the limit.
+const (
+	fixedLaunchSpan = 1 << 18
+	exactLaunchSpan = 1 << 21
+)
+
+// runElementwise launches k over n elements in spans of at most span. The
+// kernel reads its parameters as length (one past the last index of the
+// launch) in word 0, base (the first index) in word 2 and the row stride in
+// word 3; runElementwise sets those three and keeps the rest of params.
+func runElementwise(k *kernel, reads, writes []*Buffer, params [16]uint32, n, span int) error {
+	for base := 0; base < n; base += span {
+		count := min(n-base, span)
+		gx, gy, stride := elementwiseGroups(count)
+		params[0], params[2], params[3] = uint32(base+count), uint32(base), stride
+		if err := k.run(reads, writes, params, gx, gy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // elementwiseGroups spreads length invocations over a two-dimensional grid
 // so a long vector stays within the per-dimension dispatch limit, and returns
@@ -228,8 +256,7 @@ func AddRounded(a, b *Buffer) (*Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	gx, gy, stride := elementwiseGroups(a.Len())
-	if err := addRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [16]uint32{uint32(a.Len()), uint32(b.Len()), 0, stride}, gx, gy); err != nil {
+	if err := runElementwise(addRoundedKernel, []*Buffer{a, b}, []*Buffer{out}, [16]uint32{1: uint32(b.Len())}, a.Len(), exactLaunchSpan); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -246,8 +273,7 @@ func TanhGradRounded(y, u *Buffer) (*Buffer, error) {
 	if err != nil || y.Len() == 0 {
 		return out, err
 	}
-	gx, gy, stride := elementwiseGroups(y.Len())
-	if err := tanhGradRoundedKernel.run([]*Buffer{y, u}, []*Buffer{out}, [16]uint32{uint32(y.Len()), 0, 0, stride}, gx, gy); err != nil {
+	if err := runElementwise(tanhGradRoundedKernel, []*Buffer{y, u}, []*Buffer{out}, [16]uint32{}, y.Len(), exactLaunchSpan); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -281,8 +307,7 @@ func SGDRounded(w, g *Buffer, negatedRateBits uint32) error {
 	if w.Len() == 0 {
 		return nil
 	}
-	gx, gy, stride := elementwiseGroups(w.Len())
-	return sgdRoundedKernel.run([]*Buffer{g}, []*Buffer{w}, [16]uint32{uint32(w.Len()), negatedRateBits, 0, stride}, gx, gy)
+	return runElementwise(sgdRoundedKernel, []*Buffer{g}, []*Buffer{w}, [16]uint32{1: negatedRateBits}, w.Len(), exactLaunchSpan)
 }
 
 // Clone copies a buffer on the device without a host round trip.
@@ -332,9 +357,9 @@ func Clone(source *Buffer) (*Buffer, error) {
 	return out, nil
 }
 
-// divRoundedKernel: params = length, 0, 0, stride. out[i] = a[i] / b[i].
+// divRoundedKernel: params = end, 0, base, stride (see runElementwise). out[i] = a[i] / b[i].
 var divRoundedKernel = &kernel{name: "rounded-div", nRead: 2, nWrite: 1, body: `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read> b: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -342,7 +367,7 @@ struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -350,16 +375,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `}
 
-// sqrtRoundedKernel: params = length, 0, 0, stride. out[i] = sqrt(a[i]).
+// sqrtRoundedKernel: params = end, 0, base, stride (see runElementwise). out[i] = sqrt(a[i]).
 var sqrtRoundedKernel = &kernel{name: "rounded-sqrt", nRead: 1, nWrite: 1, body: `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read_write> c: array<u32>;
 @group(0) @binding(2) var<uniform> p: Params;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -379,8 +404,7 @@ func DivRounded(a, b *Buffer) (*Buffer, error) {
 	if a.Len() == 0 {
 		return out, nil
 	}
-	gx, gy, stride := elementwiseGroups(a.Len())
-	if err := divRoundedKernel.run([]*Buffer{a, b}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+	if err := runElementwise(divRoundedKernel, []*Buffer{a, b}, []*Buffer{out}, [16]uint32{}, a.Len(), exactLaunchSpan); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -396,8 +420,7 @@ func SqrtRounded(a *Buffer) (*Buffer, error) {
 	if a.Len() == 0 {
 		return out, nil
 	}
-	gx, gy, stride := elementwiseGroups(a.Len())
-	if err := sqrtRoundedKernel.run([]*Buffer{a}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+	if err := runElementwise(sqrtRoundedKernel, []*Buffer{a}, []*Buffer{out}, [16]uint32{}, a.Len(), exactLaunchSpan); err != nil {
 		out.Release()
 		return nil, err
 	}
@@ -415,12 +438,12 @@ type AdamScalars struct {
 	Decay             bool
 }
 
-// adamRoundedKernel: params = length, flags, 0, stride, then the scalars.
+// adamRoundedKernel: params = end, flags, base, stride, then the scalars.
 // Every step is one correctly rounded operation or one exact two-term sum
 // rounded once; see nn's adam_rounded.go for the definition.
 var adamRoundedKernel = &kernel{name: "rounded-adam", nRead: 1, nWrite: 3, body: `
 struct Params {
-    length: u32, flags: u32, unused: u32, stride: u32,
+    length: u32, flags: u32, base: u32, stride: u32,
     b1: u32, c1: u32, b2: u32, c2: u32,
     bias1: u32, bias2: u32, eps: u32, neg_rate: u32,
     neg_decay: u32, pad0: u32, pad1: u32, pad2: u32,
@@ -441,7 +464,7 @@ fn sum2(a: u32, b: u32, c: u32, d: u32) -> u32 {
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -481,19 +504,18 @@ func AdamRounded(w, g, m, v *Buffer, s AdamScalars) error {
 	if s.Decay {
 		flags = 1
 	}
-	gx, gy, stride := elementwiseGroups(n)
 	bits := math.Float32bits
-	return adamRoundedKernel.run([]*Buffer{g}, []*Buffer{w, m, v}, [16]uint32{
-		uint32(n), flags, 0, stride,
+	return runElementwise(adamRoundedKernel, []*Buffer{g}, []*Buffer{w, m, v}, [16]uint32{
+		0, flags, 0, 0,
 		bits(s.Beta1), bits(s.OneMinusBeta1), bits(s.Beta2), bits(s.OneMinusBeta2),
 		bits(s.Bias1), bits(s.Bias2), bits(s.Epsilon), bits(s.NegRate),
 		bits(s.NegDecay), 0, 0, 0,
-	}, gx, gy)
+	}, n, exactLaunchSpan)
 }
 
-// expRoundedKernel and logRoundedKernel: params = length, 0, 0, stride.
+// expRoundedKernel and logRoundedKernel: params = end, 0, base, stride (see runElementwise).
 var expRoundedKernel = &kernel{name: "rounded-exp", nRead: 2, nWrite: 1, fixed: true, body: `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read> consts: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -501,7 +523,7 @@ struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -510,7 +532,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `}
 
 var logRoundedKernel = &kernel{name: "rounded-log", nRead: 2, nWrite: 1, fixed: true, body: `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read> consts: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -518,7 +540,7 @@ struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -534,7 +556,7 @@ var tanhRoundedKernel = &kernel{name: "rounded-tanh", nRead: 2, nWrite: 1, fixed
 
 func unaryRoundedBody(fn string) string {
 	return `
-struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
+struct Params { length: u32, unused0: u32, base: u32, stride: u32, }
 @group(0) @binding(0) var<storage, read> a: array<u32>;
 @group(0) @binding(1) var<storage, read> consts: array<u32>;
 @group(0) @binding(2) var<storage, read_write> c: array<u32>;
@@ -542,7 +564,7 @@ struct Params { length: u32, unused0: u32, unused1: u32, stride: u32, }
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x + gid.y * p.stride;
+    let i = p.base + gid.x + gid.y * p.stride;
     if (i >= p.length) {
         return;
     }
@@ -580,8 +602,7 @@ func unaryRounded(k *kernel, a *Buffer) (*Buffer, error) {
 		out.Release()
 		return nil, err
 	}
-	gx, gy, stride := elementwiseGroups(a.Len())
-	if err := k.run([]*Buffer{a, consts}, []*Buffer{out}, [16]uint32{uint32(a.Len()), 0, 0, stride}, gx, gy); err != nil {
+	if err := runElementwise(k, []*Buffer{a, consts}, []*Buffer{out}, [16]uint32{}, a.Len(), fixedLaunchSpan); err != nil {
 		out.Release()
 		return nil, err
 	}
