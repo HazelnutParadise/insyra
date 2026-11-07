@@ -13,6 +13,7 @@ var builtinKernels = []*kernel{
 	sceStatsKernel, sceDivKernel, sceSoftLossKernel, sceMassKernel, sceSoftUKernel,
 	sceTotalKernel, sceSoftGradKernel, sceDeltaKernel, sceDistMeanKernel,
 	sceDistCentreKernel, sceDistShiftKernel, sceDistUKernel,
+	edgeSumRoundedKernel, edgeSumWeightsRoundedKernel,
 }
 
 // warmMu is held while warmup compiles, without submitMu, and while acquire

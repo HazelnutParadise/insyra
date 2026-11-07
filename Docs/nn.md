@@ -680,6 +680,25 @@ exact, and checking that the error bound of that sum cannot reach the midpoint
 between two float32 values; only the sums that come too close are added again
 exactly in a wide integer register. The result is the same either way.
 
+On a device, move the topology with `To` like the tensors, on a tape in
+`accel.PrecisionFloat32Rounded`. The output and both gradients stay on the
+device and are the same bits as on the host:
+
+```go
+dgraph, _ := graph.To(dev)   // one upload; the zero Device returns graph itself
+defer dgraph.Release()       // the copy is yours to release, like a tensor's
+dstate, _ := state.To(dev)
+incoming, err := tape.EdgeSum(dgraph, dw, dstate)
+```
+
+Tensors on a device with a topology still on the host are refused with an
+error that names `To`; host tensors with a moved topology run on the host.
+Measured on an M3 (8 cores) against the all-core CPU path, with inputs already
+on the device: the forward sum is 2 to 10 times faster from 10,000 nodes of
+in-degree 100 upward, and a batch of 16 makes the backward pass 3 to 20 times
+faster. A batch of one on a small graph is slower on the device, because the
+weight gradient then rounds one product per edge.
+
 ### Training toolkit
 
 The tape also provides mean-reduced `MSELoss(pred, target)` and fused,
