@@ -644,13 +644,6 @@ incoming, err := tape.EdgeSum(dgraph, dw, dstate)
 
 Tensors on a device with a topology still on the host are refused with an
 error that names `To`; host tensors with a moved topology run on the host.
-Whether the device is faster depends on the card, so measure before moving a
-graph for speed. On an entry-level GeForce GT 1030 every size measured, up to
-a million nodes with a batch of 16, was 4 to 26 times slower than a 24-thread
-CPU. With a batch of one, the weight gradient rounds a single product per edge,
-which the CPU does faster on any card. Each device call is split into launches
-of about 16 million products, so no single launch runs long enough for Windows
-to reset the device.
 
 ### Training toolkit
 
