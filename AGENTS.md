@@ -301,6 +301,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-11-07] — the cross-entropy kernels still run each array in one launch
+- **Where**: `accel/internal/wgpu/softmax_ce.go`, `accel/internal/wgpu/soft_ce.go`
+- **What**: Windows resets a GPU whose dispatch runs about two seconds. `accel-split-elementwise-launches` split the elementwise resident kernels in `resident_kernels.go` into bounded launches after a GT 1030 lost the device on a 16.8-million-element `tanh`, but the cross-entropy kernels were left whole: their per-element kernels (`rounded-ce-exp`, `rounded-soft-u`, the distillation ones) run the fixed-point exp or log over `rows × classes` in one launch, and their per-row kernels loop over every class in one invocation. On the M3 the fixed-point `exp` takes 1.40 s for 2^24 elements, so a batch of 1,024 rows over a 16,000-class vocabulary is already near the limit on a card a few times slower. Not measured on a large vocabulary.
+- **Suggestion**: give the per-element ones a `base` word and launch them through `runElementwise` with `fixedLaunchSpan`; split the per-row ones by rows with a span chosen from rows × classes. Measure on the GT 1030 with a large vocabulary first.
+- **Status**: pending
+
 ### [2026-11-01] — remove the former chart names one release after #413
 - **Where**: `plot/deprecated.go`, `gplot/deprecated.go`, their `deprecated_names_test.go`, and the notes in `Docs/plot.md` and `Docs/gplot.md`
 - **What**: `chart-shapes-one-rule` gave each chart both packages draw one name (#413). `plot.CreateHeatMap`, `HeatMapConfig`, `HeatMapPoint`, `HeatMapAxis`, `NewHeatMapPoint`, `NewHeatMapMissingPoint`, `gplot.CreateScatterPlot` and `ScatterPlotConfig` stay one release as Deprecated aliases and wrappers.
