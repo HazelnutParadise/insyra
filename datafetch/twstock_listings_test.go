@@ -22,7 +22,7 @@ const (
 )
 
 func tpexDelistedKey(year, reason string) string {
-	return fixtureKey("/www/zh-tw/company/deListed", query("date", year, "reason", reason, "response", "json"))
+	return fixtureKey("/www/zh-tw/company/deListed", query("date", year, "reason", reason, "paging-size", "10000", "response", "json"))
 }
 
 func listingsFixture(t *testing.T) (*TWStockClient, *fixtureTransport) {
@@ -103,6 +103,15 @@ func TestListingsFailures(t *testing.T) {
 	transport.replies[tpexDelistedKey("1995", "2")] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"tables":[{"fields":["代號"],"data":[["1"]]}],"stat":"ok"}`)}}
 	if _, err := client.Listings(TWMarketTPEx); err == nil || !strings.Contains(err.Error(), "1995") {
 		t.Errorf("changed headers: err = %v", err)
+	}
+	ok := func(body string) []fixtureReply { return []fixtureReply{{status: http.StatusOK, body: []byte(body)}} }
+	transport.replies[fixtureKey("/openapi/v1/mopsfin_t187ap03_O", nil)] = ok(tpexListedBody)
+	transport.replies[tpexDelistedKey("1994", "-1")] = ok(tpexDelistedNone)
+	transport.replies[tpexDelistedKey("1994", "2")] = ok(tpexDelistedNone)
+	transport.replies[tpexDelistedKey("1995", "-1")] = ok(tpexDelisted1995)
+	transport.replies[tpexDelistedKey("1995", "2")] = []fixtureReply{{status: http.StatusOK, body: []byte(strings.Replace(tpexMoved1995, `"totalCount":1`, `"totalCount":12`, 1))}}
+	if _, err := client.Listings(TWMarketTPEx); err == nil || !strings.Contains(err.Error(), "1 of 12") {
+		t.Errorf("a page short of totalCount: err = %v", err)
 	}
 	transport.replies[fixtureKey("/v1/opendata/t187ap03_L", nil)] = []fixtureReply{{status: http.StatusOK, body: []byte(`[]`)}}
 	if _, err := client.Listings(TWMarketTWSE); err == nil || !strings.Contains(err.Error(), "empty") {

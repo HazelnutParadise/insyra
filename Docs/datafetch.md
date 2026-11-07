@@ -782,12 +782,14 @@ listings, err := client.Listings(datafetch.TWMarketAuto)
 | `Market` (`string`) | `"TWSE"` or `"TPEx"` |
 | `Listed` (`time.Time`) | the listing date of a company still listed; `nil` for an ended listing, whose start the exchanges do not publish |
 | `Delisted` (`time.Time`) | the date the listing ended; `nil` for a company still listed |
-| `Reason` (`string`) | the TPEx's reason for ending a listing, a citation of its rules; `nil` for the TWSE, which publishes none, and where the TPEx left it empty (most years before about 2009) |
+| `Reason` (`string`) | the TPEx's reason for ending a listing, a citation of its rules; `nil` for the TWSE, which publishes none, and where the TPEx left it empty (through 2006) |
 | `MovedTo` (`string`) | `"TWSE"` when the TPEx ended the listing because the company moved to the TWSE; otherwise `nil`. A move from the TWSE to the TPEx cannot be told from the TWSE's list. |
 
 The sources are the TWSE's and the TPEx's lists of listed companies (`openapi.twse.com.tw` `t187ap03_L`, `www.tpex.org.tw` `mopsfin_t187ap03_O`), the TWSE's list of ended listings and the TPEx's, asked year by year. The TWSE's list of ended listings starts in 2001, so a company that left the TWSE before then is not in the table at all. The lists of listed companies hold companies only, no ETFs. The TPEx is asked twice for every year since 1994, for all ended listings and for the moves to the TWSE, so `TWMarketTPEx` and `TWMarketAuto` make about seventy requests: set `Interval` (300 ms took 21 seconds on 2026-11-07) and `Retries` as for any long run.
 
 **Which securities were on an exchange on a given day** is `DailyQuotesOn(date, market)`: it reads that day's whole market, so a security that later left or moved is on the days it was there, ETFs included. Use `Listings` to find the dates, and `DailyQuotesOn` for a day's list.
+
+An exchange may give a code to another company after a listing ends, so the stints of one code can overlap: 2301 is listed on the TWSE from 1995 and also has a TWSE listing that ended in 2002.
 
 ### Adjusted prices and corporate actions
 
