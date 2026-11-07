@@ -21,11 +21,15 @@ Elementwise float32 functions whose results are correctly rounded — the true v
 
 ### Requirement: The tanh gradient is reproducible
 
-`Tape.Tanh`'s gradient SHALL be `RN(upstream · RN(1 − RN(y·y)))`, where `y` is the forward output and every operation is rounded to float32 and none is fused with another.
+`Tape.Tanh`'s gradient SHALL be `RN(upstream · RN(1 − RN(y·y)))`, where `y` is the forward output and every operation is rounded to float32 and none is fused with another. In `PrecisionFloat32Rounded` and `PrecisionFloat32` a zero at any of the three steps SHALL be `+0`; the default tape SHALL keep IEEE's sign of zero.
 
 #### Scenario: Against the step-by-step reference
 - **WHEN** the gradient is compared with each step computed in float64 and rounded to float32
 - **THEN** every element is bit-identical, on every platform
+
+#### Scenario: A zero gradient in the rounded mode
+- **WHEN** `tanh` rounds to `±1` and the upstream gradient is negative
+- **THEN** the rounded mode's gradient is `+0` and the default tape's is `-0`
 
 ### Requirement: Exp and log are correctly rounded
 `nn` SHALL provide float32 `exp` and `log` whose result is the exact value rounded once to nearest-even, on every platform, computed with IEEE `+ - * /` only. Special inputs SHALL follow IEEE 754: `exp(-inf)` is `+0`, `exp(+inf)` is `+inf`, `log(0)` is `-inf`, `log` of a negative is NaN.
