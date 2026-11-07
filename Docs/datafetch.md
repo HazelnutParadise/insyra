@@ -840,7 +840,18 @@ PutCallRatioHistory(from, to time.Time) (*insyra.DataTable, error)
 
 Each returns every trading day from `from` to `to` in the columns of the matching method above, oldest first (only the latest-day `PutCallRatio` lists newest first). They read the CSV downloads of `www.taifex.com.tw` (Big5 encoded), month by month, since the exchange limits how long a range may be, so a long range makes many requests under the client's `Interval`; for a multi-year range set `Interval` and `Retries` as for `TWStock`.
 
-How far back each table goes was measured on 2026-10-20 and is the exchange's, not the library's: the two institutional tables only about the last 2.4 years (from 2024), the large-trader tables to about 2004 for futures and to about 2005 for options, and the put/call ratio to about 2003. A date the website refuses makes the call return an error that quotes the website's message and the range, never an empty table; it matches `errors.Is(err, datafetch.ErrTAIFEXRefused)`, so a caller can move `from` forward and ask again. A zero `from` or `to` is an error: unlike `FinMind`, a zero time is not an open end here; a range with no trading day (a weekend) is an empty table. A contract's code and settlement month are trimmed of the padding the website puts around them.
+How far back each table goes was measured on 2026-10-20 and is the exchange's, not the library's: the two institutional tables only the trading days of the last three years, a window that moves with today (the website says so on its download page), the large-trader tables to about 2004 for futures and to about 2005 for options, and the put/call ratio to about 2003. A date the website refuses makes the call return an error that quotes the website's message and the range, never an empty table; it matches `errors.Is(err, datafetch.ErrTAIFEXRefused)`, so a caller can move `from` forward and ask again. A zero `from` or `to` is an error: unlike `FinMind`, a zero time is not an open end here; a range with no trading day (a weekend) is an empty table. A contract's code and settlement month are trimmed of the padding the website puts around them.
+
+**Institutional data before the three-year window.** `FinMindClient.InstitutionalFutures` and `InstitutionalOptions` (below) return one contract from 2018 in the same columns, so the two can be joined:
+
+```go
+fm, _ := datafetch.FinMind(datafetch.FinMindConfig{})
+early, err := fm.InstitutionalFutures("TX",
+    time.Date(2018, 6, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(-3, 0, 6))
+tf, _ := datafetch.TAIFEX(datafetch.TWStockConfig{Interval: time.Second})
+recent, err := tf.InstitutionalFuturesHistory(time.Now().AddDate(-3, 0, 7), time.Now())
+// recent holds every contract; keep the rows whose Contract is "臺股期貨" before joining.
+```
 
 ## FinMind
 
@@ -858,7 +869,14 @@ prices, err := client.Dataset("TaiwanStockPrice", "2330",
 Dataset(name, dataID string, from, to time.Time) (*insyra.DataTable, error)
 ```
 
-`Dataset` is the one entry point, with a `DatasetContext` form, and it returns the dataset's columns as FinMind sends them, in FinMind's order and under FinMind's names: integers are `int64`, other numbers `float64`, text stays text, `null` is `nil`, and a column named `date` becomes a `time.Time` when every value is a date. `dataID` is the security (`"2330"`); most datasets need one on the free tier. A zero `from` or `to` leaves that end open. A dataset with no rows gives an empty table with no columns.
+`Dataset` reads any dataset, with a `DatasetContext` form, and it returns the dataset's columns as FinMind sends them, in FinMind's order and under FinMind's names: integers are `int64`, other numbers `float64`, text stays text, `null` is `nil`, and a column named `date` becomes a `time.Time` when every value is a date. `dataID` is the security (`"2330"`); most datasets need one on the free tier. A zero `from` or `to` leaves that end open. A dataset with no rows gives an empty table with no columns.
+
+```go
+InstitutionalFutures(contract string, from, to time.Time) (*insyra.DataTable, error)
+InstitutionalOptions(contract string, from, to time.Time) (*insyra.DataTable, error)
+```
+
+These two, with `...Context` forms, read `TaiwanFuturesInstitutionalInvestors` and `TaiwanOptionInstitutionalInvestors` for one contract and return them in the columns of `TAIFEXClient.InstitutionalFutures` and `InstitutionalOptions`, to reach back before the three years the exchange's website serves. `contract` is the exchange's product code (`"TX"`, `"MTX"`, `"TMF"`, `"TXO"`) and is required; FinMind keys the data by it, so another source's alias, such as `"TXF"` for TX, returns an empty table; a zero `from` or `to` leaves that end open. FinMind has TX from 2018-06-05. `Contract` is the exchange's name for it (`臺股期貨`), from FinMind's list of contracts, which is read again when a code is not in it, and corrected where FinMind's name is not the exchange's (GTF is `櫃買指數期貨`, which FinMind calls `櫃買期貨`), `Trader` the exchange's name for the group (FinMind's `外資` is `外資及陸資`), `CallPut` is `"CALL"` or `"PUT"`, and the rows run by date, then calls before puts, then 自營商, 投信, 外資及陸資, as the exchange's do. FinMind has no net columns, so the Net columns are Long minus Short: the counts equal the exchange's, and `TradeNetValue` and `OINetValue` can differ from the exchange's by 1 (thousand NT dollars), because the exchange subtracts before rounding to thousands. The first call on a client makes two requests, one for the contract names and one for the data, and both count toward the plan's limit.
 
 **Errors you can tell apart.** `errors.Is(err, datafetch.ErrFinMindLimit)` means the plan's request limit was reached (HTTP 402); `errors.Is(err, datafetch.ErrFinMindLevel)` means the plan does not allow the request, such as a free account asking for a dataset above its level, or one that needs a `dataID` without giving it. Neither is retried, since waiting or upgrading is the fix, not repeating the call. Other failures, such as an unknown dataset (HTTP 422, whose message lists the valid names), are ordinary errors.
 
