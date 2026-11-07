@@ -19,8 +19,12 @@
 - **THEN** no request goes to the TPEx
 
 ### Requirement: Listings fails rather than returning part of an exchange
-`TWStockClient.Listings` SHALL return an error, not a partial table, when a list cannot be read, its headers are not the expected ones, or the list of listed companies is empty.
+`TWStockClient.Listings` SHALL ask the TPEx for every row of a year at once and SHALL return an error, not a partial table, when a list cannot be read, its headers are not the expected ones, it has fewer rows than its totalCount, or the list of listed companies is empty.
 
 #### Scenario: A year whose headers changed
 - **WHEN** the TPEx answers one year with headers that lack 終止上櫃日期
 - **THEN** the call returns an error naming that year
+
+#### Scenario: A year with more rows than one page
+- **WHEN** the TPEx answers a year with fewer rows than its totalCount
+- **THEN** the call returns an error giving both numbers
