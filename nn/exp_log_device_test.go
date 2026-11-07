@@ -3,15 +3,17 @@ package nn
 import (
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra/accel"
 )
 
-// TestDeviceExpAndLogEqualTheHost compares the device's exp and log with the
-// host's on every float32 bit pattern, in chunks. It needs a GPU and
-// INSYRA_NN_EXHAUSTIVE=1; with INSYRA_NN_SAMPLE=1 it compares a sample instead.
+// TestDeviceExpAndLogEqualTheHost compares the device's exp, log, expm1, log1p
+// and tanh with the host's on every float32 bit pattern, in chunks. It needs a GPU and
+// INSYRA_NN_EXHAUSTIVE=1; with INSYRA_NN_SAMPLE=1 it compares a sample instead,
+// and INSYRA_NN_FUNCS narrows it to a comma-separated list of the names.
 func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 	device := residentTestDevice(t)
 	exhaustive := os.Getenv("INSYRA_NN_EXHAUSTIVE") == "1"
@@ -24,7 +26,11 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 	if !exhaustive {
 		stride = 61 // a prime stride visits chunks across the whole range
 	}
-	for _, name := range []string{"exp", "log", "expm1", "log1p"} {
+	names := []string{"exp", "log", "expm1", "log1p", "tanh"}
+	if only := os.Getenv("INSYRA_NN_FUNCS"); only != "" {
+		names = strings.Split(only, ",") // for example INSYRA_NN_FUNCS=tanh
+	}
+	for _, name := range names {
 		var mismatches int
 		inputs := make([]float32, chunk)
 		for base := uint64(0); base < 1<<32; base += step * stride {
@@ -40,7 +46,7 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 				t.Fatal(err)
 			}
 			run := map[string]func(*accel.DeviceBuffer) (*accel.DeviceBuffer, error){
-				"exp": accel.RoundedExp, "log": accel.RoundedLog, "expm1": accel.RoundedExpm1, "log1p": accel.RoundedLog1p,
+				"exp": accel.RoundedExp, "log": accel.RoundedLog, "expm1": accel.RoundedExpm1, "log1p": accel.RoundedLog1p, "tanh": accel.RoundedTanh,
 			}[name]
 			buffer, err := run(resident.device)
 			if err != nil {
@@ -63,7 +69,7 @@ func TestDeviceExpAndLogEqualTheHost(t *testing.T) {
 					defer wg.Done()
 					for i := w; i < chunk; i += workers {
 						want := map[string]func(float32) float32{
-							"exp": expFloat32, "log": logFloat32, "expm1": expm1Float32, "log1p": log1pFloat32,
+							"exp": expFloat32, "log": logFloat32, "expm1": expm1Float32, "log1p": log1pFloat32, "tanh": tanhFloat32,
 						}[name](inputs[i])
 						g := got.data[i]
 						if math.IsNaN(float64(want)) && math.IsNaN(float64(g)) {

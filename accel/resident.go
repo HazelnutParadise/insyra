@@ -367,6 +367,19 @@ func RoundedLog1p(x *DeviceBuffer) (*DeviceBuffer, error) {
 	return x.wrap(out)
 }
 
+// RoundedTanh computes tanh(x) for each element of a resident array,
+// correctly rounded: the bits nn.Tanh returns on the host.
+func RoundedTanh(x *DeviceBuffer) (*DeviceBuffer, error) {
+	if x == nil {
+		return nil, errors.New("accel: device buffer is nil")
+	}
+	out, err := wgpu.TanhRounded(x.inner)
+	if err != nil {
+		return nil, residentFailure(err)
+	}
+	return x.wrap(out)
+}
+
 // SoftmaxCrossEntropyState holds what the gradient of a cross-entropy loss
 // reuses from its forward pass, so each exponential is computed once. It
 // occupies device memory until Release is called.
