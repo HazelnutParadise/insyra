@@ -38,7 +38,7 @@ type edgeSumCase struct {
 	sources, targets []int
 	weights          []float32
 	values           []float32
-	batch            int // 0 means one-dimensional values
+	batch            int // 0 means one-dimensional values, -1 a [0, N] batch
 	upstream         []float32
 }
 
@@ -84,6 +84,17 @@ func edgeSumCases() []edgeSumCase {
 		[]float32{1, 1, 2, -2, 0, 1}, 0,
 		[]float32{negZero, tiny, math.MaxFloat32, 2, float32(math.Inf(-1)), 0}})
 
+	// A batch longer than the register's 64 deferred additions, so the weight
+	// gradient normalises mid-sum, with many edges between one pair of nodes.
+	ws, wd := make([]int, 200), make([]int, 200)
+	for e := range ws {
+		ws[e], wd[e] = 1, 2
+	}
+	cases = append(cases, edgeSumCase{"batch past 64", 4, ws, wd, randomFloats(200), randomFloats(130 * 4), 130, randomFloats(130 * 4)})
+
+	// A batch of zero rows.
+	cases = append(cases, edgeSumCase{"empty batch", 37, s, d, randomFloats(400), []float32{}, -1, []float32{}})
+
 	// No edges, and isolated nodes in a batch.
 	cases = append(cases, edgeSumCase{"no edges", 5, nil, nil, []float32{}, randomFloats(2 * 5), 2, randomFloats(2 * 5)})
 	return cases
@@ -105,8 +116,11 @@ func runEdgeSum(t *testing.T, c edgeSumCase, device accel.Device) edgeSumBits {
 	}
 	defer top.Release()
 	shape := []int{c.nodes}
-	if c.batch > 0 {
+	switch {
+	case c.batch > 0:
 		shape = []int{c.batch, c.nodes}
+	case c.batch < 0:
+		shape = []int{0, c.nodes}
 	}
 	tensor := func(shape []int, data []float32) *Tensor {
 		x, err := NewTensor(shape, append([]float32(nil), data...))
