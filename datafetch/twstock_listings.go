@@ -44,9 +44,14 @@ func (t *TWStockClient) Listings(market TWMarket) (*insyra.DataTable, error) {
 // publishes only the end, so Listed is nil and Delisted is the date the listing
 // ended. Delisted is nil for a company still listed. Reason is the TPEx's reason
 // for ending a listing, a citation of its rules, and nil for the TWSE, which
-// publishes none, and where the TPEx left it empty. MovedTo is "TWSE" when the
+// publishes none, and where the TPEx left it empty, as it did through 2006.
+// MovedTo is "TWSE" when the
 // TPEx ended the listing because the company moved to the TWSE, and nil
 // otherwise; a move the other way cannot be told from the TWSE's list.
+//
+// An exchange may give a code to another company after a listing ends, so the
+// stints of one code can overlap: 2301 is listed on the TWSE from 1995 and also
+// has a TWSE listing that ended in 2002.
 //
 // The TWSE's list of ended listings starts in 2001, so a company that left
 // before then is not in the table. The lists of listed companies hold companies
@@ -128,8 +133,9 @@ func (t *TWStockClient) twseListings(ctx context.Context) ([][]any, error) {
 type tpexDelisted struct {
 	Stat   string `json:"stat"`
 	Tables []struct {
-		Fields []string   `json:"fields"`
-		Data   [][]string `json:"data"`
+		Fields     []string   `json:"fields"`
+		Data       [][]string `json:"data"`
+		TotalCount *int       `json:"totalCount"`
 	} `json:"tables"`
 }
 
@@ -177,7 +183,9 @@ type tpexDelistedRow struct {
 }
 
 func (t *TWStockClient) tpexDelistedYear(ctx context.Context, year int, reason string) ([]tpexDelistedRow, error) {
-	values := url.Values{"date": {strconv.Itoa(year)}, "reason": {reason}, "response": {"json"}}
+	// The site pages its answer, ten rows by default; paging-size asks for all of
+	// them, and the rows are checked against totalCount.
+	values := url.Values{"date": {strconv.Itoa(year)}, "reason": {reason}, "paging-size": {"10000"}, "response": {"json"}}
 	var response tpexDelisted
 	if err := t.doJSON(ctx, requestURL(t.tpexBaseURL, "/www/zh-tw/company/deListed", values), &response); err != nil {
 		return nil, fmt.Errorf("datafetch: TPEx ended listings of %d: %w", year, err)
@@ -187,6 +195,9 @@ func (t *TWStockClient) tpexDelistedYear(ctx context.Context, year int, reason s
 	}
 	var rows []tpexDelistedRow
 	for _, table := range response.Tables {
+		if table.TotalCount != nil && *table.TotalCount != len(table.Data) {
+			return nil, fmt.Errorf("datafetch: TPEx ended listings of %d: got %d of %d rows", year, len(table.Data), *table.TotalCount)
+		}
 		if len(table.Data) == 0 {
 			continue
 		}

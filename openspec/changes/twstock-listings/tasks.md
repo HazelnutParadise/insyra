@@ -2,7 +2,7 @@
 
 - [x] 1.1 Both exchanges: current companies with their listing dates, ended listings with their end dates, the TPEx's reason, a move to the TWSE, and the order TWSE first then by code
 - [x] 1.2 One exchange asks only that exchange
-- [x] 1.3 An unknown market, changed headers, an empty company list, a cancelled context and a zero client are errors
+- [x] 1.3 An unknown market, changed headers, an answer short of its totalCount, an empty company list, a cancelled context and a zero client are errors
 
 ## 2. Implementation
 
