@@ -692,6 +692,7 @@ ShareholdingDistribution() (*insyra.DataTable, error)
 MonthlyRevenue(year, month int, market TWMarket) (*insyra.DataTable, error)
 DailyQuotesOn(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AdvanceDecline(date time.Time, market TWMarket, commonStockOnly bool) (*insyra.DataTable, error)
+Listings(market TWMarket) (*insyra.DataTable, error)
 ```
 
 Each method has a `...Context` form taking a `context.Context` first, such as `DailyPricesContext(ctx, code, from, to, market)`; the plain method calls it with `context.Background()`. When the context is done, the `Interval` throttle, the request in flight and any retry backoff stop at once, and the call returns `ctx.Err()` without sending another request, so a long backfill can be stopped between two monthly requests. A `nil` context is an error.
@@ -711,6 +712,7 @@ Each method has a `...Context` form taking a `context.Context` first, such as `D
 | `MonthlyRevenue` | see Monthly revenue below |
 | `DailyQuotesOn` | the columns of `AllDailyQuotes` plus `Sign` (`string`): `"+"` up, `"-"` down, `"="` unchanged, `"X"` no reference price (then `Change` is `nil`) |
 | `AdvanceDecline` | one row: `Date` (`time.Time`), `Advancing`, `AdvancingLimit`, `Declining`, `DecliningLimit`, `Unchanged`, `NoTrade`, `NoReference` (`int64`), `Source` (`string`) |
+| `Listings` | see Listings and moves between exchanges below |
 | `OddLotQuotes` | `Date` (`time.Time`), `Code`, `Name` (`string`), `Volume` (`int64`, shares), `Transactions`, `Turnover` (`int64`), `BidPrice`, `AskPrice` (`float64`), `BidVolume`, `AskVolume` (`int64`), plus `Open`, `Close`, `High`, `Low` (`float64`) for `TWOddLotIntraday` or `Price` for `TWOddLotAfterHours` |
 
 `--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` (`成交仟股` in months before about 2025, also thousands of shares) and `成交仟元`; margin balances retain the source endpoint's units.
@@ -761,6 +763,27 @@ Newer months have a domestic page and a second page for companies listed from ab
 Levels 1 to 15 are ranges of shares held: 1-999, 1,000-5,000, 5,001-10,000, 10,001-15,000, 15,001-20,000, 20,001-30,000, 30,001-40,000, 40,001-50,000, 50,001-100,000, 100,001-200,000, 200,001-400,000, 400,001-600,000, 600,001-800,000, 800,001-1,000,000 and 1,000,001 and above. Level 16 is the difference adjustment the TDCC publishes, and level 17 the total. About 69,000 rows come back in one request, about 2.4 MB.
 
 **Only the latest week is available.** The TDCC publishes no history through this source, so save each week's table if you want a series; the earlier weeks need the TDCC website's per-security query or a paid source.
+
+### Listings and moves between exchanges
+
+```go
+listings, err := client.Listings(datafetch.TWMarketAuto)
+```
+
+`Listings` returns every listing the exchanges publish, current and ended, so a study over several years can tell when a company joined, left or moved without asking for every day. Each row is one company's stint on one exchange; a company that moved from the TPEx to the TWSE has two rows, and the TPEx row ends on the day the TWSE row begins (6214 精誠: TPEx until 2010-12-30, TWSE from 2010-12-30). `TWMarketAuto` returns both exchanges, the TWSE first, then each by code.
+
+| Column | Meaning |
+| :--- | :--- |
+| `Code`, `Name` (`string`) | the code and the name the exchange's list gives: the short name for a listed company and in the TWSE's list of ended listings, the full name in the TPEx's |
+| `Market` (`string`) | `"TWSE"` or `"TPEx"` |
+| `Listed` (`time.Time`) | the listing date of a company still listed; `nil` for an ended listing, whose start the exchanges do not publish |
+| `Delisted` (`time.Time`) | the date the listing ended; `nil` for a company still listed |
+| `Reason` (`string`) | the TPEx's reason for ending a listing, a citation of its rules; `nil` for the TWSE, which publishes none, and where the TPEx left it empty (most years before about 2009) |
+| `MovedTo` (`string`) | `"TWSE"` when the TPEx ended the listing because the company moved to the TWSE; otherwise `nil`. A move from the TWSE to the TPEx cannot be told from the TWSE's list. |
+
+The sources are the TWSE's and the TPEx's lists of listed companies (`openapi.twse.com.tw` `t187ap03_L`, `www.tpex.org.tw` `mopsfin_t187ap03_O`), the TWSE's list of ended listings and the TPEx's, asked year by year. The TWSE's list of ended listings starts in 2001, so a company that left the TWSE before then is not in the table at all. The lists of listed companies hold companies only, no ETFs. The TPEx is asked twice for every year since 1994, for all ended listings and for the moves to the TWSE, so `TWMarketTPEx` and `TWMarketAuto` make about seventy requests: set `Interval` (300 ms took 21 seconds on 2026-11-07) and `Retries` as for any long run.
+
+**Which securities were on an exchange on a given day** is `DailyQuotesOn(date, market)`: it reads that day's whole market, so a security that later left or moved is on the days it was there, ETFs included. Use `Listings` to find the dates, and `DailyQuotesOn` for a day's list.
 
 ### Adjusted prices and corporate actions
 
