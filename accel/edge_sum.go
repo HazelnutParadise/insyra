@@ -28,11 +28,14 @@ func NewDeviceEdgeTopology(device Device, nodes int, sources, targets []int32) (
 	if device.ID == "" {
 		return nil, errors.New("accel: NewDeviceEdgeTopology needs a device; the host keeps nn.EdgeTopology itself")
 	}
-	if nodes < 1 || nodes > math.MaxInt32-1 {
-		return nil, fmt.Errorf("accel: edge topology needs between 1 and %d nodes, got %d", math.MaxInt32-1, nodes)
+	if nodes < 1 || nodes > math.MaxInt32 {
+		return nil, fmt.Errorf("accel: edge topology needs between 1 and %d nodes, got %d", math.MaxInt32, nodes)
 	}
 	if len(sources) != len(targets) {
 		return nil, fmt.Errorf("accel: edge topology has %d sources and %d targets", len(sources), len(targets))
+	}
+	if len(sources) > math.MaxInt32 {
+		return nil, fmt.Errorf("accel: edge topology supports at most %d edges, got %d", math.MaxInt32, len(sources))
 	}
 	for e := range sources {
 		if sources[e] < 0 || int(sources[e]) >= nodes {
@@ -95,6 +98,16 @@ func (t *DeviceEdgeTopology) Release() {
 // a live topology, one device for all, weights with one value per edge when
 // given, and node buffers shaped [batch,nodes].
 func (t *DeviceEdgeTopology) edgeOperands(op string, batch int, weights *DeviceBuffer, nodeBuffers ...*DeviceBuffer) error {
+	// A lost device makes every buffer on it read as released; report the loss,
+	// as every other resident operation does, so the caller can recover.
+	if t != nil && t.targetOffsets != nil && t.targetOffsets.inner != nil && t.targetOffsets.inner.Lost() {
+		return residentFailure(fmt.Errorf("accel: %s: %w", op, wgpu.ErrDeviceLost))
+	}
+	for _, b := range append([]*DeviceBuffer{weights}, nodeBuffers...) {
+		if b != nil && b.inner != nil && b.inner.Lost() {
+			return residentFailure(fmt.Errorf("accel: %s: %w", op, wgpu.ErrDeviceLost))
+		}
+	}
 	if t.Released() {
 		return fmt.Errorf("accel: %s: the edge topology was released", op)
 	}

@@ -644,11 +644,8 @@ incoming, err := tape.EdgeSum(dgraph, dw, dstate)
 
 Tensors on a device with a topology still on the host are refused with an
 error that names `To`; host tensors with a moved topology run on the host.
-Measured on an M3 (8 cores) against the all-core CPU path, with inputs already
-on the device: the forward sum is 2 to 10 times faster from 10,000 nodes of
-in-degree 100 upward, and a batch of 16 makes the backward pass 3 to 20 times
-faster. A batch of one on a small graph is slower on the device, because the
-weight gradient then rounds one product per edge.
+The device helps most with large graphs and batches. With a batch of one, the
+weight gradient rounds a single product per edge, which the CPU does faster.
 
 ### Training toolkit
 

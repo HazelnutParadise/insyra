@@ -7,6 +7,8 @@
 
 ## Measurement (M3, 8 cores, best of 5, inputs already on the device)
 
+These numbers were taken while other work kept the load average around 20 to 40. The CPU column is slower than the earlier unloaded measurement of the same sizes (M33: 538 ms for 100,000 nodes, in-degree 100, batch 16, against 2.21 s here), so the speed-ups below are overstated and must be re-measured on an idle host before any are quoted. Bit parity does not depend on load.
+
 | nodes | degree | batch | CPU forward | GPU forward | CPU backward | GPU dW | GPU dV |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 10,000 | 10 | 1 | 0.54 ms | 1.54 ms | 0.93 ms | 12.7 ms | 0.85 ms |
@@ -22,4 +24,4 @@
 | 1,000,000 | 10 | 1 | 240 ms | 32 ms | 526 ms | 122 ms | 51 ms |
 | 1,000,000 | 10 | 16 | 4.59 s | 0.64 s | 9.11 s | 0.60 s | 0.96 s |
 
-The weight gradient at batch 1 rounds one product per edge, and setting up and rounding a 27-digit register per edge costs more than the CPU's float64 fast path; at batch 16 the device wins every row. Recorded by `TestRoundedEdgeSumTiming` (`INSYRA_ACCEL_GPU_TESTS=1 INSYRA_ACCEL_TIMING=1`).
+The weight gradient at batch 1 rounds one product per edge, and setting up and rounding a 27-digit register per edge costs more than the CPU's float64 fast path. A backward pass runs both gradient kernels, so its device time is dW + dV. Recorded by `TestRoundedEdgeSumTiming` (`INSYRA_ACCEL_GPU_TESTS=1 INSYRA_ACCEL_TIMING=1`).
