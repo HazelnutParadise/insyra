@@ -19,11 +19,19 @@
 - **THEN** the rows of that day are 自營商, 投信, 外資及陸資
 
 ### Requirement: The contract name is the one of the kind asked for
-`FinMindClient.InstitutionalFutures` SHALL name a contract by its TaiwanFuturesDaily entry and `InstitutionalOptions` by its TaiwanOptionDaily entry, SHALL read the names once per client, and SHALL fail the call without keeping the names when they cannot be read.
+`FinMindClient.InstitutionalFutures` SHALL name a contract by its TaiwanFuturesDaily entry and `InstitutionalOptions` by its TaiwanOptionDaily entry, corrected to the exchange's name where FinMind's differs, SHALL read the names again only for a code not in them, and SHALL fail the call without keeping the names when they cannot be read.
 
 #### Scenario: A code of both kinds
 - **WHEN** CJ is read as futures
 - **THEN** Contract is the futures name 華南金(股票期貨)
+
+#### Scenario: A name FinMind spells differently
+- **WHEN** GTF is read and FinMind names it 櫃買期貨
+- **THEN** Contract is the exchange's 櫃買指數期貨
+
+#### Scenario: A contract listed after the first call
+- **WHEN** a code is not in the names read before
+- **THEN** the names are read again and the new code's name is used
 
 #### Scenario: Two calls on one client
 - **WHEN** InstitutionalFutures is called twice
@@ -35,3 +43,10 @@
 #### Scenario: No contract
 - **WHEN** the contract is blank
 - **THEN** the call returns an error naming the missing contract code and sends no request
+
+### Requirement: Waiting for the contract names stops with the context
+`FinMindClient.InstitutionalFutures` and `InstitutionalOptions` SHALL return the context's error when the context is done while another call on the same client is reading the contract names.
+
+#### Scenario: A deadline while another call reads the names
+- **WHEN** another call holds the names and the caller's deadline passes
+- **THEN** the call returns context.DeadlineExceeded without waiting for the other call
