@@ -614,6 +614,46 @@ fn expm1_rounded(x: u32) -> u32 {
     return fx_pack_mag(e.p, false, e.k);
 }
 
+// tanh(x), correctly rounded, with the host's ranges: x itself below 2^-13 in
+// magnitude (zeros and subnormals included), +-1 from 9.5 on (infinities
+// included), and a NaN returned unchanged. Between them, e = e^(-2|x|) comes
+// from exp_reduce as p * 2^-k0 with k0 >= 1, and tanh|x| = (1 - e) / (1 + e)
+// is divided out bit by bit to 112 fractional bits. 2|x| is exact: it is |x|
+// with its exponent raised by one, and |x| < 9.5 cannot overflow.
+fn tanh_rounded(x: u32) -> u32 {
+    let ax = x & 0x7fffffffu;
+    let sign = x & 0x80000000u;
+    if (ax > 0x7f800000u) {
+        return x;
+    }
+    if (ax < 0x39000000u) {
+        return x;
+    }
+    if (ax >= 0x41180000u) {
+        return sign | 0x3f800000u;
+    }
+    let ex = exp_reduce(ax + 0x800000u, true);
+    let e = fx_shr(ex.p, u32(-ex.k));
+    let num = fx_sub(fx_one(), e);
+    let den = fx_add(fx_one(), e);
+    // num < den < 2, so the doubled remainder stays below 4.
+    var q = fx_zero();
+    var rem = num;
+    for (var j: u32 = 1u; j <= 112u; j = j + 1u) {
+        rem = fx_shl1(rem);
+        if (fx_ge(rem, den)) {
+            rem = fx_sub(rem, den);
+            let bit = 112u - j;
+            q.d[bit >> 4u] = q.d[bit >> 4u] | (1u << (bit & 15u));
+        }
+    }
+    // A remainder left over is below the lowest bit: keep it as sticky.
+    if (!fx_is_zero(rem)) {
+        q.d[0] = q.d[0] | 1u;
+    }
+    return fx_pack_mag(q, sign != 0u, 0);
+}
+
 // log(1 + x), correctly rounded.
 fn log1p_rounded(x: u32) -> u32 {
     let ax = x & 0x7fffffffu;

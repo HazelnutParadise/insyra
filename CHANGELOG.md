@@ -462,6 +462,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - On Vulkan, a caller's custom kernel is compiled with bounds checks: a read past the end of a buffer returns zero and a write past it does nothing, as on Metal, where it could overwrite another resident buffer such as a weight or optimizer state ([#555](https://github.com/HazelnutParadise/insyra/issues/555)).
 - The first resident buffer made on a device starts compiling Insyra's GPU kernels in the background, so the first `nn` step on a device no longer waits for each kernel to compile on first use (40 ms to 1.8 s each on a cold driver cache) ([#584](https://github.com/HazelnutParadise/insyra/issues/584)).
 - `accel.NewDeviceEdgeTopology`, `RoundedEdgeSum`, `RoundedEdgeSumGradValues` and `RoundedEdgeSumGradWeights` sum along an edge list on resident buffers, each output the exact sum of its products rounded once.
+- `accel.RoundedTanh` computes `tanh` on a resident array, bit for bit the value `nn.Tanh` gives on the host for every float32 input.
 
 ### `quant`
 - **BREAKING**: `VaRMethod`, `OptionType` and `PortfolioObjective` are `int` instead of `uint8`, and print their constant's name: `fmt.Print(quant.VaRParametric)` prints `VaRParametric` instead of `1`. An unknown value is reported by name: `ValueAtRisk` with `VaRMethod(3)` says `VaR: unknown method VaRMethod(3)` instead of `VaR: unknown method 3`. Constants, number literals and conversions compile as before. Only arithmetic that mixes them with a `uint8` value stops compiling.
