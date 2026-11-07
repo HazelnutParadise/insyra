@@ -17,6 +17,9 @@ import (
 // resident recurrent step beats the all-core CPU. It only logs; set
 // INSYRA_ACCEL_TIMING=1 to run it, and INSYRA_ACCEL_GPU_TESTS=1 for the device
 // column.
+// deviceFailure carries an error out of a device run so the table can go on.
+type deviceFailure struct{ err error }
+
 func TestRecurrentStepTiming(t *testing.T) {
 	if os.Getenv("INSYRA_ACCEL_TIMING") != "1" {
 		t.Skip("set INSYRA_ACCEL_TIMING=1: this is a measurement, not a correctness check")
@@ -61,16 +64,33 @@ func TestRecurrentStepTiming(t *testing.T) {
 		input := tensor(0.5, batch, nodes)
 		upstream := tensor(1, batch, nodes)
 
-		run := func(on accel.Device, precision accel.Precision) time.Duration {
+		run := func(on accel.Device, precision accel.Precision) (best time.Duration, failure error) {
+			fail := func(err error) {
+				if on.ID == "" {
+					t.Fatal(err)
+				}
+				panic(deviceFailure{err})
+			}
+			if on.ID != "" {
+				defer func() {
+					if r := recover(); r != nil {
+						f, ok := r.(deviceFailure)
+						if !ok {
+							panic(r)
+						}
+						best, failure = 0, f.err
+					}
+				}()
+			}
 			g, err := graph.To(on)
 			if err != nil {
-				t.Fatal(err)
+				fail(err)
 			}
 			defer g.Release()
 			move := func(x *Tensor) *Tensor {
 				m, err := x.To(on)
 				if err != nil {
-					t.Fatal(err)
+					fail(err)
 				}
 				return m
 			}
@@ -82,11 +102,11 @@ func TestRecurrentStepTiming(t *testing.T) {
 			defer tape.Close()
 			if precision != "" {
 				if err := tape.SetPrecision(precision); err != nil {
-					t.Fatal(err)
+					fail(err)
 				}
 			}
 			if _, err := tape.Param(w); err != nil {
-				t.Fatal(err)
+				fail(err)
 			}
 			step := func() {
 				tape.Clear()
@@ -94,29 +114,29 @@ func TestRecurrentStepTiming(t *testing.T) {
 				for i := 0; i < unroll; i++ {
 					e, err := tape.EdgeSum(g, w, s)
 					if err != nil {
-						t.Fatal(err)
+						fail(err)
 					}
 					if e, err = tape.Add(e, in); err != nil {
-						t.Fatal(err)
+						fail(err)
 					}
 					if s, err = tape.Tanh(e); err != nil {
-						t.Fatal(err)
+						fail(err)
 					}
 				}
 				if err := tape.BackwardFrom(s, up); err != nil {
-					t.Fatal(err)
+					fail(err)
 				}
 				if err := tape.SGD(1e-3); err != nil {
-					t.Fatal(err)
+					fail(err)
 				}
 				if on.ID != "" {
 					if err := accel.SynchronizeResident(); err != nil {
-						t.Fatal(err)
+						fail(err)
 					}
 				}
 			}
 			step()
-			best := time.Duration(1<<63 - 1)
+			best = time.Duration(1<<63 - 1)
 			for r := 0; r < repeats; r++ {
 				start := time.Now()
 				step()
@@ -124,13 +144,19 @@ func TestRecurrentStepTiming(t *testing.T) {
 					best = d
 				}
 			}
-			return best
+			return best, nil
 		}
-		def := run(accel.Device{}, "") // the default tape
-		rounded := run(accel.Device{}, accel.PrecisionFloat32Rounded)
+		def, _ := run(accel.Device{}, "") // the default tape
+		rounded, _ := run(accel.Device{}, accel.PrecisionFloat32Rounded)
 		dev := "-"
 		if device.ID != "" {
-			dev = run(device, accel.PrecisionFloat32Rounded).String()
+			// A card too small for the row reports it instead of ending the table.
+			if d, err := run(device, accel.PrecisionFloat32Rounded); err != nil {
+				dev = "failed"
+				t.Logf("device run of %d×%d×%d: %v", nodes, degree, batch, err)
+			} else {
+				dev = d.String()
+			}
 		}
 		t.Logf("%-8d %-6d %-5d | %-12s %-12s %-12s", nodes, degree, batch, def, rounded, dev)
 	}

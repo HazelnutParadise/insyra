@@ -10,4 +10,4 @@ The elementwise resident kernels SHALL split an array into launches of a bounded
 
 #### Scenario: A large training step on Windows
 - **WHEN** a resident training step runs `tanh` and its gradient over 16.8 million elements on a GPU under Windows
-- **THEN** no launch outlasts the reset and the step completes
+- **THEN** no launch outlasts the reset, so the step completes or, on a card too small for its tensors, returns an error instead of losing the device
