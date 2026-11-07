@@ -11,7 +11,18 @@ import "fmt"
 // order, or worker count. An exact zero is +0. A NaN operand, zero times
 // infinity, or infinite products of both signs produce NaN; otherwise an
 // infinite product determines the result.
+//
+// Weights and values on a device need a topology moved there with
+// EdgeTopology.To and a tape in accel.PrecisionFloat32Rounded; the output and
+// both gradients stay on the device and are the same bits as on the host.
 func (t *Tape) EdgeSum(topology *EdgeTopology, weights, values *Tensor) (*Tensor, error) {
+	resident, err := t.residency("edge sum", weights, values)
+	if err != nil {
+		return nil, err
+	}
+	if resident {
+		return t.edgeSumResident(topology, weights, values)
+	}
 	output, err := EdgeSum(topology, weights, values)
 	if err != nil {
 		return nil, err

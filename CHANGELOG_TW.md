@@ -242,6 +242,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`Clear(ClearOptions{KeepGradients: true})` 讓那一次清除保留參數梯度（不帶參數的 `Clear()` 仍會清掉），`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態，`ClipGradNorm` 也不把凍結參數算進範數或縮放。`Float32` 與 `Float32Rounded` 的 tape 跑的是同一套 Adam，可以互相讀取對方存的最佳化器狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
 - `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
+- `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
@@ -462,6 +463,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - GPU 裝置遺失現在會明確回報。在 Windows 上，單次 dispatch 跑到約兩秒以上會被系統中止並造成裝置遺失；以前之後每次呼叫都只回一段 `vkQueueSubmit failed: -4` 文字。現在遇到遺失的那次呼叫會回傳 `accel.ErrDeviceLost`（用 `errors.Is` 判斷，fallback 理由是新的 `device-lost`），遺失之前建立的 `DeviceBuffer` 或 binding 會持續回傳它。下一次需要裝置的呼叫會嘗試開新裝置，成功的話重新建立緩衝區與 binding 就能繼續。在 NVIDIA GT 1030 上，驅動不肯在同一個程序裡給新裝置（不管重試多久 `vkCreateDevice` 都失敗），所以常駐運算會回報 `no-accelerator`，直到程式重啟。Insyra 自己的運算（最近列搜尋、裝置 `MatMul`）兩種情況都會回傳 CPU 算出的結果。
 - 在 Vulkan 上，使用者自訂的 kernel 會加上越界檢查後再編譯：讀超過緩衝區尾端回傳 0、寫超過尾端不做事，跟 Metal 一樣，不會再蓋到權重、優化器狀態等其他常駐緩衝區（[#555](https://github.com/HazelnutParadise/insyra/issues/555)）。
 - 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
+- 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
