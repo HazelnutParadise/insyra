@@ -53,6 +53,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `PrecisionFloat32Rounded` cross-entropy, on the host and on the device, no longer loses the label's gradient when the label leads by more than about 16.6: it is now `-(o/s)` times `upstream/rows`, with `o` the exact sum of the other exponentials, rather than `p - 1`. **Breaking**: the label's gradient has different bits for every input, so a run recorded in this mode will not reproduce. The loss in this mode is unchanged and still rounds to 0 past a margin of about 16.6. `nn.Tape.Softmax` no longer loses its peak's gradient the same way. (Barron, [arXiv 2610.31642](https://arxiv.org/abs/2610.31642))
 
 - `PrecisionFloat32Rounded`: `SoftTargetCrossEntropy` and `DistillationLoss` now run on a device and on the host as fixed sequences of correctly rounded operations, with the same bits, and distillation takes the gradient of Barron's paper ([arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). The cross-entropy loss in this mode uses `log1p` of the other exponentials' sum instead of `log` of the sum, so a label that leads by more than about 16.6 no longer reads a loss of 0. **Breaking**: the loss of `SoftmaxCrossEntropy` in this mode has different bits wherever the two differ, so a run recorded in this mode will not reproduce.
+- `Tape.EdgeSum` runs on a device: move the topology with the new `EdgeTopology.To` (and free it with `Release`), and the output and both gradients stay there, the same bits as on the host.
 
 ### `stats`
 
@@ -88,6 +89,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - On Vulkan and DirectX 12, device `MatMul` (`nn`'s large matrix products) and the nearest-neighbour shortlist wait for their input uploads to land before the kernel reads them. gogpu orders a queue write to a storage buffer with nothing that follows it, so the kernel could read stale inputs; Metal was not affected ([#572](https://github.com/HazelnutParadise/insyra/issues/572)).
 - On Vulkan, a caller's custom kernel is compiled with bounds checks: a read past the end of a buffer returns zero and a write past it does nothing, as on Metal, where it could overwrite another resident buffer such as a weight or optimizer state ([#555](https://github.com/HazelnutParadise/insyra/issues/555)).
 - The first resident buffer made on a device starts compiling Insyra's GPU kernels in the background, so the first `nn` step on a device no longer waits for each kernel to compile on first use (40 ms to 1.8 s each on a cold driver cache) ([#584](https://github.com/HazelnutParadise/insyra/issues/584)).
+- `accel.NewDeviceEdgeTopology`, `RoundedEdgeSum`, `RoundedEdgeSumGradValues` and `RoundedEdgeSumGradWeights` sum along an edge list on resident buffers, each output the exact sum of its products rounded once.
 
 ### `datafetch`
 

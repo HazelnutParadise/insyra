@@ -3,6 +3,9 @@ package nn
 import (
 	"fmt"
 	"math"
+
+	"github.com/HazelnutParadise/insyra/accel"
+	"github.com/HazelnutParadise/insyra/internal/edgecsr"
 )
 
 // EdgeTopology is an immutable directed edge list over a fixed number of
@@ -16,6 +19,7 @@ type EdgeTopology struct {
 	targetEdges   []int32 // edge indices grouped by target, ascending within each target
 	sourceOffsets []int32 // same layout, grouped by source
 	sourceEdges   []int32
+	device        *accel.DeviceEdgeTopology // the copy To made; nil on the host
 }
 
 // NewEdgeTopology builds an immutable edge topology over nodes nodes: edge e
@@ -52,31 +56,9 @@ func NewEdgeTopology(nodes int, sources, targets []int) (*EdgeTopology, error) {
 		top.targets[e] = int32(targets[e])
 	}
 
-	top.targetOffsets = make([]int32, nodes+1)
-	top.sourceOffsets = make([]int32, nodes+1)
-	for e := 0; e < edges; e++ {
-		top.targetOffsets[top.targets[e]+1]++
-		top.sourceOffsets[top.sources[e]+1]++
-	}
-	for n := 0; n < nodes; n++ {
-		top.targetOffsets[n+1] += top.targetOffsets[n]
-		top.sourceOffsets[n+1] += top.sourceOffsets[n]
-	}
-
-	top.targetEdges = make([]int32, edges)
-	top.sourceEdges = make([]int32, edges)
-	nextTarget := make([]int32, nodes)
-	nextSource := make([]int32, nodes)
-	copy(nextTarget, top.targetOffsets[:nodes])
-	copy(nextSource, top.sourceOffsets[:nodes])
-	for e := 0; e < edges; e++ {
-		t := top.targets[e]
-		top.targetEdges[nextTarget[t]] = int32(e)
-		nextTarget[t]++
-		s := top.sources[e]
-		top.sourceEdges[nextSource[s]] = int32(e)
-		nextSource[s]++
-	}
+	grouped := edgecsr.Group(nodes, top.sources, top.targets)
+	top.targetOffsets, top.targetEdges = grouped.TargetOffsets, grouped.TargetEdges
+	top.sourceOffsets, top.sourceEdges = grouped.SourceOffsets, grouped.SourceEdges
 	return top, nil
 }
 
