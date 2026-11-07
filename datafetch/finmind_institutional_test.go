@@ -181,3 +181,81 @@ func TestFinMindInstitutionalNamesFailureFailsTheCall(t *testing.T) {
 		t.Error("a failed names request was cached")
 	}
 }
+
+func finMindRow(id, date, callPut, trader string) string {
+	cp := ""
+	if callPut != "" {
+		cp = `"call_put":"` + callPut + `",`
+	}
+	return `{"futures_id":"` + id + `","option_id":"` + id + `","date":"` + date + `",` + cp + `"institutional_investors":"` + trader + `","long_deal_volume":1,"long_deal_amount":1,"short_deal_volume":1,"short_deal_amount":1,"long_open_interest_balance_volume":1,"long_open_interest_balance_amount":1,"short_open_interest_balance_volume":1,"short_open_interest_balance_amount":1}`
+}
+
+func TestFinMindInstitutionalUsesTheExchangeNameWhereFinMindDiffers(t *testing.T) {
+	client, transport, _ := newFixtureFinMind(t, FinMindConfig{})
+	transport.replies[finMindNamesKey()] = []fixtureReply{{status: http.StatusOK, body: finMindFixture(t, "fut_opt_info.json")}}
+	transport.replies[finMindKey("dataset", "TaiwanFuturesInstitutionalInvestors", "data_id", "GTF")] = []fixtureReply{{status: http.StatusOK,
+		body: []byte(`{"msg":"success","status":200,"data":[` + finMindRow("GTF", "2025-10-01", "", "投信") + `]}`)}}
+	got, err := client.InstitutionalFutures("GTF", time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name := got.GetColByName("Contract").Data()[0]; name != "櫃買指數期貨" {
+		t.Errorf("Contract = %v, want the exchange's 櫃買指數期貨", name)
+	}
+}
+
+func TestFinMindInstitutionalOrdersCallsBeforePuts(t *testing.T) {
+	client, transport, _ := newFixtureFinMind(t, FinMindConfig{})
+	transport.replies[finMindNamesKey()] = []fixtureReply{{status: http.StatusOK, body: finMindFixture(t, "fut_opt_info.json")}}
+	rows := []string{
+		finMindRow("TXO", "2025-10-02", "買權", "自營商"),
+		finMindRow("TXO", "2025-10-01", "賣權", "外資"),
+		finMindRow("TXO", "2025-10-01", "賣權", "自營商"),
+		finMindRow("TXO", "2025-10-01", "買權", "投信"),
+	}
+	transport.replies[finMindKey("dataset", "TaiwanOptionInstitutionalInvestors", "data_id", "TXO")] = []fixtureReply{{status: http.StatusOK,
+		body: []byte(`{"msg":"success","status":200,"data":[` + strings.Join(rows, ",") + `]}`)}}
+	got, err := client.InstitutionalOptions("TXO", time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][2]string{{"CALL", "投信"}, {"PUT", "自營商"}, {"PUT", "外資及陸資"}, {"CALL", "自營商"}}
+	for r, w := range want {
+		if cp, tr := got.GetColByName("CallPut").Data()[r], got.GetColByName("Trader").Data()[r]; cp != w[0] || tr != w[1] {
+			t.Errorf("row %d = %v %v, want %v %v", r, cp, tr, w[0], w[1])
+		}
+	}
+}
+
+func TestFinMindInstitutionalRereadsNamesForAnUnknownCode(t *testing.T) {
+	client, transport, _ := newFixtureFinMind(t, FinMindConfig{})
+	newer := strings.Replace(string(finMindFixture(t, "fut_opt_info.json")), `"data": [`, `"data": [{"code":"NEW","type":"TaiwanFuturesDaily","name":"新期貨"},`, 1)
+	transport.replies[finMindNamesKey()] = []fixtureReply{
+		{status: http.StatusOK, body: finMindFixture(t, "fut_opt_info.json")},
+		{status: http.StatusOK, body: []byte(newer)},
+	}
+	transport.replies[finMindKey("dataset", "TaiwanFuturesInstitutionalInvestors", "data_id", "TX")] = []fixtureReply{{status: http.StatusOK, body: []byte(`{"msg":"success","status":200,"data":[]}`)}}
+	transport.replies[finMindKey("dataset", "TaiwanFuturesInstitutionalInvestors", "data_id", "NEW")] = []fixtureReply{{status: http.StatusOK,
+		body: []byte(`{"msg":"success","status":200,"data":[` + finMindRow("NEW", "2026-11-06", "", "投信") + `]}`)}}
+	if _, err := client.InstitutionalFutures("TX", time.Time{}, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.InstitutionalFutures("NEW", time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatalf("a contract listed after the first read: %v", err)
+	}
+	if name := got.GetColByName("Contract").Data()[0]; name != "新期貨" {
+		t.Errorf("Contract = %v", name)
+	}
+}
+
+func TestFinMindInstitutionalWaitingForNamesStopsWithTheContext(t *testing.T) {
+	client, _, _ := newFixtureFinMind(t, FinMindConfig{})
+	client.namesLock <- struct{}{} // another call is reading the names
+	defer func() { <-client.namesLock }()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := client.InstitutionalFuturesContext(ctx, "TX", time.Time{}, time.Time{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the context's deadline", err)
+	}
+}
