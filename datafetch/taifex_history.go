@@ -27,7 +27,9 @@ type taifexHistory struct {
 // ErrTAIFEXRefused matches (with errors.Is) an error returned because the
 // exchange website refused a history range: the table does not reach back that
 // far, or the range is longer than the website allows. A caller can move from
-// forward and ask again.
+// forward and ask again. The institutional traders' tables reach back three
+// years from today; FinMindClient.InstitutionalFutures and
+// InstitutionalOptions have them from 2018 in the same columns.
 var ErrTAIFEXRefused = errors.New("datafetch: TAIFEX website refused the date range")
 
 var taifexAlert = regexp.MustCompile(`alert\("([^"]*)"\)`)
@@ -124,8 +126,9 @@ func (c *TAIFEXClient) InstitutionalFuturesHistory(from, to time.Time) (*insyra.
 // order, oldest first. The website serves this table only for the three years
 // before the trading day, a window that moves forward every day, and refuses an
 // earlier date: the call then returns an error naming the range, not an empty
-// table. A range is requested month by month, so
-// a long one makes many requests under the client's Interval.
+// table. For earlier days, FinMindClient.InstitutionalFutures returns one
+// contract in the same columns. A range is requested month by month, so a long
+// one makes many requests under the client's Interval.
 func (c *TAIFEXClient) InstitutionalFuturesHistoryContext(ctx context.Context, from, to time.Time) (*insyra.DataTable, error) {
 	return c.historyTable(ctx, taifexHistory{"/cht/3/futContractsDateDown", institutionalColumns(false), true}, from, to)
 }
@@ -137,8 +140,9 @@ func (c *TAIFEXClient) InstitutionalOptionsHistory(from, to time.Time) (*insyra.
 }
 
 // InstitutionalOptionsHistoryContext is InstitutionalOptionsHistory with a
-// context. It has the columns of InstitutionalOptions and the same limit as
-// InstitutionalFuturesHistoryContext.
+// context. It has the columns of InstitutionalOptions and the same three-year
+// window as InstitutionalFuturesHistoryContext; FinMindClient.InstitutionalOptions
+// has earlier days.
 func (c *TAIFEXClient) InstitutionalOptionsHistoryContext(ctx context.Context, from, to time.Time) (*insyra.DataTable, error) {
 	return c.historyTable(ctx, taifexHistory{"/cht/3/callsAndPutsDateDown", institutionalColumns(true), true}, from, to)
 }
