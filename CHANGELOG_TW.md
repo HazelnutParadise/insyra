@@ -90,6 +90,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在 Vulkan 上，使用者自訂的 kernel 會加上越界檢查後再編譯：讀超過緩衝區尾端回傳 0、寫超過尾端不做事，跟 Metal 一樣，不會再蓋到權重、優化器狀態等其他常駐緩衝區（[#555](https://github.com/HazelnutParadise/insyra/issues/555)）。
 - 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
 - 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
+- 新增 `accel.RoundedTanh`，在常駐 GPU 的陣列上計算 `tanh`，每個 float32 輸入的結果都和主機上 `nn.Tanh` 逐位元相同。
 
 ### `datafetch`
 
