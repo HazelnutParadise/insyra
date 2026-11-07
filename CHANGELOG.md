@@ -93,6 +93,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `accel.NewDeviceEdgeTopology`, `RoundedEdgeSum`, `RoundedEdgeSumGradValues` and `RoundedEdgeSumGradWeights` sum along an edge list on resident buffers, each output the exact sum of its products rounded once.
 - `accel.RoundedTanh` computes `tanh` on a resident array, bit for bit the value `nn.Tanh` gives on the host for every float32 input.
 - `accel.RoundedTanhGrad` computes the gradient of `tanh` from its output and the upstream gradient on resident buffers, the bits `nn`'s `PrecisionFloat32Rounded` tape gives on the host.
+- On Windows, a resident elementwise operation on a large array no longer loses the device: `tanh`, `exp`, `log`, `expm1`, `log1p`, add, divide, square root and the `SGD` and `Adam` steps now run in launches of at most 262,144 elements for the fixed-point functions and 2,097,152 for the rest, each its own submission. On an Apple M3, `tanh` over 16.8 million elements took 2.85 s in one launch, past the two seconds after which Windows resets the GPU; on a GT 1030 a training step on tensors of that size failed with `ErrDeviceLost`. Results are unchanged.
 
 ### `datafetch`
 
