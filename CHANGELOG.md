@@ -54,6 +54,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - `PrecisionFloat32Rounded`: `SoftTargetCrossEntropy` and `DistillationLoss` now run on a device and on the host as fixed sequences of correctly rounded operations, with the same bits, and distillation takes the gradient of Barron's paper ([arXiv 2610.31642](https://arxiv.org/abs/2610.31642)). The cross-entropy loss in this mode uses `log1p` of the other exponentials' sum instead of `log` of the sum, so a label that leads by more than about 16.6 no longer reads a loss of 0. **Breaking**: the loss of `SoftmaxCrossEntropy` in this mode has different bits wherever the two differ, so a run recorded in this mode will not reproduce.
 - `Tape.EdgeSum` runs on a device: move the topology with the new `EdgeTopology.To` (and free it with `Release`), and the output and both gradients stay there, the same bits as on the host.
+- `Tape.Tanh` runs on a device: on a `PrecisionFloat32Rounded` tape a resident input keeps the output and its gradient there, the same bits as on the host, so a recurrent step `tanh(W·state + input)` no longer has to leave the device. **Breaking** in `PrecisionFloat32Rounded` only: a tanh gradient that is exactly zero is now `+0`, like every exactly-zero result of that mode, so a gradient that was `-0` (a negative upstream where `tanh` rounds to `±1`) changes sign; a gradient that underflows to zero keeps its sign. The default tape is unchanged.
 
 ### `stats`
 
@@ -91,6 +92,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - The first resident buffer made on a device starts compiling Insyra's GPU kernels in the background, so the first `nn` step on a device no longer waits for each kernel to compile on first use (40 ms to 1.8 s each on a cold driver cache) ([#584](https://github.com/HazelnutParadise/insyra/issues/584)).
 - `accel.NewDeviceEdgeTopology`, `RoundedEdgeSum`, `RoundedEdgeSumGradValues` and `RoundedEdgeSumGradWeights` sum along an edge list on resident buffers, each output the exact sum of its products rounded once.
 - `accel.RoundedTanh` computes `tanh` on a resident array, bit for bit the value `nn.Tanh` gives on the host for every float32 input.
+- `accel.RoundedTanhGrad` computes the gradient of `tanh` from its output and the upstream gradient on resident buffers, the bits `nn`'s `PrecisionFloat32Rounded` tape gives on the host.
 
 ### `datafetch`
 
