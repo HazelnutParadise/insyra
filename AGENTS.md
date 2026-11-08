@@ -282,6 +282,12 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-11-07] — the cross-entropy kernels still run each array in one launch
+- **Where**: `accel/internal/wgpu/softmax_ce.go`, `accel/internal/wgpu/soft_ce.go`
+- **What**: Windows resets a GPU whose dispatch runs about two seconds. `accel-split-elementwise-launches` split the elementwise resident kernels in `resident_kernels.go` into bounded launches after a GT 1030 lost the device on a 16.8-million-element `tanh`, but the cross-entropy kernels were left whole: their per-element kernels (`rounded-ce-exp`, `rounded-soft-u`, the distillation ones) run the fixed-point exp or log over `rows × classes` in one launch, and their per-row kernels loop over every class in one invocation. On the M3 the fixed-point `exp` takes 1.40 s for 2^24 elements, so a batch of 1,024 rows over a 16,000-class vocabulary is already near the limit on a card a few times slower. Not measured on a large vocabulary.
+- **Suggestion**: give the per-element ones a `base` word and launch them through `runElementwise` with `fixedLaunchSpan`; split the per-row ones by rows with a span chosen from rows × classes. Measure on the GT 1030 with a large vocabulary first.
+- **Status**: pending
+
 ### [2026-10-21] — device tensors live on one card per process
 - **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
 - **What**: the WebGPU backend opens the adapter WebGPU names as its default and has no way to be told which one. `accel.DefaultDevice` returns the first device of the session's list, which on a host with several cards may not be that adapter, and `Tensor.To(device)` uses the `Device` only as a label. Operands on different devices are refused, so nothing runs wrongly, but a program cannot choose a card. `Config.Devices`, `PreferredDevices` and `INSYRA_ACCEL_DEVICES` narrow what is discovered, not where tensors are placed. Only a single-card host has been available to test.
