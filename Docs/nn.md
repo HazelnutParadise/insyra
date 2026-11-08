@@ -926,6 +926,34 @@ For custom resident loops, save each parameter's `Value().ToHost()` with
 `Param`, then load optimizer state. `Sequential.SaveWeights` remains host-only.
 Momentum SGD remains host-only.
 
+A sparse recurrent network saves its `EdgeTopology` as well, because its
+weights are one value per edge in edge order: weights restored against the same
+edges in a different order would be wrong with no error. `SaveEdgeTopology`
+writes the node count and the edge list as a versioned SafeTensors file, and a
+topology on a device writes the same bytes as its host original without reading
+anything back. `LoadEdgeTopology` checks the version and the tensors' shapes
+before reading their data, checks every index, and returns a host topology to
+move with `To`. `Equal` reports the same node count and the same edges in the
+same order, wherever each copy lives. Save everything at the same completed
+step, and restore in this order:
+
+```go
+graph, err := nn.LoadEdgeTopology(topologyFile)
+if err == nil && !graph.Equal(rebuilt) { // only if you rebuild the graph from your own source
+    err = errors.New("the checkpoint's graph is not this graph")
+}
+weights, _ := nn.LoadSafeTensors(weightsFile) // saved from w.Value().ToHost()
+state, _ := nn.LoadSafeTensors(stateFile)     // the recurrent state the next step starts from
+dgraph, _ := graph.To(dev)
+dweights, _ := weights["w"].To(dev)
+s, _ := state["state"].To(dev)
+w, _ := tape.Param(dweights)
+err = tape.LoadOptimizerState(optimizerFile, map[string]*nn.Parameter{"w": w})
+```
+
+The next step then has the same bits as the run that saved them, in a new
+process or on the host.
+
 Adam and AdamW share the same moments and step counter. Momentum velocity is a
 separate slot, so switching between those optimizers preserves both histories.
 Loading uninitialized slots removes old optimizer state. Loading never changes

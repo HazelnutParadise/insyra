@@ -54,6 +54,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 - `PrecisionFloat32Rounded`：`SoftTargetCrossEntropy` 與 `DistillationLoss` 現在可在裝置與主機上以固定的正確捨入運算序列執行，位元一致，蒸餾採用 Barron 論文的梯度（[arXiv 2610.31642](https://arxiv.org/abs/2610.31642)）。此模式的交叉熵損失改用其他類別指數總和的 `log1p`，不再用總和的 `log`，所以標籤領先超過約 16.6 時損失不再顯示 0。**破壞性變更**：此模式下 `SoftmaxCrossEntropy` 的損失在兩種算法不同之處位元不同，先前在這個模式下記錄的執行無法重現。
 - `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。
+- 新增 `nn.SaveEdgeTopology` 與 `nn.LoadEdgeTopology`，把 `EdgeTopology` 存成有版本的 SafeTensors 檔再讀回來；`EdgeTopology.Equal` 比較兩個邊結構的邊和順序是否完全相同。這樣權重、狀態和 Adam 動量都在 GPU 上的稀疏遞迴網路，可以在新程式裡接著跑，結果逐位元一致。讀檔時先檢查版本、各欄位形狀和每個索引，全部正確才建立物件；GPU 上的邊結構存檔時不需要從 GPU 讀回資料。
 - `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度剛好等於零時現在是 `+0`，和這個模式其他剛好為零的結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號；小到捨入成零的梯度保留原本的正負號。預設的 tape 不變。
 
 ### `stats`
