@@ -467,6 +467,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
 - 新增 `accel.RoundedTanh`，在常駐 GPU 的陣列上計算 `tanh`，每個 float32 輸入的結果都和主機上 `nn.Tanh` 逐位元相同。
 - 新增 `accel.RoundedTanhGrad`，在常駐 GPU 的資料上由 `tanh` 的輸出與上游梯度算出梯度，位元和 `nn` 在 `PrecisionFloat32Rounded` 下於 CPU 算的相同。
+- 在 Windows 上，對常駐 GPU 的大陣列做逐元素運算不會再讓裝置遺失：`tanh`、`exp`、`log`、`expm1`、`log1p`、加法、除法、平方根，以及 `SGD`、`Adam` 的更新，現在分成多次送出，定點數函式每次最多 262,144 個元素，其他最多 2,097,152 個，每次都是獨立的提交。在 Apple M3 上，1677 萬個元素的 `tanh` 一次要 2.85 秒，超過 Windows 約 2 秒就重置 GPU 的上限；在 GT 1030 上，這種大小的張量做一步訓練會回傳 `ErrDeviceLost`。結果不變。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
