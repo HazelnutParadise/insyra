@@ -9,4 +9,4 @@
 - [x] Update `AGENTS.md`'s required artifacts and acceleration operating contract, and every other file that names `ENG.md` or `delivery-status.md`.
 - [x] Delete the parked status file.
 - [x] `openspec validate engineering-docs-layout --strict` and `openspec validate --specs --strict` pass.
-- [ ] Archive the change, so the four main specs take the new locations.
+- [x] Archive the change, so the four main specs take the new locations.
