@@ -2,7 +2,7 @@
 
 ## Why
 
-The project's working documents for its developers are spread over two files at the repository root. `ENG.md` holds the architecture together with the reasoning behind every standing choice, and `delivery-status.md` has grown to over 350 lines mixing the current phase, a finished-milestone table, a decision log of about 45 entries and a dozen handoff notes, most of them about work that has since merged. An agent arriving at the project is told to read the whole status file first, and has to sort out for itself which of it still holds.
+The project's working documents for its developers are spread over two files at the repository root. `ENG.md` holds the architecture together with the reasoning behind every standing choice, and `delivery-status.md` has grown to over 350 lines mixing the current phase, a finished-milestone table, a decision log of about 45 entries and about twenty handoff notes, most of them about work that has since merged. An agent arriving at the project is told to read the whole status file first, and has to sort out for itself which of it still holds.
 
 Each kind of content now gets one place, under `engineering/`:
 

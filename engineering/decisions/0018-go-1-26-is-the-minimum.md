@@ -1,4 +1,4 @@
-# 0018 — `dev` requires Go 1.26
+# 0018 — Go 1.26 is the minimum
 
 **Status:** accepted
 **Date:** 2026-10-10

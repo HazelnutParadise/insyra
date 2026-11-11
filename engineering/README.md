@@ -20,4 +20,5 @@ Two kinds of engineering document live outside this directory, because the proje
 - **When a requirement changes, the spec changes first**, through a change's spec delta, then the code.
 - **A problem found and not fixed now** becomes a change, or an entry under Follow-ups in `/AGENTS.md`.
 - **A decision record is not edited after it is accepted.** A later decision gets a new record, and the old one's status becomes `superseded by NNNN`.
+- **A record number is unique across `dev` and `0.4`.** Numbers 0001 to 0021 belong to both lines, though 0017 exists only on `dev` until `dev` is next merged into `0.4`, and numbers from 0022 belong to `0.4`. A new record takes the next number neither line has used, so merging `dev` into `0.4` never brings two records with one number. Where the lines differ, a record with the same number and file name describes its own line.
 - **Work that stops unfinished** leaves its state in the change it belongs to, or in `handoff.md` when no change covers it.

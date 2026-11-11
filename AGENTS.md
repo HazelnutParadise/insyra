@@ -87,7 +87,7 @@ Applies to every accel-related task. It extends the OpenSpec workflow above; it 
 
 ### Accel OpenSpec Rules
 - Every active accel stage item must map to one OpenSpec change.
-- Every OpenSpec change must map to one milestone and one verifiable output.
+- Every OpenSpec change must map to one milestone, named in its `proposal.md`, and one verifiable output.
 - Validate changed proposals with `openspec validate <change-id> --strict` before handoff.
 - Do not merge unrelated capability slices into one change.
 
@@ -295,6 +295,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: give the per-element ones a `base` word and launch them through `runElementwise` with `fixedLaunchSpan`; split the per-row ones by rows with a span chosen from rows × classes. Measure on the GT 1030 with a large vocabulary first.
 - **Status**: pending
 
+### [2026-10-31] — resident writes are settled by hand until gogpu/wgpu#371 is fixed
+- **Where**: `accel/internal/wgpu/resident.go` `settleWriteLocked`, and its callers in `custom.go`, `matmul.go` and `resident.go`
+- **What**: gogpu stages `Queue.WriteBuffer` into a copy ahead of the next submission and emits a barrier after it only for vertex, index, uniform or indirect buffers, so on Vulkan a write to a storage buffer and the kernel or readback after it are unordered (measured on a GT 1030: `Zero()` followed by a readback returned the old words in 3 of 20 runs). `settleWriteLocked` completes the write before anything else uses the buffer. Upstream this is gogpu/wgpu#371, still open on 2026-10-31.
+- **Suggestion**: when #371 is fixed in a gogpu/wgpu release, take it, drop `settleWriteLocked`, and rerun the GPU suites on the GT 1030 and the M3.
+- **Status**: pending (waits on upstream)
+
 ### [2026-10-21] — device tensors live on one card per process
 - **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
 - **What**: the WebGPU backend opens the adapter WebGPU names as its default and has no way to be told which one. `accel.DefaultDevice` returns the first device of the session's list, which on a host with several cards may not be that adapter, and `Tensor.To(device)` uses the `Device` only as a label. Operands on different devices are refused, so nothing runs wrongly, but a program cannot choose a card. `Config.Devices`, `PreferredDevices` and `INSYRA_ACCEL_DEVICES` narrow what is discovered, not where tensors are placed. Only a single-card host has been available to test.
@@ -400,7 +406,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-08-01] — the GPU backend is verified on Apple and Metal only
 - **Where**: `accel/`, the whole device path
-- **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Vulkan and DirectX 12 paths compile and are exercised by no numeric test.
+- **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Since then the resident `EdgeSum` (M36), `tanh` on all 2^32 inputs (M37), the topology checkpoint (M39) and caller kernels (M40) have passed bit for bit on an NVIDIA GeForce GT 1030 over Vulkan; DirectX 12 has not been checked, and nothing has run on AMD.
 - **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel/...` on a non-Apple host with a discrete GPU. If parity fails there, the fix is not a kernel change but a per-platform gate: the exact-nearest operation already recomputes untrustworthy rows in `float64`, so a platform that cannot match bit-for-bit can widen that path rather than lose the operation. Also worth measuring there is whether the profitability threshold moves — PCIe transfer should push it up, not down, and the value in `accel/exact.go` is calibrated on unified memory.
 - **Status**: pending
 
