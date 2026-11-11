@@ -13,4 +13,4 @@ A streaming entry point in Insyra is a range-over-func iterator, not a channel p
 - Keep the channel shape behind a transition version. Its old shape carried the leak.
 
 ## Consequences
-Any new streaming entry point, the CSV one waiting on #210 included, takes the same shape.
+Any new streaming entry point takes the same shape, as `StreamCSV`, `ReadSQLStream` and `arrowipc.Stream` already do.

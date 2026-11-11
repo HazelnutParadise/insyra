@@ -87,7 +87,7 @@ Applies to every accel-related task. It extends the OpenSpec workflow above; it 
 
 ### Accel OpenSpec Rules
 - Every active accel stage item must map to one OpenSpec change.
-- Every OpenSpec change must map to one milestone and one verifiable output.
+- Every OpenSpec change must map to one milestone, named in its `proposal.md`, and one verifiable output.
 - Validate changed proposals with `openspec validate <change-id> --strict` before handoff.
 - Do not merge unrelated capability slices into one change.
 
@@ -268,6 +268,7 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - **A fix is not verified until the test covering it has been shown to fail without it**, and a claim about code is not established until the code has been read. A handoff summary is not a source: a false premise taken from one once reached three commit messages and a review brief.
 - **A test that claims one code path reproduces another compares the two runs, not a transcription of one of them.** f32 arithmetic differs between arm64 and amd64, so recorded digits pin the machine that recorded them; the MNIST sugar proof runs both paths in the same process.
 - **Do not ship a control that provably cannot change the answer.** Measure an option's effect before adding it; a positive-class option for `ROCAUCMetric` was withdrawn because naming the other class swaps the label and the score column, and the two cancel exactly.
+- **`env clear default` needs no `--force`, while `env delete default` does.** The owner ruled on 2026-10-10 that the two stay as they are, though both leave an empty `default`: `delete` does not say that `default` comes back empty, so it is guarded, and `clear` says it empties the environment, so typing it is the confirmation. Do not raise it again.
 - **The two unmerged legacy branches stay as they are**: `copilot/fix-aa06638c-…` (LINGO `@SUM`/`@FOR` support, its PR #74 closed unmerged) and `lingo-to-lp` (an early LINGO lexer and processor from 2024). The owner ruled on 2026-09-26 to neither delete, archive nor revive them.
 
 ## Docs, Changelog & Skills Must Stay in Sync
@@ -321,6 +322,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: `chart-shapes-one-rule` gave each chart both packages draw one name (#413). `plot.CreateHeatMap`, `HeatMapConfig`, `HeatMapPoint`, `HeatMapAxis`, `NewHeatMapPoint`, `NewHeatMapMissingPoint`, `gplot.CreateScatterPlot` and `ScatterPlotConfig` stay one release as Deprecated aliases and wrappers.
 - **Suggestion**: delete both `deprecated.go` files, their tests and the notes in the same release as the other Deprecated removals, with a BREAKING changelog entry.
 - **Status**: pending
+
+### [2026-10-31] — resident writes are settled by hand until gogpu/wgpu#371 is fixed
+- **Where**: `accel/internal/wgpu/resident.go` `settleWriteLocked`, and its callers in `custom.go`, `matmul.go` and `resident.go`
+- **What**: gogpu stages `Queue.WriteBuffer` into a copy ahead of the next submission and emits a barrier after it only for vertex, index, uniform or indirect buffers, so on Vulkan a write to a storage buffer and the kernel or readback after it are unordered (measured on a GT 1030: `Zero()` followed by a readback returned the old words in 3 of 20 runs). `settleWriteLocked` completes the write before anything else uses the buffer. Upstream this is gogpu/wgpu#371, still open on 2026-10-31.
+- **Suggestion**: when #371 is fixed in a gogpu/wgpu release, take it, drop `settleWriteLocked`, and rerun the GPU suites on the GT 1030 and the M3.
+- **Status**: pending (waits on upstream)
 
 ### [2026-10-21] — device tensors live on one card per process
 - **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
@@ -686,7 +693,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-08-01] — the GPU backend is verified on Apple and Metal only
 - **Where**: `accel/`, the whole device path
-- **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Vulkan and DirectX 12 paths compile and are exercised by no numeric test.
+- **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Since then, on `dev`, the resident `EdgeSum` (M36), `tanh` on all 2^32 inputs (M37), the topology checkpoint (M39) and caller kernels (M40) have passed bit for bit on an NVIDIA GeForce GT 1030 over Vulkan; on this line the M39 checkpoint run also passed there. DirectX 12 has not been checked, nothing has run on AMD, and Vulkan has no out-of-bounds protection for a caller's kernel beyond what Insyra compiles in (insyra#555, gogpu/wgpu#370).
 - **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel/...` on a non-Apple host with a discrete GPU. If parity fails there, the fix is not a kernel change but a per-platform gate: the exact-nearest operation already recomputes untrustworthy rows in `float64`, so a platform that cannot match bit-for-bit can widen that path rather than lose the operation. Also worth measuring there is whether the profitability threshold moves — PCIe transfer should push it up, not down, and the value in `accel/exact.go` is calibrated on unified memory.
 - **Status**: pending
 

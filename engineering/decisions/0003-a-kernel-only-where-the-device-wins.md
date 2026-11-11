@@ -13,4 +13,4 @@ Every accelerated operation except exact-nearest was removed, and a new kernel i
 - Keep the losing operations. Each meant a kernel to maintain against a backend with essentially one maintainer, a method to document, and a changelog entry claiming a speedup measured against one core.
 
 ## Consequences
-The measurement is recorded before the kernel is proposed, in a decision record or in the change that proposes the kernel. A kernel that exists for a reason other than speed, such as keeping a resident computation on the device, says so and claims no speedup (records 0016 and 0019).
+The measurement is recorded before the kernel is proposed, in a decision record or in the change that proposes the kernel. The one exception so far is #379's resident path, which the owner ruled for on 2026-09-25 (record 0014): its kernels exist so a resident computation need not leave the device, they say so, and they claim no speedup (record 0016).
