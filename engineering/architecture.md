@@ -74,7 +74,7 @@ Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and 
 
 `nn`'s MNIST convergence and real-model parity need **data** the repository does not carry, 288 MB of published checkpoints and 11 MB of MNIST. The `Neural Network Data Gates` workflow fetches them from the sources pinned by sha256 in `.github/nn-data-manifest.txt`, checks every file before testing, and fails when one of the five tests skipped. It runs when `nn/` changes.
 
-The **GPU** gates (`INSYRA_ACCEL_GPU_TESTS=1` over `./accel/...` and `./nn/`) have no hosted runner and stay manual. Run them on a machine with a device before changing `accel` or the device path, from a shell that sees the real adapter (under `-race` the CPU references take about 50 minutes on the M3, so pass `-timeout 150m`), and record what they measured in the change that needed them, or in a decision record when the measurement decides a choice.
+The **GPU** gates (`INSYRA_ACCEL_GPU_TESTS=1` over `./accel/...` and `./nn/`) have no hosted runner and stay manual. A self-hosted runner on a maintainer's machine is out: the repository is public, so pull requests from forks would run on it. Run them on a machine with a device before changing `accel` or the device path, from a shell that sees the real adapter (under `-race` the CPU references take about 50 minutes on the M3, so pass `-timeout 150m`), and record what they measured in the change that needed them, or in a decision record when the measurement decides a choice.
 
 ## Precision contract
 
