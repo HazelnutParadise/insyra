@@ -41,7 +41,7 @@
 **D. 會不會壞（生產環境）**
 11. 錯誤處理：失敗不能被吞；`%w` 包裝可 `errors.Is/As`；提供 sentinel 或 typed error 讓呼叫端分流；不對使用者輸入 panic；部分成功要能表達；錯誤訊息帶上下文；不拿 log 代替回傳錯誤；`Err()` 模式與回傳 `error` 兩種風格在同一套件內不能混。
 12. 資源、併發、邊界：`ctx` 取消有效；goroutine/channel/檔案/`*excelize.File` 不洩漏；呼叫兩次、中途中斷、空輸入、nil receiver、超大輸入各會怎樣；thread safety 在文件明講。
-13. 資料正確性（insyra 特有）：nil / NaN / 空字串 / 混合型別的處理明確且有文件；型別轉換不得捏造值（`ToF64Slice` 零值教訓）；遵守 ENG.md 精度契約；排序穩定；浮點比較。
+13. 資料正確性（insyra 特有）：nil / NaN / 空字串 / 混合型別的處理明確且有文件；型別轉換不得捏造值（`ToF64Slice` 零值教訓）；遵守 `engineering/architecture.md` 的精度契約；排序穩定；浮點比較。
 14. 安全與可觀測：路徑與暫存檔權限；外部請求有 timeout；輸入大小上限；不 log 敏感資料；成功路徑不該噪音 log；能注入時鐘、HTTP client 等依賴以利測試。
 
 **E. 契約**

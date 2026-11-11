@@ -14,9 +14,12 @@ This file is the primary guidance for AI coding agents working in this repositor
 
 Each entry says *when* reading it stops being optional. That trigger is the part that only exists here — the files describe their own contents.
 
-- [`ENG.md`](/engineering/architecture.md) — the project's standing technical decisions: architecture, test seams, the precision contract, the measured thresholds, the assumptions everything rests on. **Read it before changing architecture, choosing a test seam, deciding what precision something runs at, or writing a migration.** Do not re-derive any of it from scratch; if a decision there is wrong, change it there.
-- [`delivery-status.md`](/engineering/reports/legacy-status.md) — where the project currently stands: phase, blockers, next output, next ticket. **Read it first on arrival.** It is deltas only, not a roadmap or a changelog.
-- [`openspec/changes/`](openspec/changes/) — the tickets. **Pick up anything whose blockers are all done**; the milestone order in `delivery-status.md` carries the blocking edges, because OpenSpec has none between changes. Completed changes live in `archive/`.
+- [`engineering/README.md`](/engineering/README.md) — the index of the engineering documents. **Read it first on arrival.**
+- [`engineering/architecture.md`](/engineering/architecture.md) — how the system is built: components, test seams, the precision contract, the device rules, the measured thresholds, the assumptions everything rests on. **Read it before changing architecture, choosing a test seam, deciding what precision something runs at, or writing a migration.** Do not re-derive any of it from scratch; if something there is wrong, change it there.
+- [`engineering/decisions/`](/engineering/decisions/) — one record per hard-to-reverse choice, with the options rejected. **Read the relevant record before proposing to change such a choice**, and say in the proposal which of its conditions no longer holds. A record is not edited after it is accepted: a later decision gets a new record, and the old one's status becomes `superseded by NNNN`.
+- [`openspec/specs/`](/openspec/specs/) — what each capability does and how to tell it is done. **Read the spec of a capability before changing it.**
+- [`openspec/changes/`](/openspec/changes/) — the tickets, one verifiable result per change. **Pick up any change whose `proposal.md` names no blocker that is still open**; OpenSpec has no dependency between changes, so each proposal says what it waits for. Completed changes live in `archive/`.
+- [`engineering/handoff.md`](/engineering/handoff.md) — unfinished work that no change covers. It exists only while there is some. **Read it on arrival, and write it when such work stops unfinished.** Delete a section when its work is done.
 
 ## Change Workflow — OpenSpec (required)
 
@@ -57,27 +60,29 @@ so this policy applies to every agent tool that reads either file.
 Applies to every accel-related task. It extends the OpenSpec workflow above; it does not replace it.
 
 ### Required Entry Sequence
-- Read `delivery-status.md` before doing any accel-related work.
-- Use `delivery-status.md` as the source of truth for current phase, blockers, next verifiable output, and next OpenSpec change.
+- Before doing any accel-related work, read the open changes under `openspec/changes/` and `engineering/handoff.md` when it exists. Together they say what is in progress, what each piece waits for, and what to measure next.
+- Read the decision records under `engineering/decisions/` that cover the area before proposing to change it.
 - Read the named OpenSpec change before proposing implementation or writing code.
 
 ### Required Artifacts
-- `delivery-status.md` is the shared progress and handoff surface.
-- `openspec/changes/` holds the executable units of work.
+- An open OpenSpec change holds the state, blockers and next verifiable output of its own work, in its `proposal.md` and `tasks.md`.
+- `engineering/handoff.md` holds them for unfinished work that no change covers.
+- `engineering/decisions/` holds every decision that outlives the change that made it.
 
 ### Planning Discipline
 - The accel phase may not use umbrella proposals. One change must produce one verifiable result.
 - Do not start implementation for uncovered accel scope. Missing proposal coverage means the work is out of bounds.
 - Full GPU string kernels are not a deferred track any more; the change that deferred them was withdrawn on 2026-08-01. A string kernel produces new values, which the result-shape rule below places behind an explicit opt-in rather than in a later phase. Do not reintroduce the deferral.
-- Preserve the fixed architecture defaults unless a new decision is logged in `delivery-status.md`:
+- Preserve the fixed architecture defaults unless a new decision record under `engineering/decisions/` changes them:
   - optional `insyra/accel` package family
   - `CUDA + Metal + WebGPU native`
   - heterogeneous multi-GPU only for shardable columnar operations in v1
   - observable CPU fallback by default, strict GPU-only as opt-in
 
 ### Update Discipline
-- Update `delivery-status.md` after every milestone, blocker, or handoff.
-- Change the named next OpenSpec change when the recommended pickup point changes.
+- After every milestone, blocker, or handoff, update the open change it belongs to, or `engineering/handoff.md` when no change covers it.
+- When the order between changes moves, update what each affected `proposal.md` says it waits for.
+- Write a decision that holds beyond one change as a new record under `engineering/decisions/`.
 - Update this contract only when operating rules change.
 
 ### Accel OpenSpec Rules
@@ -94,7 +99,7 @@ Every accel handoff must include:
 - next OpenSpec change
 - decision delta since previous handoff
 - source links for critical context
-- whether `delivery-status.md` changed
+- which engineering documents changed: the change itself, `engineering/handoff.md`, a decision record, `engineering/architecture.md`
 - whether `AGENTS.md` changed
 
 ### How the CPU and the GPU Divide the Work
@@ -119,7 +124,7 @@ Implementing a selection-shaped operation:
 Two rules follow and are not negotiable:
 
 - **A missing or broken device is a performance event, never a correctness one.** The verification half is a complete implementation, so no device means every row takes the full CPU path — the code that already runs for the untrustworthy rows. Every operation returns its answer whether or not a device ran; `Accelerated` and `FallbackReason` report where the work happened, not whether it worked. The exceptions are a request the caller's own terms made ineligible, and strict GPU mode, which exists to fail.
-- **Do not write a kernel for an operation measurement says the device loses.** Memory-bound work — column sums, means, simple scans — stays on the CPU permanently. Measure before proposing a kernel, and record the number in `delivery-status.md`.
+- **Do not write a kernel for an operation measurement says the device loses.** Memory-bound work — column sums, means, simple scans — stays on the CPU permanently. Measure before proposing a kernel, and record the number in the change that proposes it, or in a decision record when the measurement decides a choice.
 
 ### Implementation Constraints
 - Do not silently reinterpret existing `DataList.Map(func...)` or `DataTable.Map(func...)` as GPU kernels.
@@ -260,6 +265,10 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
   3. Otherwise → `int` with `iota`, the zero value being the documented default.
 
   Every integer enum has `String()`: a known value prints a name, an unknown one prints `TypeName(n)`. An error reports an enum value with `%v`, never `%d`. Moving an existing type to the other side breaks its callers, so a type that breaks the rule is recorded under Follow-ups rather than changed on sight. "A bool stays a bool" above covers a yes/no parameter and says nothing about enums.
+- **A fix is not verified until the test covering it has been shown to fail without it**, and a claim about code is not established until the code has been read. A handoff summary is not a source: a false premise taken from one once reached three commit messages and a review brief.
+- **A test that claims one code path reproduces another compares the two runs, not a transcription of one of them.** f32 arithmetic differs between arm64 and amd64, so recorded digits pin the machine that recorded them; the MNIST sugar proof runs both paths in the same process.
+- **Do not ship a control that provably cannot change the answer.** Measure an option's effect before adding it; a positive-class option for `ROCAUCMetric` was withdrawn because naming the other class swaps the label and the score column, and the two cancel exactly.
+- **The two unmerged legacy branches stay as they are**: `copilot/fix-aa06638c-…` (LINGO `@SUM`/`@FOR` support, its PR #74 closed unmerged) and `lingo-to-lp` (an early LINGO lexer and processor from 2024). The owner ruled on 2026-09-26 to neither delete, archive nor revive them.
 
 ## Docs, Changelog & Skills Must Stay in Sync
 
@@ -587,7 +596,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 
 ### [2026-09-25] — device MatMul's bit-parity rests on behaviour WGSL does not promise
 - **Where**: `accel/internal/wgpu/matmul.go` (`matmulWGSL`), `accel/nn_matmul.go`, and the default-on hook in `nn/device_matmul_wiring.go`
-- **What**: `ENG.md` now defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.
+- **What**: decision record 0014 defines a device float32 result as the correctly rounded value of the exact operation, computed in integers, because WGSL lets an implementation contract, reassociate and flush subnormals. Device MatMul predates that rule: it accumulates `acc + a*b` in `f32` and matches the CPU only because Metal and Go on arm64 both fuse (asserted with `==` on the M3). The same measurement for `EdgeSum` on 2026-09-25 showed Metal fusing exactly like arm64, so today's parity is real, but a conforming implementation that reassociated the loop or flushed a subnormal would break it, and amd64's CPU, which does not fuse, already disagrees with the device.
 - **Suggestion**: move MatMul to the exact rule — each output the correctly rounded exact dot product — on both CPU and device. That changes `nn.MatMul`'s results, which are released, so it waits for the owner; it also costs CPU time that has to be measured against M19's all-core baseline first.
 - **Status**: pending
 
@@ -656,6 +665,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: The library never terminates or panics by default. `LogFatal` records the error and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a `panic` (never `os.Exit`). `SetDontPanic(v)` remains one release as a Deprecated alias for `SetPanicOnError(!v)` so existing callers keep compiling. Shipped in `make-errors-non-terminating` (2026-09-07).
 - **Suggestion**: In the first release after the one that ships `make-errors-non-terminating`, delete `SetDontPanic` and `GetDontPanicStatus`, drop the alias note from `Docs/Configuration.md`, and add a BREAKING changelog entry. Do not let the alias drift into a second release.
 - **Status**: pending
+
+### [2026-08-01] — decision-tree sample weights would need float weights in integer accumulators
+- **Where**: `ml` decision trees, their histogram accumulators
+- **What**: decision record 0020 fixed reduction accumulators as integers so that any split of the work gives the same tree. Tree sample weights would push float weights into those accumulators, which is an architecture decision against that record, not a feature. Cross-validation weights did not need it: `Estimator` gained an optional `FitWeighted`, and `CrossValidateWeighted` subsets weights with each fold's own indices, the way scikit-learn routes `sample_weight` to fit and scores unweighted.
+- **Suggestion**: leave tree weights out until a caller needs them. If one does, decide first how weights are quantised into the fixed-point accumulator, and write that as a new decision record.
+- **Status**: pending (open on purpose)
 
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)

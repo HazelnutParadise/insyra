@@ -12,7 +12,8 @@ import (
 )
 
 // TestRoundedEdgeSumTiming records the device kernels' time on inputs already
-// on the device against nn's all-core CPU path, for delivery-status M36. It
+// on the device against nn's all-core CPU path, for milestone M36
+// (engineering/decisions/0016). It
 // only logs; set INSYRA_ACCEL_TIMING=1 as well to run it.
 func TestRoundedEdgeSumTiming(t *testing.T) {
 	if os.Getenv("INSYRA_ACCEL_GPU_TESTS") != "1" || os.Getenv("INSYRA_ACCEL_TIMING") != "1" {
