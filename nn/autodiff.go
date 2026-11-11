@@ -1147,7 +1147,7 @@ func sigmoidVJP(output, upstream *Tensor) *Tensor {
 // every platform returns RN(upstream · RN(1 − RN(y·y))) under IEEE 754 reproducible
 // evaluation (§11).
 // tanhVJPRounded is tanhVJP in PrecisionFloat32Rounded, where a result that is
-// exactly zero is +0 (ENG.md), the bits accel.RoundedTanhGrad gives on a
+// exactly zero is +0 (engineering/decisions/0014), the bits accel.RoundedTanhGrad gives on a
 // device. Only the last product can be exactly zero with a negative sign under
 // IEEE rules: y*y is never negative and 1 - y*y is +0 when it cancels. A
 // nonzero product that underflows keeps its sign, since it is not exactly zero.
