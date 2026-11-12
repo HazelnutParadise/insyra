@@ -61,12 +61,13 @@ func (c *TWCentralBankClient) OvernightRate(from, to time.Time) (*insyra.DataTab
 // day (float64, percent per year as the central bank publishes them: 0.812
 // means 0.812%). A day without overnight trades, as on some days before the
 // Lunar New Year, has nil rates. The series starts on 1991-10-01. The bank
-// updates it about once a month, so the last month or so may not be there yet.
-// A zero from or to leaves that end open.
+// updates the file about once a month, so its last day is usually one to two
+// months back. A zero from or to leaves that end open. The bank's own monthly
+// and yearly overnight rates are not the plain mean of these days.
 //
-// quant takes a risk-free rate per period as a fraction; for daily returns, one
-// day's rate is math.Pow(1+Rate/100, 1.0/252) - 1, or Rate/100/252 as a simple
-// approximation.
+// quant takes a risk-free rate per period as a fraction. For daily returns,
+// math.Pow(1+Rate/100, 1.0/252) - 1 approximates one trading day's rate; the
+// interbank market accrues interest on the calendar days, Rate/100 × days/365.
 func (c *TWCentralBankClient) OvernightRateContext(ctx context.Context, from, to time.Time) (*insyra.DataTable, error) {
 	from, to, err := c.checkRange(ctx, from, to)
 	if err != nil {
@@ -129,7 +130,8 @@ func (c *TWCentralBankClient) DepositRate(from, to time.Time) (*insyra.DataTable
 //
 // Rate is nil for a month the file does not give all five banks for. Measured on
 // 2026-11-12, the file gave all five through November 2025 and only 臺灣土地銀行
-// after it, so those later months are nil rather than one bank's rate. The
+// after it, so those later months are nil rather than one bank's rate; for
+// recent months, OvernightRate is the series that has them. The
 // series starts in January 2001. A zero from or to leaves that end open; a month
 // is included when its first day is in the range of from's month to to.
 //
@@ -275,5 +277,12 @@ func (c *TWCentralBankClient) download(ctx context.Context, path string) ([][]st
 			records = append(records, row)
 		}
 	})
-	return records, err
+	if err != nil {
+		var final *finalError
+		if errors.As(err, &final) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("datafetch: TWCentralBank %s: %w", path, err)
+	}
+	return records, nil
 }
