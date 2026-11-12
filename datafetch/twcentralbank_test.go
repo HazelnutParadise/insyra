@@ -149,3 +149,33 @@ func TestTWCentralBankFailures(t *testing.T) {
 		t.Errorf("zero client: err = %v", err)
 	}
 }
+
+func TestTWCentralBankDepositRateToMidMonth(t *testing.T) {
+	client, _ := newFixtureTWCentralBank(t, twcbFiveBankPath, twcbFiveBankCSV(
+		"臺灣銀行,11409,,1.0,1.0", "臺灣銀行,11410,,1.0,1.0"))
+	dt, err := client.DepositRate(time.Time{}, dateUTC(2025, time.October, 15))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 2 {
+		t.Errorf("rows = %d, want September and October 2025", dt.NumRows())
+	}
+}
+
+func TestTWCentralBankFileFailures(t *testing.T) {
+	short, _ := newFixtureTWCentralBank(t, twcbFiveBankPath, twcbFiveBankHeader+"臺灣銀行,11409\n")
+	if _, err := short.DepositRate(time.Time{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "fields") {
+		t.Errorf("short row: err = %v", err)
+	}
+	down, transport := newFixtureTWCentralBank(t, twcbOvernightPath, "")
+	for key := range transport.replies {
+		transport.replies[key] = []fixtureReply{{status: http.StatusInternalServerError, body: []byte("down")}}
+	}
+	if _, err := down.OvernightRate(time.Time{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "TWCentralBank") {
+		t.Errorf("HTTP 500: err = %v, want it to name TWCentralBank", err)
+	}
+	empty, _ := newFixtureTWCentralBank(t, twcbOvernightPath, "")
+	if _, err := empty.OvernightRate(time.Time{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Errorf("empty file: err = %v", err)
+	}
+}
