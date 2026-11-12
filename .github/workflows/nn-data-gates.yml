@@ -8,7 +8,8 @@
 # the job, and so does a gate that skipped instead of running.
 #
 # The GPU gates (INSYRA_ACCEL_GPU_TESTS) are deliberately not here: no hosted
-# runner has a GPU. They are run by hand, and ENG.md says where and how.
+# runner has a GPU. They are run by hand, and engineering/architecture.md says
+# where and how.
 
 name: Neural Network Data Gates
 
