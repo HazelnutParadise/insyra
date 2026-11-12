@@ -2,9 +2,7 @@
 
 ## Purpose
 Packaged training entry on Sequential: deterministic, progress-reporting, optimizer- and loss-selecting, bit-identical to the hand-written loop it wraps. Created by archiving change add-nn-sequential-fit.
-
 ## Requirements
-
 ### Requirement: Fit trains a Sequential deterministically and visibly
 `Sequential.Fit` SHALL train with epochs, batch size, seeded deterministic shuffling, an explicitly selected existing optimizer and loss, and optional validation tensors; SHALL refuse a config with no loss or no optimizer rather than defaulting one; SHALL emit one info-level progress line per epoch through the root logger unless silenced, with a callback receiving the same numbers when provided; and the same inputs, config, and seed SHALL produce the same parameter trajectory.
 
@@ -30,7 +28,7 @@ Packaged training entry on Sequential: deterministic, progress-reporting, optimi
 - **THEN** Fit returns an error naming the missing selection instead of guessing
 
 ### Requirement: Fit is sugar that changes nothing
-A Fit call configured to match the documented hand-written tape loop — same seed, same batch walk, same optimizer and loss — SHALL reproduce that loop's loss sequence to the last digit, extending the ENG.md sugar-changes-nothing gate to Fit.
+A Fit call configured to match the documented hand-written tape loop — same seed, same batch walk, same optimizer and loss — SHALL reproduce that loop's loss sequence to the last digit, extending the sugar-changes-nothing gate in `engineering/architecture.md` to Fit.
 
 #### Scenario: Digit-for-digit parity with the hand loop
 
@@ -122,3 +120,4 @@ A Fit call configured to match the documented hand-written tape loop — same se
 #### Scenario: A nil context
 - **WHEN** 以 nil context 呼叫 `FitContext`
 - **THEN** 回傳錯誤，參數不變
+

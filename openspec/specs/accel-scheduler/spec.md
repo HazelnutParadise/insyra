@@ -2,7 +2,6 @@
 
 ## Purpose
 How work is split across several GPUs: only shardable columnar operations are eligible, shards are weighted by each device's capability and merged in a fixed order, and multi-device execution starts only past a measured saturation point, under strict or automatic mode.
-
 ## Requirements
 ### Requirement: Shardable workload policy
 The system SHALL define a bounded set of shardable workload classes for v1 multi-device execution.
@@ -37,7 +36,6 @@ The system SHALL distinguish strict GPU execution from automatic fallback execut
 - **WHEN** the workload is unsupported or not profitable for acceleration
 - **THEN** the runtime may fall back to CPU and records the fallback outcome for reporting
 
-
 ### Requirement: Multi-device execution is gated on a measured saturation point
 The system SHALL NOT dispatch one operation across multiple devices until a recorded measurement shows a workload shape where a single device's wall time scales with the sharded axis, and the recorded saturation point SHALL be the number that opens or parks that work.
 
@@ -50,7 +48,7 @@ The system SHALL NOT dispatch one operation across multiple devices until a reco
 #### Scenario: The decision is written where planners look
 
 - **WHEN** the measurement completes
-- **THEN** `delivery-status.md` carries the curve and the resulting decision, and the `AGENTS.md` multi-GPU follow-up reflects the measured answer instead of the measurement's absence
+- **THEN** a record under `engineering/decisions/` carries the curve and the resulting decision, and the `AGENTS.md` multi-GPU follow-up reflects the measured answer instead of the measurement's absence
 
 ### Requirement: Shard plans execute across devices under an explicit strategy
 The system SHALL execute a shard plan's assignments across the eligible devices under a strategy of `single`, `auto`, or `forced`; `auto` SHALL shard only when every assignment stays at or above the recorded saturation point; results SHALL be bit-identical to single-device execution under every strategy; and each assignment's placement SHALL be observable in the execution result.
@@ -84,3 +82,4 @@ The system SHALL execute a shard plan's assignments across the eligible devices 
 
 - **WHEN** the documentation describes multi-device execution
 - **THEN** it states that correctness is verified on single-device hardware and that no multi-GPU wall-clock measurement exists yet, under the standing hardware-coverage follow-up
+

@@ -21,3 +21,5 @@ Someone who wants to analyse data with Insyra, or run their own Go analysis prog
 ## Impact
 
 `Dockerfile`, `.dockerignore`, `.github/workflows/container.yml`, `Docs/container.md`, `Docs/README.md`, `README.md`, `README_TW.md`, `AGENTS.md`, both CHANGELOGs. No Go code changes.
+
+Blocked by: none. Its last two tasks wait for the first release after it merges and for a Linux host with a GPU.
