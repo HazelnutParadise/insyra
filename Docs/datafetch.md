@@ -878,6 +878,38 @@ recent, err := tf.InstitutionalFuturesHistory(time.Now().AddDate(-3, 0, 7), time
 // recent holds every contract; keep the rows whose Contract is "臺股期貨" before joining.
 ```
 
+## Central Bank of the Republic of China (Taiwan) (TWCentralBank)
+
+```go
+cb, err := datafetch.TWCentralBank(datafetch.TWStockConfig{})
+overnight, err := cb.OvernightRate(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC), time.Time{})
+deposit, err := cb.DepositRate(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC), time.Time{})
+```
+
+`TWCentralBank` reads two Taiwan risk-free rates from the central bank's open data (`www.cbc.gov.tw`), which needs no key, for excess returns, Sharpe ratios and futures-plus-cash strategies. It takes the same settings as `TWStock`. A `TWCentralBankClient` that did not come from `TWCentralBank`, such as a zero value, returns an error from every method. Each method has a `...Context` form.
+
+```go
+OvernightRate(from, to time.Time) (*insyra.DataTable, error)
+DepositRate(from, to time.Time) (*insyra.DataTable, error)
+```
+
+| Method | Columns |
+| :--- | :--- |
+| `OvernightRate` | `Date` (`time.Time`), `Rate`, `High`, `Low` (`float64`, percent per year): the interbank overnight call-loan rate (金融業隔夜拆款利率), its weighted average and the highest and lowest rate traded that day, daily from 1991-10-01 |
+| `DepositRate` | `Month` (`time.Time`, the first day of the month), `Rate` (`float64`, percent per year): the five major banks' average posted one-year fixed-rate time deposit rate (五大銀行一年期定存牌告利率), monthly from January 2001 |
+
+Rates are percent per year as the bank publishes them: `1.7` means 1.7%. A day without overnight trades, as on some days before the Lunar New Year, has `nil` rates. Each call downloads the whole file (about 1.4 MB and 260 KB) and keeps the days or months in `[from, to]`; a zero `from` or `to` leaves that end open, and a month is kept when its first day falls between `from`'s month and `to`.
+
+`DepositRate` is the mean of the five banks' `定存利率-一年期-固定` in the bank's five-bank file (data.gov.tw dataset 10359), the banks the bank names: 臺灣銀行, 合作金庫, 第一銀行, 華南銀行 and 彰化銀行 to October 2008, then 臺灣土地銀行 in place of 彰化銀行. The bank's own year-end 一年期存款牌告利率 is this mean rounded to two decimals. A month for which the file does not have all five banks has a `nil` rate rather than the mean of fewer: measured on 2026-11-12, the file had all five only through November 2025 and 臺灣土地銀行 alone after it. The overnight file (dataset 10808) is updated about once a month, so the last month or so is often not there yet.
+
+`quant` takes a risk-free rate per period as a fraction. For daily returns use `math.Pow(1+rate/100, 1.0/252) - 1` (or `rate/100/252`), for monthly returns `rate/100/12`:
+
+```go
+row := overnight.GetRow(overnight.NumRows() - 1).Data()
+daily := math.Pow(1+row[1].(float64)/100, 1.0/252) - 1
+sharpe, err := quant.SharpeRatio(returns, daily, 252)
+```
+
 ## FinMind
 
 ```go
