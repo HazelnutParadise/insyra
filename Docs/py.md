@@ -416,7 +416,9 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
 
 An empty DataFrame, such as the result of a filter that matched no rows, comes back as a table with no rows and the DataFrame's column names.
 
-A NaN, `inf` or `-inf` in the result, such as a missing value in a DataFrame, comes back as `math.NaN()`, `math.Inf(1)` or `math.Inf(-1)`: in a table or list cell, a float field, a slice, array or map value, or anything decoded into `any`. Python's `None` comes back as `nil`, so `ClearNaNs`, `ClearNils` and the other methods that tell the two apart work on the result as on any other list. A NaN for a type that cannot hold one, such as `int`, is an error.
+A NaN, `inf` or `-inf` in the result, such as a missing value in a NumPy-backed pandas column, comes back as `math.NaN()`, `math.Inf(1)` or `math.Inf(-1)`: in a table or list cell, a float field, a slice, array or map value, or anything decoded into `any`. Python's `None` comes back as `nil`, so `ClearNaNs`, `ClearNils` and the other methods that tell the two apart work on the result as on any other list. A NaN for a type that cannot hold one, such as `int`, is an error.
+
+A DataFrame is sent column by column, and a missing value keeps its own kind: a polars null and a pandas `pd.NA` (in `Int64`, `boolean`, `string` and the other nullable dtypes) come back as `nil`, while a NaN polars holds as a value and the NaN pandas uses for a missing value in a NumPy column come back as NaN. A list cell of a polars DataFrame comes back as a slice and a struct cell as a map, as they do from a polars Series. Dates, times and decimals cannot be sent; convert them in Python first, such as with `.cast(pl.String)` in polars or `.astype(str)` in pandas.
 
 A result the Go side cannot read, such as an integer too large for a float64 (`10**400`), makes the call return an error that says why, and `insyra.Return` raises in Python. Code that catches that exception and returns another value gets that value back instead.
 
