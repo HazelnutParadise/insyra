@@ -1,6 +1,6 @@
 # 0029 — A resident recurrent step pays only when its edge sums dominate
 
-**Status:** accepted
+**Status:** superseded by 0030 (its measurements; the decision stands)
 **Date:** 2026-11-14
 
 ## Context

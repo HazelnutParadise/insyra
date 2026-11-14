@@ -97,6 +97,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 在裝置上建立第一個常駐緩衝區時，就會在背景先編譯 Insyra 的 GPU kernel，第一次在裝置上跑 `nn` 不用再一個個等 kernel 編譯（冷快取時每個 40 毫秒到 1.8 秒）（[#584](https://github.com/HazelnutParadise/insyra/issues/584)）。
 - 新增 `accel.NewDeviceEdgeTopology`、`RoundedEdgeSum`、`RoundedEdgeSumGradValues`、`RoundedEdgeSumGradWeights`，在常駐 GPU 的資料上沿著邊加總，每個結果都是精確總和捨入一次。
 - 新增 `accel.RoundedTanh`，在常駐 GPU 的陣列上計算 `tanh`，每個 float32 輸入的結果都和主機上 `nn.Tanh` 逐位元相同。
+- GPU 上的 `tanh`（`accel.RoundedTanh`，以及常駐張量上的 `Tape.Tanh`）快了大約 90 倍：在 Apple M3 上，1677 萬個值從 2.85 秒變成 31 毫秒。現在幾乎所有輸入都用 64 位元整數運算算完，只有幾百個太靠近捨入邊界的輸入改走原本的 128 位元算法，所以每個結果仍然和主機上 `nn.Tanh` 逐位元相同。
 - 新增 `accel.RoundedTanhGrad`，在常駐 GPU 的資料上由 `tanh` 的輸出與上游梯度算出梯度，位元和 `nn` 在 `PrecisionFloat32Rounded` 下於 CPU 算的相同。
 - 在 Windows 上，對常駐 GPU 的大陣列做逐元素運算不會再讓裝置遺失：`tanh`、`exp`、`log`、`expm1`、`log1p`、加法、除法、平方根，以及 `SGD`、`Adam` 的更新，現在分成多次送出，定點數函式每次最多 262,144 個元素，其他最多 2,097,152 個，每次都是獨立的提交。在 Apple M3 上，1677 萬個元素的 `tanh` 一次要 2.85 秒，超過 Windows 約 2 秒就重置 GPU 的上限；在 GT 1030 上，這種大小的張量做一步訓練會回傳 `ErrDeviceLost`。結果不變。
 
