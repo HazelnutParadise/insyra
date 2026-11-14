@@ -311,12 +311,6 @@ A skill is installed into an agent's environment and outlives the version it cam
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-11-14] — the device `tanh` is what makes a resident recurrent step lose
-- **Where**: `accel/internal/wgpu/fixed_math.go` `tanh_rounded`, reached by `accel.RoundedTanh` and `Tape.Tanh` on resident tensors
-- **What**: record 0029: on the M3 the 128-bit fixed-point `tanh` takes about 0.17 µs per element (2.85 s for 2^24), so it is nearly all of a resident recurrent step at in-degree 10, and the step beats the host only at in-degree 100. `EdgeSum` alone is 3 to 7 times faster on the M3 GPU than on 8 cores at 100,000 nodes and more.
-- **Suggestion**: a cheaper exact scheme, as the host does: an `f32`-pair or integer approximation with a proven error bound that settles most inputs, and the fixed-point path only for the inputs it cannot settle. It must still equal `nn.Tanh` on all 2^32 inputs. This is research rather than tuning, so it needs the owner's go-ahead.
-- **Status**: pending
-
 ### [2026-11-07] — the cross-entropy kernels still run each array in one launch
 - **Where**: `accel/internal/wgpu/softmax_ce.go`, `accel/internal/wgpu/soft_ce.go`
 - **What**: Windows resets a GPU whose dispatch runs about two seconds. `accel-split-elementwise-launches` split the elementwise resident kernels in `resident_kernels.go` into bounded launches after a GT 1030 lost the device on a 16.8-million-element `tanh`, but the cross-entropy kernels were left whole: their per-element kernels (`rounded-ce-exp`, `rounded-soft-u`, the distillation ones) run the fixed-point exp or log over `rows × classes` in one launch, and their per-row kernels loop over every class in one invocation. On the M3 the fixed-point `exp` takes 1.40 s for 2^24 elements, so a batch of 1,024 rows over a 16,000-class vocabulary is already near the limit on a card a few times slower. Not measured on a large vocabulary.

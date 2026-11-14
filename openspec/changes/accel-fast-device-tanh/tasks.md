@@ -5,9 +5,9 @@
 ## 2. Verification
 
 - [x] 2.1 The model's error bound against a 600-bit oracle and its fallback count over every positive input
-- [ ] 2.2 The device equals `nn.Tanh` on all 2^32 inputs on the M3 and the GT 1030
-- [ ] 2.3 The device `tanh` and `TestRecurrentStepTiming` re-measured on the M3
+- [x] 2.2 The device equals `nn.Tanh` on all 2^32 inputs on the M3 and the GT 1030
+- [x] 2.3 The device `tanh` and `TestRecurrentStepTiming` re-measured on the M3
 
 ## 3. Docs
 
-- [ ] 3.1 Both changelogs, the `AGENTS.md` follow-up resolved, the measurement in `engineering/`
+- [x] 3.1 Both changelogs, the `AGENTS.md` follow-up resolved, the measurement in record 0030
