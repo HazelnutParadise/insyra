@@ -164,7 +164,7 @@ func (m *Manager) readState(envName string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(filepath.Join(envPath, "state.json"))
+	raw, err := readStateRetrying(filepath.Join(envPath, "state.json"))
 	if err != nil {
 		return nil, err
 	}
