@@ -54,6 +54,12 @@ type FinMindConfig struct {
 type FinMindClient struct {
 	base    *TWStockClient
 	baseURL string
+
+	// namesLock, a channel of one, guards names, the contract names read by
+	// contractName; a channel so that a caller waiting for it can give up when
+	// its context is done.
+	namesLock chan struct{}
+	names     map[string]string
 }
 
 // FinMind creates a client for the FinMind v4 data API.
@@ -68,7 +74,7 @@ func FinMind(cfg FinMindConfig) (*FinMindClient, error) {
 	if cfg.Token != "" {
 		base.headers = map[string]string{"Authorization": "Bearer " + cfg.Token}
 	}
-	return &FinMindClient{base: base, baseURL: "https://api.finmindtrade.com"}, nil
+	return &FinMindClient{base: base, baseURL: "https://api.finmindtrade.com", namesLock: make(chan struct{}, 1)}, nil
 }
 
 var errFinMindNotCreated = errors.New("datafetch: FinMindClient was not created with FinMind")
@@ -107,6 +113,16 @@ func (c *FinMindClient) DatasetContext(ctx context.Context, name, dataID string,
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("datafetch: FinMind dataset name is empty")
 	}
+	columns, rows, err := c.rows(ctx, name, dataID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	return finMindTable(columns, rows), nil
+}
+
+// rows requests a dataset and returns its columns, in the order FinMind sends
+// them, and its rows.
+func (c *FinMindClient) rows(ctx context.Context, name, dataID string, from, to time.Time) ([]string, []map[string]any, error) {
 	values := url.Values{"dataset": {name}}
 	if dataID != "" {
 		values.Set("data_id", dataID)
@@ -142,9 +158,9 @@ func (c *FinMindClient) DatasetContext(ctx context.Context, name, dataID string,
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return finMindTable(columns, rows), nil
+	return columns, rows, nil
 }
 
 // parseFinMind reads the envelope {"msg", "status", "data": [...]} and the rows
