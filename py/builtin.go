@@ -38,6 +38,33 @@ class insyra:
 	_TYPE_SERIES = "%s"
 
 	@staticmethod
+	def _pandas_values(col):
+		# A nullable dtype such as Int64, boolean or string marks a missing
+		# value with pd.NA, which json cannot write, and to_numpy turns its
+		# integers into floats. Its own values keep them, and pd.NA is sent as
+		# None. A NumPy column keeps to_numpy, where a missing value is NaN as
+		# it is in pandas.
+		if isinstance(col.dtype, pd.api.extensions.ExtensionDtype):
+			return [None if v is pd.NA else v for v in col.tolist()]
+		return col.to_numpy().tolist()
+
+	@staticmethod
+	def _pandas_rows(df):
+		if len(df.columns) == 0:
+			return df.to_numpy().tolist()
+		return [list(row) for row in zip(*(insyra._pandas_values(df.iloc[:, i]) for i in range(len(df.columns))))]
+
+	@staticmethod
+	def _polars_rows(df):
+		# to_list keeps polars' own values: a null is None rather than NaN, and
+		# a list or struct cell is a list or a dict, as for a polars Series.
+		# to_numpy turned a null into NaN and a list cell into an array json
+		# cannot write.
+		if df.width == 0:
+			return df.to_numpy().tolist()
+		return [list(row) for row in zip(*(s.to_list() for s in df.get_columns()))]
+
+	@staticmethod
 	def _normalize_result(result):
 		if result is None:
 			return None
@@ -45,7 +72,7 @@ class insyra:
 		if isinstance(result, pd.DataFrame):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATATABLE,
-				insyra._DATA_KEY: result.to_numpy().tolist(),
+				insyra._DATA_KEY: insyra._pandas_rows(result),
 				insyra._COLUMNS_KEY: [str(c) for c in result.columns],
 				insyra._INDEX_KEY: [str(i) for i in result.index],
 			}
@@ -64,7 +91,7 @@ class insyra:
 		if isinstance(result, pd.Series):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATALIST,
-				insyra._DATA_KEY: result.tolist(),
+				insyra._DATA_KEY: insyra._pandas_values(result) if isinstance(result.dtype, pd.api.extensions.ExtensionDtype) else result.tolist(),
 			}
 			name_value = result.name
 			if name_value is not None:
@@ -74,7 +101,7 @@ class insyra:
 		if isinstance(result, pl.DataFrame):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATATABLE,
-				insyra._DATA_KEY: result.to_numpy().tolist(),
+				insyra._DATA_KEY: insyra._polars_rows(result),
 				insyra._COLUMNS_KEY: [str(c) for c in result.columns],
 			}
 			name_value = getattr(result, "name", None)

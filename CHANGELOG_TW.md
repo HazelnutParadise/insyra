@@ -115,6 +115,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `datafetch.NYT(NYTConfig{APIKey: key})` 透過 `Archive` 與 `ArchiveContext` 讀取紐約時報每月文章的 id、標題、摘要、首段、版別、部門、文章類型、字數與發布時間，並提供保守的請求間隔、每分鐘限制的重試、取消功能；每日額度用完時回傳 `NYTQuotaError`，其中的 `RetryAt` 是可以再試的時間，Context 的期限夠長時會自動等到那時（[#460](https://github.com/HazelnutParadise/insyra/issues/460)）。
 - `TWStock` 的 `DailyPrices` 與 `DailyPricesAdjusted` 遇到證交所拒絕查詢的日期時會明說：區間早於 2010 年 1 月（證交所日價從 2010-01-04 起）或晚於當月時，回傳的錯誤可用 `errors.Is(err, datafetch.ErrTWStockRefused)` 比對，訊息寫出股票代號與被拒絕的月份，也不再重試；其他 `TWStock` 方法收到同樣的回應時也會符合 `ErrTWStockRefused`，同樣不再重試。`TWMarketAuto` 遇到這種月份會改查櫃買中心；櫃買中心約 2025 年以前的月份成交量欄名是「成交仟股」，現在也讀得到，不再因 `required header "成交張數" is missing` 失敗（[#688](https://github.com/HazelnutParadise/insyra/issues/688)）。
 
+### `py`
+- **BREAKING（行為）**：回傳的 polars DataFrame 裡的缺值，以及 pandas 的 `pd.NA`，現在會變成 `nil`。過去 polars 和 pandas 會先把整個 DataFrame 轉成 NumPy，而 NumPy 沒有可以缺值的整數，所以 polars 任何欄位的 null 都回成 `NaN`，和單獨回傳同一個 polars Series 時不一樣。polars 的 list、struct 欄位，以及含 `pd.NA` 的 pandas `boolean`、`string` 欄位、`Int64` Series，或旁邊還有其他欄位的 `Int64` 欄位，過去會讓 `insyra.Return` 出錯，struct 欄位則會變成一串浮點數，現在分別回成 slice、map 和 `nil`。polars 本身存的 NaN 值，以及 NumPy 型別 pandas 欄位裡的 NaN，仍然回成 NaN。原本用 `ClearNaNs` 清掉這些值的地方，改用 `ClearNils`。
+
 ### 容器映像
 
 - 每次發版都會發佈容器映像 `ghcr.io/hazelnutparadise/insyra:<版號>`，支援 `linux/amd64` 與 `linux/arm64`：以 Go 官方映像為底，預裝該版本的 `insyra` CLI，並附 Vulkan loader 與驅動，讓 `accel` 能用宿主機的 GPU（Linux 上 NVIDIA 用 `--gpus all`，AMD、Intel 用 `--device /dev/dri`）。`0.3` 與 `latest` 依版號指向最高的正式版。詳見 [Docs/container.md](Docs/container.md)。
