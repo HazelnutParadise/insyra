@@ -42,6 +42,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
 - `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變。`isr.Name` 現在回傳同一個型別（`isr.NameSelector` 是 `insyra.NameSelector` 的別名），與 0.4 相同，兩者在 `isr` 和 `arrowipc` 都能用。
 
+### CLI
+
+- 修正 Windows 上另一個指令正好在存同一個環境時，這個指令會遺失變數的問題。新的 `state.json` 正在換上去的那一刻，Windows 不讓別人開啟它，指令就會停下來並顯示「程序無法存取檔案，因為檔案正由另一個程序使用」；現在讀取會重試最多兩秒，跟存檔時重試改名一樣。
+
 ### `ml` 與 `nn`
 
 - `nn.NewTape` 呼叫時不再立刻為 `math/rand` 建立種子來源，改在第一次有東西從 tape 抽亂數時才建立（`Dropout`、層的隨機初始化）。從不抽亂數的 tape 在 M3 上量測從 13–34 µs、5.7 KB 降到約 0.15–0.65 µs、304 B。每個種子（包括預設種子與零值 `Tape{}`）產生的遮罩與初始權重都和以前相同。（[#536](https://github.com/HazelnutParadise/insyra/issues/536)）

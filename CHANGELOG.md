@@ -42,6 +42,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `CEIL` and `FLOOR` take an optional positive multiple: `CEIL(12, 5)` is 15 and `FLOOR(12, 5)` is 10. `AVERAGE`, `POWER`, `CEILING`, `REPT` and other Excel names CCL spells differently now say which name to write.
 - `insyra.Name("price")` marks a column selector as a name rather than an Excel-style index, the 0.4 selector rule. `arrowipc.ReadOptions.Columns` takes it; other selectors on this line are unchanged. `isr.Name` now returns the same type (`isr.NameSelector` is an alias of `insyra.NameSelector`), as on 0.4, so either works in `isr` and in `arrowipc`.
 
+### CLI
+
+- Fixed a command losing a variable on Windows when another command saves the same environment at that moment. Windows refuses to open `state.json` while a new one is being renamed over it, and the command stopped with "the process cannot access the file because it is being used by another process"; it now retries the read for up to two seconds, as the save already retries the rename.
+
 ### `ml` and `nn`
 
 - `nn.NewTape` no longer seeds a `math/rand` source when it is called; the tape seeds it the first time something draws from it (`Dropout`, a layer's random initialisation). A tape that never draws costs about 0.15–0.65 µs and 304 B instead of 13–34 µs and 5.7 KB, measured on an M3. Masks and initial weights are the same values as before for every seed, including the default one and a zero `Tape{}`. ([#536](https://github.com/HazelnutParadise/insyra/issues/536))

@@ -37,3 +37,27 @@ func TestReplaceFileReportsAnErrorThatIsNotAShare(t *testing.T) {
 		t.Error("want an error for a missing source")
 	}
 }
+
+// readStateRetrying reads an existing file and reports a missing one at once. The
+// retry on a Windows sharing violation cannot be provoked off Windows; the
+// Windows CI job running TestConcurrentSavesNeverLoseAVariable is the check.
+func TestReadStateRetryingReadsAndReportsAMissingFile(t *testing.T) {
+	oldOS := renameRetryOS
+	renameRetryOS = "windows"
+	defer func() { renameRetryOS = oldOS }()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readStateRetrying(path); err != nil || string(got) != "{}" {
+		t.Fatalf("readStateRetrying = %q, %v", got, err)
+	}
+	start := time.Now()
+	if _, err := readStateRetrying(filepath.Join(dir, "missing.json")); !os.IsNotExist(err) {
+		t.Fatalf("a missing file: %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Error("a missing file was retried")
+	}
+}
