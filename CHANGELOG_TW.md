@@ -446,6 +446,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - Python 現在能在 Windows arm64 上執行。uv 在那裡裝的是 x86-64 的 Python，由 Windows 模擬執行；polars 的 CPU 檢查把機器讀成 ARM64，在每段程式開頭的 `import polars` 拋出 `unknown feature flag`，所以每次執行都失敗。產生的程式現在會在 ARM64 Windows 上的 x86-64 Python 設定 `POLARS_SKIP_CPU_CHECK=1`，已經設過這個變數時不動它。
 - 支援 Alpine 這類 musl Linux。uv 在那裡會裝 musl 版的 CPython，而 PyPI 沒有 `scikit-learn` 的 musllinux wheel，arm64 上也沒有 `matplotlib` 與 `statsmodels` 的，所以建環境時會從原始碼編譯這些套件，請先裝好 C 與 C++ 編譯器（`apk add build-base`）。這個版本稍早釘版的編譯工具不符合 `scikit-learn` 的編譯需求，原本在那裡根本建不起來；現在改成每個需要編譯的套件都接受的 12 個工具。CI 會在 amd64 與 arm64 的 Alpine 上建環境並執行 Python。
 - IPC 伺服器的 accept 迴圈停止後才開始的執行，會開一個新的伺服器，不會拿到舊伺服器的位址。結果欄位名稱改用 `strings.EqualFold` 比對，和 `encoding/json` 相同。
+- **BREAKING（行為）**：回傳的 polars DataFrame 裡的缺值，以及 pandas 的 `pd.NA`，現在會變成 `nil`，所在欄位的整數也保持原樣。過去 polars 和 pandas 會先把這種欄位轉成 NumPy，而 NumPy 沒有可以缺值的整數，所以 `[2**53 + 1, None]` 回來變成 `[9007199254740992, NaN]`，polars 任何欄位的 null 也都回成 `NaN`，和單獨回傳同一個 polars Series 時不一樣。polars 的 list、struct 欄位，以及含 `pd.NA` 的 pandas `boolean`、`string` 欄位或 `Int64` Series，過去會讓 `insyra.Return` 直接出錯，現在分別回成 slice、map 和 `nil`。polars 本身存的 NaN 值，以及 NumPy 型別 pandas 欄位裡的 NaN，仍然回成 NaN。原本用 `ClearNaNs` 清掉這些值的地方，改用 `ClearNils`。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

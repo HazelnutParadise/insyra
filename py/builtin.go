@@ -44,13 +44,28 @@ class insyra:
 		# rounds a large id.
 		if len(df.columns) == 0:
 			return df.to_numpy().tolist()
-		return [list(row) for row in zip(*(df.iloc[:, i].to_numpy().tolist() for i in range(len(df.columns))))]
+		return [list(row) for row in zip(*(insyra._pandas_values(df.iloc[:, i]) for i in range(len(df.columns))))]
+
+	@staticmethod
+	def _pandas_values(col):
+		# A nullable dtype such as Int64, boolean or string marks a missing
+		# value with pd.NA, which json cannot write, and to_numpy turns its
+		# integers into floats, which rounds a large id. Its own values keep
+		# every integer, and pd.NA is sent as None. A NumPy column keeps
+		# to_numpy, where a missing value is NaN as it is in pandas.
+		if isinstance(col.dtype, pd.api.extensions.ExtensionDtype):
+			return [None if v is pd.NA else v for v in col.tolist()]
+		return col.to_numpy().tolist()
 
 	@staticmethod
 	def _polars_rows(df):
+		# to_list keeps polars' own values: an integer column with nulls stays
+		# integers, a null is None rather than NaN, and a list or struct cell
+		# is a list or a dict, as for a polars Series. to_numpy turned the
+		# first two into floats and the last into arrays json cannot write.
 		if df.width == 0:
 			return df.to_numpy().tolist()
-		return [list(row) for row in zip(*(s.to_numpy().tolist() for s in df.get_columns()))]
+		return [list(row) for row in zip(*(s.to_list() for s in df.get_columns()))]
 
 	@staticmethod
 	def _normalize_result(result):
@@ -74,7 +89,7 @@ class insyra:
 		if isinstance(result, pd.Series):
 			payload = {
 				insyra._TYPE_KEY: insyra._TYPE_DATALIST,
-				insyra._DATA_KEY: result.tolist(),
+				insyra._DATA_KEY: insyra._pandas_values(result) if isinstance(result.dtype, pd.api.extensions.ExtensionDtype) else result.tolist(),
 			}
 			name_value = result.name
 			if name_value is not None:
