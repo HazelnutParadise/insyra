@@ -108,7 +108,11 @@ func fixedLibrary() string {
 		for _, d := range append(append([][8]uint32{digits(ln2)}, expC...), atC...) {
 			fixedWords = append(fixedWords, d[:]...)
 		}
-		fixedSrc = fixedBody + fixedFunctions
+		// Then, from word fastTanhConstBase, the fast tanh's ln 2 / 64 at
+		// scale 2^70 and its 64 table entries 2^(-j/64) at scale 2^58, each a
+		// 64-bit value as its low and high words.
+		fixedWords = append(fixedWords, fastTanhConstants(ln2, prec)...)
+		fixedSrc = fixedBody + fixedFunctions + fastTanhWGSL
 	})
 	return fixedSrc
 }
@@ -631,6 +635,12 @@ fn tanh_rounded(x: u32) -> u32 {
     }
     if (ax >= 0x41180000u) {
         return sign | 0x3f800000u;
+    }
+    // The 64-bit path settles all but a few hundred inputs; those near a
+    // rounding midpoint come back as 0 and take the 128-bit path below.
+    let fast = tanh_fast(ax);
+    if (fast != 0u) {
+        return sign | fast;
     }
     let ex = exp_reduce(ax + 0x800000u, true);
     let e = fx_shr(ex.p, u32(-ex.k));
