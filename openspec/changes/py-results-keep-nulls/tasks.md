@@ -7,7 +7,7 @@
 ## 2. 實作
 
 - [x] 2.1 `py/builtin.go`：pandas 與 polars DataFrame 改為逐欄送出，polars 欄位用 `to_list()`；pandas 擴充型別的欄位與 Series 用自身的值，`pd.NA` 送成 `None`
-- [ ] 2.2 以真的環境跑 1.1
+- [x] 2.2 以真的環境跑 1.1
 
 ## 3. 文件與紀錄
 
@@ -16,4 +16,4 @@
 
 ## 4. 驗證
 
-- [ ] 4.1 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate py-results-keep-nulls --strict`
+- [x] 4.1 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate py-results-keep-nulls --strict`
