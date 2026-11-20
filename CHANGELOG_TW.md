@@ -6,14 +6,6 @@ v0.3.0 及更早的版本不重複收錄於此，請見 [GitHub Releases](https:
 
 English: [CHANGELOG.md](CHANGELOG.md)
 
-- `Tape.Custom` 現在接受裝置上的張量，所以你自己的 kernel 可以夾在 Insyra 的常駐運算之間並參與反向傳播，資料全程不離開裝置。tape 必須使用新的 `accel.PrecisionFloat32` 模式，`SetPrecision` 現在接受它：所有內建運算的計算方式與 `PrecisionFloat32Rounded` 相同，但因為你的 kernel 結果取決於裝置，tape 不再保證換一個裝置仍得到相同的位元。常駐的輸出與反向規則回傳的梯度由 tape 擁有，並在 `Clear` 時釋放。`Tensor.DeviceBuffer()` 把常駐張量的緩衝區借給 kernel，`nn.NewDeviceTensor(shape, buffer)` 則把 kernel 寫好的緩衝區包成擁有它的張量（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
-
-### `accel`
-
-- `accel.NewKernel`、`Kernel.Bind` 與 `accel.Submit` 可以在 Insyra 張量所在的常駐 `DeviceBuffer` 上執行你自己的 WGSL compute shader，綁定配置與 Insyra 內建 kernel 相同：先是唯讀緩衝區，再來是可讀寫緩衝區，最後是 64 位元組的 uniform。`Bind` 只建一次 bind group，`Submit` 重複使用，每個 dispatch 的參數透過 dynamic offset 從共用的環形緩衝區讀取，所以每次啟動都不需要配置新物件。`Submit` 把所有 dispatch 依序放進同一次提交，並和 Insyra 的常駐運算共用一條佇列，因此兩者之間不需要同步；在 Apple M3 上，168 個 dispatch 一次 `Submit` 花 3.7 毫秒，分成 168 次呼叫則花 23.8 毫秒。`accel.ResidentLimits()` 回報裝置的緩衝區、workgroup 與大小上限，`accel.NewBitsBuffer` 與 `DeviceBuffer.BitsToHost` 能原封不動地搬移索引等 32 位元樣式，`DeviceBuffer.Write`、`WriteBits` 與 `Zero` 會先等前面的 kernel 做完，再就地覆寫緩衝區。Insyra 無法檢查你自己的 kernel，而且 Vulkan 後端不會夾住超出緩衝區尾端的寫入，請自行檢查索引（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
-
-- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
-
 ## Unreleased
 
 ### Core
@@ -245,6 +237,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `Tape.EdgeSum` 可以在 GPU 上跑：用新的 `EdgeTopology.To` 把邊結構搬上去（用完以 `Release` 釋放），輸出和兩個梯度都留在 GPU 上，位元跟 CPU 相同。
 - 新增 `nn.SaveEdgeTopology` 與 `nn.LoadEdgeTopology`，把 `EdgeTopology` 存成有版本的 SafeTensors 檔再讀回來；`EdgeTopology.Equal` 比較兩個邊結構的邊和順序是否完全相同。這樣權重、狀態和 Adam 動量都在 GPU 上的稀疏遞迴網路，可以在新程式裡接著跑，結果逐位元一致。讀檔時先檢查版本、各欄位形狀和每個索引，全部正確才建立物件；GPU 上的邊結構存檔時不需要從 GPU 讀回資料。
 - `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度剛好等於零時現在是 `+0`，和這個模式其他剛好為零的結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號；小到捨入成零的梯度保留原本的正負號。預設的 tape 不變。
+- `Tape.Custom` 現在接受裝置上的張量，所以你自己的 kernel 可以夾在 Insyra 的常駐運算之間並參與反向傳播，資料全程不離開裝置。tape 必須使用新的 `accel.PrecisionFloat32` 模式，`SetPrecision` 現在接受它：所有內建運算的計算方式與 `PrecisionFloat32Rounded` 相同，但因為你的 kernel 結果取決於裝置，tape 不再保證換一個裝置仍得到相同的位元。常駐的輸出與反向規則回傳的梯度由 tape 擁有，並在 `Clear` 時釋放。`Tensor.DeviceBuffer()` 把常駐張量的緩衝區借給 kernel，`nn.NewDeviceTensor(shape, buffer)` 則把 kernel 寫好的緩衝區包成擁有它的張量（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
 
 ### `datafetch`
 - 檔案版 geocode 快取（`NewFileGeocodeCache`）改為先寫暫存檔再 rename，寫入中斷不再留下損壞、下次執行被靜默丟棄的快取檔。
@@ -470,6 +463,8 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - GPU 上的 `tanh`（`accel.RoundedTanh`，以及常駐張量上的 `Tape.Tanh`）快了大約 90 倍：在 Apple M3 上，1677 萬個值從 2.85 秒變成 31 毫秒。現在幾乎所有輸入都用 64 位元整數運算算完，只有幾百個太靠近捨入邊界的輸入改走原本的 128 位元算法，所以每個結果仍然和主機上 `nn.Tanh` 逐位元相同。
 - 新增 `accel.RoundedTanhGrad`，在常駐 GPU 的資料上由 `tanh` 的輸出與上游梯度算出梯度，位元和 `nn` 在 `PrecisionFloat32Rounded` 下於 CPU 算的相同。
 - 在 Windows 上，對常駐 GPU 的大陣列做逐元素運算不會再讓裝置遺失：`tanh`、`exp`、`log`、`expm1`、`log1p`、加法、除法、平方根，以及 `SGD`、`Adam` 的更新，現在分成多次送出，定點數函式每次最多 262,144 個元素，其他最多 2,097,152 個，每次都是獨立的提交。在 Apple M3 上，1677 萬個元素的 `tanh` 一次要 2.85 秒，超過 Windows 約 2 秒就重置 GPU 的上限；在 GT 1030 上，這種大小的張量做一步訓練會回傳 `ErrDeviceLost`。結果不變。
+- `accel.NewKernel`、`Kernel.Bind` 與 `accel.Submit` 可以在 Insyra 張量所在的常駐 `DeviceBuffer` 上執行你自己的 WGSL compute shader，綁定配置與 Insyra 內建 kernel 相同：先是唯讀緩衝區，再來是可讀寫緩衝區，最後是 64 位元組的 uniform。`Bind` 只建一次 bind group，`Submit` 重複使用，每個 dispatch 的參數透過 dynamic offset 從共用的環形緩衝區讀取，所以每次啟動都不需要配置新物件。`Submit` 把所有 dispatch 依序放進同一次提交，並和 Insyra 的常駐運算共用一條佇列，因此兩者之間不需要同步；在 Apple M3 上，168 個 dispatch 一次 `Submit` 花 3.7 毫秒，分成 168 次呼叫則花 23.8 毫秒。`accel.ResidentLimits()` 回報裝置的緩衝區、workgroup 與大小上限，`accel.NewBitsBuffer` 與 `DeviceBuffer.BitsToHost` 能原封不動地搬移索引等 32 位元樣式，`DeviceBuffer.Write`、`WriteBits` 與 `Zero` 會先等前面的 kernel 做完，再就地覆寫緩衝區。Insyra 無法檢查你自己的 kernel，而且 Vulkan 後端不會夾住超出緩衝區尾端的寫入，請自行檢查索引（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
+- `accel.RoundedLog1p` 與 `accel.RoundedExpm1` 在常駐陣列上計算 `log(1+x)` 與 `e^x - 1`，結果正確捨入，並且在全部 2^32 個 float32 輸入上與主機逐位元一致，和 `RoundedExp`、`RoundedLog` 一樣。
 
 ### `quant`
 - **BREAKING**：`VaRMethod`、`OptionType` 與 `PortfolioObjective` 從 `uint8` 改為 `int`，並會印出常數名稱：`fmt.Print(quant.VaRParametric)` 印出 `VaRParametric`，不再是 `1`。未知的值會以名稱回報：`ValueAtRisk` 收到 `VaRMethod(3)` 時，訊息從 `VaR: unknown method 3` 改為 `VaR: unknown method VaRMethod(3)`。常數、數字字面值與型別轉換照常可以編譯，只有把它們和 `uint8` 值直接做運算的程式會編譯失敗。
