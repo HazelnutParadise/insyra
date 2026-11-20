@@ -126,3 +126,11 @@ Helpers in this list are imported across commands. A signature change to `parseA
 - the command's own `Usage`, `Forms` and `Examples`, which `insyra help <command>` prints
 
 Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.
+
+## Known pitfalls
+
+- A test of the one-shot shell builds it with `buildCobraCommands(ctx, names, handlers, dispatch)` (`cli/commands/cobra.go`) over its own handlers and a recording dispatcher; replacing the `Registry` variable of `cli/commands` does not reach the internal registry.
+- Run the CLI under test as a built binary with `HOME` set to a scratch directory: any run with the real `HOME`, even `help`, appends to `~/.insyra/envs/default/history.txt` and rewrites `state.json`.
+- A test that writes a temp path into a line the DSL tokenizer reads (dev: `cli/repl` `tokenize`, behind `DSLSession.ExecuteFile` and the REPL; 0.4: `internal/dsl.Tokenize`, behind `Session.ExecuteFile`) passes it through `filepath.ToSlash`: the tokenizer treats every backslash as an escape, so `C:\Users\…` loses its separators on Windows. `run`'s `splitScriptTokens` keeps backslashes.
+- After rebasing a branch older than `dsl-outside-cli` (9d043c9a) onto `0.4`, `git mv` every command or test file it added under `cli/commands/` into `internal/dsl/commands/`: the rebase carries edits to moved files but leaves new files behind, where they compile against the deprecated aliases or not at all.
+- When running the CLI or a docs example with `HOME` pointed at a temporary directory (to keep `~/.insyra` clean), also pass `GOMODCACHE=$(go env GOMODCACHE)` and `GOCACHE=$(go env GOCACHE)`; otherwise Go puts a read-only module cache under that `HOME` and removing the directory fails until `chmod -R u+w`.
