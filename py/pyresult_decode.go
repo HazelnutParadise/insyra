@@ -542,6 +542,12 @@ func assignResult(dst reflect.Value, src any) error {
 			return err
 		}
 	}
+	// A type with its own decoder gets the value through JSON even when it
+	// holds a number that sends everything else part by part, so its
+	// UnmarshalJSON runs and an integer beyond 64 bits is refused.
+	if dst.CanSet() && decodesItself(t) && holdsWideNumber(src) {
+		return assignJSON(dst, src)
+	}
 	// A struct reached through an embedded unexported field cannot be set as
 	// a whole, but its exported fields can, so it is decoded field by field.
 	// So is a value holding a NaN or an infinity, which JSON cannot carry,
@@ -658,8 +664,10 @@ func assignResult(dst reflect.Value, src any) error {
 		// A float field asked for a float, so an integer beyond 64 bits
 		// becomes the nearest one it holds.
 		if w, ok := src.(wideInteger); ok && !decodesItself(t) {
-			f, err := strconv.ParseFloat(string(w), 64)
-			if err != nil || dst.OverflowFloat(f) {
+			// Parsing at the field's own size rounds once, to the nearest
+			// float32 for a float32.
+			f, err := strconv.ParseFloat(string(w), t.Bits())
+			if err != nil {
 				return fmt.Errorf("cannot decode the integer %s into %s", shortNumber(string(w)), t)
 			}
 			dst.SetFloat(f)

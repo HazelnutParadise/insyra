@@ -375,17 +375,6 @@ func (w wideInteger) err() error {
 	return fmt.Errorf("the integer %s fits neither an int64 nor a uint64; send float(x), or .cast(pl.Float64) for a column, for an approximate number, or str(x), or .cast(pl.String), to keep every digit", shortNumber(string(w)))
 }
 
-// isWideInteger reports whether text is an integer neither an int64 nor a
-// uint64 holds.
-func isWideInteger(text string) bool {
-	if !isIntegerText(text) {
-		return false
-	}
-	_, signedErr := strconv.ParseInt(text, 10, 64)
-	_, unsignedErr := strconv.ParseUint(text, 10, 64)
-	return signedErr != nil && unsignedErr != nil
-}
-
 // firstWideInteger finds a wideInteger in a decoded value.
 func firstWideInteger(v any) (wideInteger, bool) {
 	switch x := v.(type) {
@@ -421,10 +410,9 @@ func restoreNumbers(v any) (any, error) {
 		case "-" + infMark:
 			return math.Inf(-1), nil
 		}
-		if n, ok := exactInteger(string(x)); ok {
+		if n, ok, wide := exactInteger(string(x)); ok {
 			return n, nil
-		}
-		if isWideInteger(string(x)) {
+		} else if wide {
 			return wideInteger(x), nil
 		}
 		f, err := strconv.ParseFloat(string(x), 64)
@@ -511,20 +499,20 @@ func hasLongInteger(msg []byte) bool {
 // exactInteger returns an integer Python wrote that a float64 would round: one
 // above 2^53 in magnitude, as an int64, or as a uint64 above the int64 range.
 // Python writes an int with no decimal point or exponent and a float always
-// with one, so a float is never taken for an int. An integer beyond 64 bits is
-// left to restoreNumbers, which keeps it as a wideInteger.
-func exactInteger(text string) (any, bool) {
+// with one, so a float is never taken for an int. For an integer beyond 64
+// bits it reports wide, and restoreNumbers keeps it as a wideInteger.
+func exactInteger(text string) (n any, ok, wide bool) {
 	if !isIntegerText(text) {
-		return nil, false
+		return nil, false, false
 	}
 	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
 		if n > maxExactInteger || n < -maxExactInteger {
-			return n, true
+			return n, true, false
 		}
-		return nil, false
+		return nil, false, false
 	}
 	if n, err := strconv.ParseUint(text, 10, 64); err == nil {
-		return n, true
+		return n, true, false
 	}
-	return nil, false
+	return nil, false, true
 }
