@@ -106,6 +106,9 @@ func decodeDataList(result any) (*insyra.DataList, error) {
 	if result == nil {
 		return nil, nil
 	}
+	if w, ok := firstWideInteger(result); ok {
+		return nil, w.err()
+	}
 
 	if payload, ok := result.(map[string]any); ok {
 		return dataListFromPayload(payload)
@@ -161,6 +164,9 @@ func newDataListFromSlice(values []any, name string) *insyra.DataList {
 func decodeDataTable(result any) (*insyra.DataTable, error) {
 	if result == nil {
 		return nil, nil
+	}
+	if w, ok := firstWideInteger(result); ok {
+		return nil, w.err()
 	}
 
 	switch v := result.(type) {
@@ -536,6 +542,12 @@ func assignResult(dst reflect.Value, src any) error {
 			return err
 		}
 	}
+	// A type with its own decoder gets the value through JSON even when it
+	// holds a number that sends everything else part by part, so its
+	// UnmarshalJSON runs and an integer beyond 64 bits is refused.
+	if dst.CanSet() && decodesItself(t) && holdsWideNumber(src) {
+		return assignJSON(dst, src)
+	}
 	// A struct reached through an embedded unexported field cannot be set as
 	// a whole, but its exported fields can, so it is decoded field by field.
 	// So is a value holding a NaN or an infinity, which JSON cannot carry,
@@ -649,12 +661,27 @@ func assignResult(dst reflect.Value, src any) error {
 			dst.SetFloat(f)
 			return nil
 		}
+		// A float field asked for a float, so an integer beyond 64 bits
+		// becomes the nearest one it holds.
+		if w, ok := src.(wideInteger); ok && !decodesItself(t) {
+			// Parsing at the field's own size rounds once, to the nearest
+			// float32 for a float32.
+			f, err := strconv.ParseFloat(string(w), t.Bits())
+			if err != nil {
+				return fmt.Errorf("cannot decode the integer %s into %s", shortNumber(string(w)), t)
+			}
+			dst.SetFloat(f)
+			return nil
+		}
 	case reflect.Interface:
 		if t.NumMethod() == 0 {
 			// An interface holding a non-nil pointer is decoded into what the
 			// pointer points to, as encoding/json does.
 			if e := dst.Elem(); src != nil && e.Kind() == reflect.Pointer && !e.IsNil() {
 				return assignResult(e.Elem(), src)
+			}
+			if w, ok := firstWideInteger(src); ok {
+				return w.err()
 			}
 			if src == nil {
 				dst.SetZero()
@@ -826,6 +853,9 @@ func mapKey(kt reflect.Type, key string) (reflect.Value, error) {
 
 // assignJSON decodes src into dst through JSON.
 func assignJSON(dst reflect.Value, src any) error {
+	if w, ok := firstWideInteger(src); ok {
+		return w.err()
+	}
 	data, err := json.Marshal(src)
 	if err != nil {
 		return fmt.Errorf("failed to marshal result: %w", err)
@@ -1061,7 +1091,7 @@ func hasTagOption(opts, option string) bool {
 // twenty-digit number: a uint64, or a float64 of 2^63 or more in magnitude.
 func holdsWideNumber(v any) bool {
 	switch x := v.(type) {
-	case uint64:
+	case uint64, wideInteger:
 		return true
 	case float64:
 		return x >= 1<<63 || x <= -(1<<63)
@@ -1107,6 +1137,8 @@ func setInteger(dst reflect.Value, src any) (bool, error) {
 			dst.SetUint(x)
 			return true, nil
 		}
+	case wideInteger:
+		return true, x.err()
 	case float64:
 		if x != math.Trunc(x) {
 			return true, fmt.Errorf("cannot decode %v into %s", x, t)

@@ -203,7 +203,8 @@ func TestARefusalIsTheErrorWhenNothingElseArrives(t *testing.T) {
 
 // The review of py-nested-table-results measured 2^53 + 1 coming back as 2^53:
 // every number was decoded into a float64, which does not hold every integer
-// past 2^53.
+// past 2^53. An integer beyond 64 bits is kept as its text, for the binding to
+// take as a float or refuse (#415).
 func TestAnIntegerAboveTwoToThe53KeepsEveryDigit(t *testing.T) {
 	msg := `{"execution_id": "a1", "data": [[9007199254740993, -9007199254740993, 9223372036854775807, -9223372036854775808, 18446744073709551615, 9007199254740992, 3, 0.5, 1e+20, 9007199254740993.0, 100000000000000000000000], null]}`
 	m, err := decodeResultMessage([]byte(msg))
@@ -211,7 +212,7 @@ func TestAnIntegerAboveTwoToThe53KeepsEveryDigit(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := m.Data[0].([]any)
-	want := []any{int64(9007199254740993), int64(-9007199254740993), int64(9223372036854775807), int64(-9223372036854775808), uint64(18446744073709551615), float64(9007199254740992), float64(3), 0.5, 1e+20, float64(9007199254740993.0), 1e23}
+	want := []any{int64(9007199254740993), int64(-9007199254740993), int64(9223372036854775807), int64(-9223372036854775808), uint64(18446744073709551615), float64(9007199254740992), float64(3), 0.5, 1e+20, float64(9007199254740993.0), wideInteger("100000000000000000000000")}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %#v\nwant %#v", got, want)
 	}
