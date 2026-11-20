@@ -440,6 +440,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 支援 Alpine 這類 musl Linux。uv 在那裡會裝 musl 版的 CPython，而 PyPI 沒有 `scikit-learn` 的 musllinux wheel，arm64 上也沒有 `matplotlib` 與 `statsmodels` 的，所以建環境時會從原始碼編譯這些套件，請先裝好 C 與 C++ 編譯器（`apk add build-base`）。這個版本稍早釘版的編譯工具不符合 `scikit-learn` 的編譯需求，原本在那裡根本建不起來；現在改成每個需要編譯的套件都接受的 12 個工具。CI 會在 amd64 與 arm64 的 Alpine 上建環境並執行 Python。
 - IPC 伺服器的 accept 迴圈停止後才開始的執行，會開一個新的伺服器，不會拿到舊伺服器的位址。結果欄位名稱改用 `strings.EqualFold` 比對，和 `encoding/json` 相同。
 - **BREAKING（行為）**：回傳的 polars DataFrame 裡的缺值，以及 pandas 的 `pd.NA`，現在會變成 `nil`，所在欄位的整數也保持原樣。過去 polars 和 pandas 會先把這種欄位轉成 NumPy，而 NumPy 沒有可以缺值的整數，所以 `[2**53 + 1, None]` 回來變成 `[9007199254740992, NaN]`，polars 任何欄位的 null 也都回成 `NaN`，和單獨回傳同一個 polars Series 時不一樣。polars 的 list、struct 欄位，以及含 `pd.NA` 的 pandas `boolean`、`string` 欄位或 `Int64` Series，過去會讓 `insyra.Return` 直接出錯，現在分別回成 slice、map 和 `nil`。polars 本身存的 NaN 值，以及 NumPy 型別 pandas 欄位裡的 NaN，仍然回成 NaN。原本用 `ClearNaNs` 清掉這些值的地方，改用 `ClearNils`。
+- **BREAKING（行為）**：int64 和 uint64 都裝不下的整數，例如 polars 2.0 `Int128` 欄裡的 `2**64 + 4`，不會再被悄悄近似。過去不管落在哪裡都會變成最接近的 float64 而且不報錯，`-(2**63) - 1` 讀進 `int64` 甚至會變成 `-9223372036854775808`。讀進 `float64` 或 `float32` 時一樣取最接近的值；讀進 `any`、表格或清單的儲存格、map 或整數欄位時，呼叫會回傳錯誤，提示改送 `float(x)` 或 `str(x)`（整欄可用 `.cast(pl.Float64)` 或 `.cast(pl.String)`）。
 
 ### `pd`
 - **BREAKING（行為改變）**：`FromDataList` 遇到空的 list 會回傳空的 `Series`，也就是長度 0、`any` 型別的 gpandas series，和 pandas 的 `pd.Series([])` 一樣。過去會回傳 `empty DataList` 錯誤。`nil` list 仍然回傳錯誤。

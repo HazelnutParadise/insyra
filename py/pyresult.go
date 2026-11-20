@@ -345,10 +345,66 @@ func markNonFinite(msg []byte) ([]byte, error) {
 // numberTooLarge reports a number a float64 cannot hold, such as Python's
 // 10**400, with its text shortened.
 func numberTooLarge(text string) error {
-	if len(text) > 30 {
-		text = text[:30] + "…"
+	if isIntegerText(text) {
+		return fmt.Errorf("the integer %s does not fit in a float64 or in 64 bits; send str(x), or .cast(pl.String) for a column, to keep every digit", shortNumber(text))
 	}
-	return fmt.Errorf("the number %s does not fit in a float64", text)
+	return fmt.Errorf("the number %s does not fit in a float64", shortNumber(text))
+}
+
+// shortNumber cuts a number's text to 30 characters for an error message.
+func shortNumber(text string) string {
+	if len(text) > 30 {
+		return text[:30] + "…"
+	}
+	return text
+}
+
+// isIntegerText reports whether Python wrote text as an int: it writes a float
+// always with a decimal point or an exponent.
+func isIntegerText(text string) bool {
+	return !strings.ContainsAny(text, ".eE")
+}
+
+// wideInteger is an integer Python sent that neither an int64 nor a uint64
+// holds, such as 2**64 + 4, which polars 2.0 gives for Int64 + UInt64. It is
+// kept as its text, so a float field takes its nearest float64 and every
+// other place it would land refuses it instead of rounding it silently.
+type wideInteger string
+
+func (w wideInteger) err() error {
+	return fmt.Errorf("the integer %s fits neither an int64 nor a uint64; send float(x), or .cast(pl.Float64) for a column, for an approximate number, or str(x), or .cast(pl.String), to keep every digit", shortNumber(string(w)))
+}
+
+// isWideInteger reports whether text is an integer neither an int64 nor a
+// uint64 holds.
+func isWideInteger(text string) bool {
+	if !isIntegerText(text) {
+		return false
+	}
+	_, signedErr := strconv.ParseInt(text, 10, 64)
+	_, unsignedErr := strconv.ParseUint(text, 10, 64)
+	return signedErr != nil && unsignedErr != nil
+}
+
+// firstWideInteger finds a wideInteger in a decoded value.
+func firstWideInteger(v any) (wideInteger, bool) {
+	switch x := v.(type) {
+	case wideInteger:
+		return x, true
+	case []any:
+		for _, e := range x {
+			if w, ok := firstWideInteger(e); ok {
+				return w, true
+			}
+		}
+	case map[string]any:
+		for _, e := range x {
+			if w, ok := firstWideInteger(e); ok {
+				return w, true
+			}
+		}
+	}
+	return "", false
 }
 
 // restoreNumbers turns the json.Number values decodeResultMessage reads into
@@ -367,6 +423,9 @@ func restoreNumbers(v any) (any, error) {
 		}
 		if n, ok := exactInteger(string(x)); ok {
 			return n, nil
+		}
+		if isWideInteger(string(x)) {
+			return wideInteger(x), nil
 		}
 		f, err := strconv.ParseFloat(string(x), 64)
 		if err != nil {
@@ -453,9 +512,9 @@ func hasLongInteger(msg []byte) bool {
 // above 2^53 in magnitude, as an int64, or as a uint64 above the int64 range.
 // Python writes an int with no decimal point or exponent and a float always
 // with one, so a float is never taken for an int. An integer beyond 64 bits is
-// left to be read as a float64.
+// left to restoreNumbers, which keeps it as a wideInteger.
 func exactInteger(text string) (any, bool) {
-	if strings.ContainsAny(text, ".eE") {
+	if !isIntegerText(text) {
 		return nil, false
 	}
 	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
