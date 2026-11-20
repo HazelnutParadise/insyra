@@ -73,7 +73,8 @@ Explain answers in one direction only: a plan Explain refuses (a syntax error, a
 Example:
 
 ```go
-plan, err := parquet.ExplainFilterWithCCL(ctx, "sales.parquet", "amount > MEDIAN(amount)")
+// sales.parquet has a column named amount; CCL names a column ['amount'].
+plan, err := parquet.ExplainFilterWithCCL(ctx, "sales.parquet", "['amount'] > MEDIAN(['amount'])")
 // plan.Mode == parquet.CCLWholeColumns
 // plan.Reasons == []string{"MEDIAN cannot be computed batch by batch"}
 // plan.HeldColumns == []string{"amount"}
