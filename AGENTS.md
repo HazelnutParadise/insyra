@@ -2,14 +2,6 @@
 
 This file is the primary guidance for AI coding agents working in this repository. `CLAUDE.md` re-exports it via `@AGENTS.md`.
 
-## What This Repo Is
-
-**Insyra** (`github.com/HazelnutParadise/insyra`) is a Go data analysis library (v0.3.x, "Huashan") providing:
-- `DataList` and `DataTable` as the core data structures
-- **CCL** (Column Calculation Language) — a domain-specific expression language for column transforms
-- A CLI/REPL (`insyra` binary) built with Cobra
-- Sub-packages for stats, plotting, LP, Python interop, parallel processing, file I/O, etc.
-
 ## Required artifacts
 
 Each entry says *when* reading it stops being optional. That trigger is the part that only exists here — the files describe their own contents.
@@ -171,62 +163,6 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 - Anything held back — its newest version needs a newer Go, is inside an advisory, breaks the build or a tool CI depends on, or changes what insyra returns — goes into the Follow-ups below with the reason, the way `chromedp` is.
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
-
-## Architecture
-
-### Core Package (`github.com/HazelnutParadise/insyra`)
-
-The root package defines everything central:
-- [interfaces.go](interfaces.go) — `IDataList` and `IDataTable` interfaces (authoritative API surface)
-- [datalist.go](datalist.go) / [datatable.go](datatable.go) — concrete implementations
-- [ccl.go](ccl.go) — wires the CCL engine into `DataTable.AddColUsingCCL` etc.
-- [config.go](config.go) — global `Config` singleton (log level, colored output, thread safety, panic behavior)
-- [atomic.go](atomic.go) — actor-model serialization for thread-safe operations on DataList/DataTable
-- [logger.go](logger.go) — structured logging used throughout
-
-### Sub-packages
-
-| Package | Purpose |
-|---|---|
-| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
-| `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
-| `plot/` | Interactive charts via go-echarts |
-| `gplot/` | Static publication charts via gonum/plot |
-| `csvxl/` | CSV and Excel I/O |
-| `parquet/` | Parquet file I/O via Apache Arrow |
-| `datafetch/` | HTTP data fetching helpers |
-| `parallel/` | Parallel map/reduce over DataList/DataTable |
-| `lp/` / `lpgen/` | Linear programming |
-| `mkt/` | Market data helpers |
-| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
-| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
-| `py/` | Python interop (runs Python via embedded env) |
-| `pd/` | Pandas-like wrappers built on `py/` |
-| `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
-| `allpkgs/` | Blank-import of all packages for `go get` convenience |
-
-### CLI (`cli/`)
-
-Built with Cobra. Entry point: [cmd/insyra/main.go](cmd/insyra/main.go) → `cli.Execute()`.
-- `cli/commands/` — individual subcommand implementations
-- `cli/repl/` — interactive REPL and DSL session (`engine/dsl` exposes `DSLSession` for programmatic use)
-- `cli/env/` — named environment management (variable persistence between sessions)
-- `cli/style/` — terminal styling
-
-### Internal packages (`internal/`)
-
-Not exported to consumers. Key ones:
-- `internal/ccl/` — CCL lexer, parser, AST, evaluator; `MapContext` for testing CCL without a DataTable
-- `internal/core/` — `BiIndex` (bidirectional id↔name index), `Ring` (circular buffer)
-- `internal/algorithms/` — parallel stable sort, `CompareAny` for mixed-type ordering
-
-### CCL (Column Calculation Language)
-
-CCL has two modes used by different DataTable methods:
-- **Expression mode** (`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL`) — pure expressions only, no assignment
-- **Statement mode** (`ExecuteCCL`) — supports assignment syntax and `NEW()` for creating columns
-
-Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or named references `['ColName']`.
 
 ## Key Conventions
 

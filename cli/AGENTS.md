@@ -2,14 +2,7 @@
 
 Guidance for working in `cli/`. The top-level [AGENTS.md](../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `cli/`** so you don't reinvent them.
 
-> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below. If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
-
-## Where things live
-
-- `cli/commands/` — every DSL/CLI command (one file per command or per closely-related group)
-- `cli/repl/` — interactive prompt, line editing, completion
-- `cli/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
-- `cli/style/` — terminal styling primitives
+> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below; where each package lives is in [README.md](README.md). If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
 
 ## Always-reuse helpers (commands/helpers.go)
 

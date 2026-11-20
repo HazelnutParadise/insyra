@@ -31,6 +31,64 @@ through a registration seam.
 - Nothing in `stats` or the root package calls `accel` ([0004](decisions/0004-root-package-reaches-accel-through-a-seam.md)). `nn` imports it directly for device MatMul and resident tensors ([0009](decisions/0009-nn-device-matmul-is-default-on.md), [0019](decisions/0019-residency-belongs-to-the-tensor.md)); other callers reach it through `allpkgs` or a direct import.
 - `0.4` and `dev` are two release lines with different rules for what may change ([0012](decisions/0012-two-release-lines.md)).
 
+### Where the code lives
+
+The user-facing package list, with a link to each package's documentation, is under `## Packages` in [README.md](/README.md); the table below adds what each package is for to a developer.
+
+#### Core package (`github.com/HazelnutParadise/insyra`)
+
+The root package defines everything central:
+- [interfaces.go](/interfaces.go) — `IDataList` and `IDataTable` interfaces (authoritative API surface)
+- [datalist.go](/datalist.go) / [datatable.go](/datatable.go) — concrete implementations
+- [ccl.go](/ccl.go) — wires the CCL engine into `DataTable.AddColUsingCCL` etc.
+- [config.go](/config.go) — global `Config` singleton (log level, colored output, thread safety, panic behavior)
+- [atomic.go](/atomic.go) — actor-model serialization for thread-safe operations on DataList/DataTable
+- [logger.go](/logger.go) — structured logging used throughout
+
+#### Sub-packages
+
+| Package | Purpose |
+|---|---|
+| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
+| `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
+| `plot/` | Interactive charts via go-echarts |
+| `gplot/` | Static publication charts via gonum/plot |
+| `csvxl/` | CSV and Excel I/O |
+| `parquet/` | Parquet file I/O via Apache Arrow |
+| `datafetch/` | HTTP data fetching helpers |
+| `parallel/` | Parallel map/reduce over DataList/DataTable |
+| `lp/` / `lpgen/` | Linear programming |
+| `mkt/` | Market data helpers |
+| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
+| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
+| `py/` | Python interop (runs Python via embedded env) |
+| `pd/` | Pandas-like wrappers built on `py/` |
+| `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
+| `allpkgs/` | Blank-import of all packages for `go get` convenience |
+
+#### CLI (`cli/`)
+
+Built with Cobra. Entry point: [cmd/insyra/main.go](/cmd/insyra/main.go) → `cli.Execute()`.
+- `cli/commands/` — individual subcommand implementations
+- `cli/repl/` — interactive REPL and DSL session (`engine/dsl` exposes `DSLSession` for programmatic use)
+- `cli/env/` — named environment management (variable persistence between sessions)
+- `cli/style/` — terminal styling
+
+#### Internal packages (`internal/`)
+
+Not exported to consumers. Key ones:
+- `internal/ccl/` — CCL lexer, parser, AST, evaluator; `MapContext` for testing CCL without a DataTable
+- `internal/core/` — `BiIndex` (bidirectional id↔name index), `Ring` (circular buffer)
+- `internal/algorithms/` — parallel stable sort, `CompareAny` for mixed-type ordering
+
+#### CCL (Column Calculation Language)
+
+CCL has two modes used by different DataTable methods:
+- **Expression mode** (`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL`) — pure expressions only, no assignment
+- **Statement mode** (`ExecuteCCL`) — supports assignment syntax and `NEW()` for creating columns
+
+Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or named references `['ColName']`.
+
 ## Data flow
 
 **Fitting a model.** `DataTable` → `ml.Fit*` records the fitted column names → delegates to the `stats` function → wraps the result in a `Model`. No arithmetic is reimplemented at any step.
