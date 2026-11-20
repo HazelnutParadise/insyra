@@ -2,14 +2,6 @@
 
 This file is the primary guidance for AI coding agents working in this repository. `CLAUDE.md` re-exports it via `@AGENTS.md`.
 
-## What This Repo Is
-
-**Insyra** (`github.com/HazelnutParadise/insyra`) is a Go data analysis library (v0.3.x, "Huashan") providing:
-- `DataList` and `DataTable` as the core data structures
-- **CCL** (Column Calculation Language) — a domain-specific expression language for column transforms
-- A CLI/REPL (`insyra` binary) built with Cobra
-- Sub-packages for stats, plotting, LP, Python interop, parallel processing, file I/O, etc.
-
 ## Required artifacts
 
 Each entry says *when* reading it stops being optional. That trigger is the part that only exists here — the files describe their own contents.
@@ -171,66 +163,9 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
-## Architecture
-
-### Core Package (`github.com/HazelnutParadise/insyra`)
-
-The root package defines everything central:
-- [interfaces.go](interfaces.go) — `IDataList` and `IDataTable` interfaces (authoritative API surface)
-- [datalist.go](datalist.go) / [datatable.go](datatable.go) — concrete implementations
-- [ccl.go](ccl.go) — wires the CCL engine into `DataTable.AddColUsingCCL` etc.
-- [config.go](config.go) — global `Config` singleton (log level, colored output, thread safety, panic behavior)
-- [atomic.go](atomic.go) — actor-model serialization for thread-safe operations on DataList/DataTable
-- [logger.go](logger.go) — structured logging used throughout
-
-### Sub-packages
-
-| Package | Purpose |
-|---|---|
-| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
-| `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
-| `plot/` | Interactive charts via go-echarts |
-| `gplot/` | Static publication charts via gonum/plot |
-| `csvxl/` | CSV and Excel I/O |
-| `parquet/` | Parquet file I/O via Apache Arrow |
-| `datafetch/` | HTTP data fetching helpers |
-| `parallel/` | Run zero-argument functions at once and collect their results (`GroupUp(...).Run().AwaitResult()`) |
-| `lp/` / `lpgen/` | Linear programming |
-| `mkt/` | Market data helpers |
-| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
-| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
-| `py/` | Python interop (runs Python via embedded env) |
-| `pd/` | Pandas-like wrappers built on `py/` |
-| `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
-| `allpkgs/` | Blank-import of all packages for `go get` convenience |
-
-### CLI (`cli/`)
-
-Built with Cobra. Entry point: [cmd/insyra/main.go](cmd/insyra/main.go) → `cli.Execute()`.
-- `cli/commands/` — the public names of the command registry, and `BuildCobraCommands`, which builds the shell from it
-- `cli/repl/` — interactive REPL and tab completion
-- `cli/env/` — public names of named environment management (variable persistence between sessions)
-- `cli/style/` — public names of the terminal styling
-
-The command language itself is not in `cli/`: `internal/dsl/commands/` holds every command and the registry, `internal/dsl/env/` and `internal/dsl/style/` the environments and styling, and `internal/dsl/` the session `engine/dsl` exposes. `engine/dsl` must not depend on `cli/`, Cobra or readline (`TestEngineDSLDoesNotDependOnTheCLI`); [internal/dsl/AGENTS.md](internal/dsl/AGENTS.md) has the rules for writing commands.
-
-### Internal packages (`internal/`)
-
-Not exported to consumers. Key ones:
-- `internal/ccl/` — CCL lexer, parser, AST, evaluator; `MapContext` for testing CCL without a DataTable
-- `internal/core/` — `BiIndex` (bidirectional id↔name index), `Ring` (circular buffer)
-- `internal/algorithms/` — parallel stable sort, `CompareAny` for mixed-type ordering
-
-### CCL (Column Calculation Language)
-
-CCL has two modes used by different DataTable methods:
-- **Expression mode** (`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL`) — pure expressions only, no assignment
-- **Statement mode** (`ExecuteCCL`) — supports assignment syntax and `NEW()` for creating columns
-
-Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or named references `['ColName']`.
-
 ## Key Conventions
 
+- **The command language sits below the shell.** `engine/dsl` and everything under `internal/dsl/` must not depend on `cli/`, Cobra or readline; `TestEngineDSLDoesNotDependOnTheCLI` fails when they do. [internal/dsl/AGENTS.md](internal/dsl/AGENTS.md) has the rules for writing commands.
 - **One column selector, everywhere.** Every parameter and config field that picks a column takes the same three forms: a `string` is an Excel-style index (`"A"`, `"B"`, `"AA"`), `Name("price")` is a column name, an `int` is a 0-based position (negative counts from the end). A bare string is never looked up as a name, so a call means the same thing whatever the columns are called; the column names shape only the failure message, which offers the `Name(...)` form when the table has that name. The core accessors keep explicit spellings beside the generic one (`GetColByIndex`/`ByName`/`ByNumber`, and the same for `UpdateCol`), and the analysis operations do not, because the selector already says which kind it was given. `isr.Name` is the same type as `insyra.Name`.
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
 - Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged; it removes only the per-instance lock of `DataList`/`DataTable` (`AtomicDo`, `AtomicDoAll`), and `Config.TurnOnThreadSafety()` restores it without touching other settings.

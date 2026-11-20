@@ -32,6 +32,66 @@ through a registration seam.
 - The command language runs the same way from the shell and from Go, so it sits below both: `internal/dsl/` holds the commands, the registry, environments and the session; `cli/` (the Cobra shell, the REPL, readline) and `engine/dsl` (the Go entry point) both import it. Dependency direction: `cli -> internal/dsl` and `engine/dsl -> internal/dsl`, never `engine -> cli`. `TestEngineDSLDoesNotDependOnTheCLI` holds the line with `go list -deps`. The public names a Go program spells (`cli/env.Manager`, `cli/commands.ExecContext`) are aliases in thin `cli/` packages that pull in neither Cobra nor readline, apart from `cli/commands`, which also builds the shell.
 - `0.4` and `dev` are two release lines with different rules for what may change ([0012](decisions/0012-two-release-lines.md)).
 
+### Where the code lives
+
+The user-facing package list, with a link to each package's documentation, is under `## Packages` in [README.md](/README.md); the table below adds what each package is for to a developer.
+
+#### Core package (`github.com/HazelnutParadise/insyra`)
+
+The root package defines everything central:
+- [interfaces.go](/interfaces.go) — `IDataList` and `IDataTable` interfaces (authoritative API surface)
+- [datalist.go](/datalist.go) / [datatable.go](/datatable.go) — concrete implementations
+- [ccl.go](/ccl.go) — wires the CCL engine into `DataTable.AddColUsingCCL` etc.
+- [config.go](/config.go) — global `Config` singleton (log level, colored output, thread safety, panic behavior)
+- [atomic.go](/atomic.go) — actor-model serialization for thread-safe operations on DataList/DataTable
+- [logger.go](/logger.go) — structured logging used throughout
+
+#### Sub-packages
+
+| Package | Purpose |
+|---|---|
+| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
+| `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
+| `plot/` | Interactive charts via go-echarts |
+| `gplot/` | Static publication charts via gonum/plot |
+| `csvxl/` | CSV and Excel I/O |
+| `parquet/` | Parquet file I/O via Apache Arrow |
+| `datafetch/` | HTTP data fetching helpers |
+| `parallel/` | Run zero-argument functions at once and collect their results (`GroupUp(...).Run().AwaitResult()`) |
+| `lp/` / `lpgen/` | Linear programming |
+| `mkt/` | Market data helpers |
+| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
+| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
+| `py/` | Python interop (runs Python via embedded env) |
+| `pd/` | Pandas-like wrappers built on `py/` |
+| `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
+| `allpkgs/` | Blank-import of all packages for `go get` convenience |
+
+#### CLI (`cli/`)
+
+Built with Cobra. Entry point: [cmd/insyra/main.go](/cmd/insyra/main.go) → `cli.Execute()`.
+- `cli/commands/` — the public names of the command registry, and `BuildCobraCommands`, which builds the shell from it
+- `cli/repl/` — interactive REPL and tab completion
+- `cli/env/` — public names of named environment management (variable persistence between sessions)
+- `cli/style/` — public names of the terminal styling
+
+The command language itself is not in `cli/`: `internal/dsl/commands/` holds every command and the registry, `internal/dsl/env/` and `internal/dsl/style/` the environments and styling, and `internal/dsl/` the session `engine/dsl` exposes. `engine/dsl` must not depend on `cli/`, Cobra or readline (`TestEngineDSLDoesNotDependOnTheCLI`); [internal/dsl/AGENTS.md](/internal/dsl/AGENTS.md) has the rules for writing commands.
+
+#### Internal packages (`internal/`)
+
+Not exported to consumers. Key ones:
+- `internal/ccl/` — CCL lexer, parser, AST, evaluator; `MapContext` for testing CCL without a DataTable
+- `internal/core/` — `BiIndex` (bidirectional id↔name index), `Ring` (circular buffer)
+- `internal/algorithms/` — parallel stable sort, `CompareAny` for mixed-type ordering
+
+#### CCL (Column Calculation Language)
+
+CCL has two modes used by different DataTable methods:
+- **Expression mode** (`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL`) — pure expressions only, no assignment
+- **Statement mode** (`ExecuteCCL`) — supports assignment syntax and `NEW()` for creating columns
+
+Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or named references `['ColName']`.
+
 ## Data flow
 
 **Fitting a model.** `DataTable` → `ml.Fit*` records the fitted column names → delegates to the `stats` function → wraps the result in a `Model`. No arithmetic is reimplemented at any step.

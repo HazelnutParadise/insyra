@@ -2,15 +2,9 @@
 
 Guidance for working on the command language: `internal/dsl/` and the `cli/` packages built on it. The top-level [AGENTS.md](../../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `internal/dsl/commands/`** so you don't reinvent them.
 
-> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below. If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
+> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below; where each package lives is in [README.md](README.md). If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
 
-## Where things live
-
-- `internal/dsl/commands/` — every DSL/CLI command (one file per command or per closely-related group) and the registry
-- `internal/dsl/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
-- `internal/dsl/style/` — terminal styling primitives
-- `internal/dsl/` — the session `engine/dsl` exposes, and the tokenizer every mode shares
-- `cli/` — the Cobra shell (`cli/commands/cobra.go` builds it from the registry), the REPL (`cli/repl/`), and the public names `cli/commands`, `cli/env` and `cli/style` give the internal packages
+## Package boundary
 
 Nothing under `internal/dsl/` imports `cli/`, Cobra or readline; `TestEngineDSLDoesNotDependOnTheCLI` in `engine/dsl` fails when something does. Shell-only code goes in `cli/`.
 
