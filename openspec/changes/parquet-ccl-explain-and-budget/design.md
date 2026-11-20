@@ -107,6 +107,12 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...
 
 `ApplyCCL(ctx, path, script, opts ...WriteOptions)` shipped in 0.3.x, so it cannot gain a second options type: Go allows one trailing variadic, and reusing `WriteOptions` is not possible because passing one replaces the source file's layout. A caller who wants to refuse whole columns calls `ExplainApplyCCL` first. The file can change between the two calls; that gap is documented.
 
+## Both lines
+
+The change ships on `0.4` and on `dev` (0.3.6) with the same names and behaviour. Both lines have the same streaming machinery (`StreamRefusal`, `ResolveWholeTable`, `NewTopSequence`); `git diff origin/dev origin/0.4` touches 53 lines of `parquet/ccl.go` and `internal/ccl/stream_resolve.go`, so the work is done on `0.4` and moved to `dev` by cherry-pick with those hunks adjusted, not by a merge.
+
+`ApplyCCL` keeps `opts ...WriteOptions` on both lines for the same reason: it shipped in 0.3.x. On `dev` a breaking signature change is not acceptable at all, so `ExplainApplyCCL` followed by `ApplyCCL` is the only way there, with the same check-then-act gap documented. If 0.4 later wants `RefuseWholeColumns` inside `ApplyCCL`, it needs a new function, which `dev` would then get under the same name.
+
 ## Compatibility
 
 - `FilterWithCCL` gains a trailing variadic, so every existing call compiles and behaves as before. Code that stores it in a variable of the old function type would stop compiling; nothing in the module does.
