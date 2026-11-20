@@ -121,9 +121,10 @@ func (c *TAIFEXClient) InstitutionalFuturesHistory(from, to time.Time) (*insyra.
 
 // InstitutionalFuturesHistoryContext is InstitutionalFuturesHistory with a
 // context. The columns are those of InstitutionalFutures and the rows are in date
-// order, oldest first. The website, which was measured on 2026-10-20 to serve this
-// table only from 2024, refuses an earlier date: the call then returns an error
-// naming the range, not an empty table. A range is requested month by month, so
+// order, oldest first. The website serves this table only for the three years
+// before the trading day, a window that moves forward every day, and refuses an
+// earlier date: the call then returns an error naming the range, not an empty
+// table. A range is requested month by month, so
 // a long one makes many requests under the client's Interval.
 func (c *TAIFEXClient) InstitutionalFuturesHistoryContext(ctx context.Context, from, to time.Time) (*insyra.DataTable, error) {
 	return c.historyTable(ctx, taifexHistory{"/cht/3/futContractsDateDown", institutionalColumns(false), true}, from, to)
