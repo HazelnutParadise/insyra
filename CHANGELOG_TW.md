@@ -55,6 +55,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `nn.SaveEdgeTopology` 與 `nn.LoadEdgeTopology`，把 `EdgeTopology` 存成有版本的 SafeTensors 檔再讀回來；`EdgeTopology.Equal` 比較兩個邊結構的邊和順序是否完全相同。這樣權重、狀態和 Adam 動量都在 GPU 上的稀疏遞迴網路，可以在新程式裡接著跑，結果逐位元一致。讀檔時先檢查版本、各欄位形狀和每個索引，全部正確才建立物件；GPU 上的邊結構存檔時不需要從 GPU 讀回資料。
 - `Tape.Tanh` 可以在 GPU 上跑：在 `PrecisionFloat32Rounded` 的 tape 上，輸入在 GPU 時輸出和梯度都留在 GPU，位元跟 CPU 相同，所以遞迴的一步 `tanh(W·state + input)` 不必再離開 GPU。**破壞性變更**（只在 `PrecisionFloat32Rounded`）：tanh 梯度剛好等於零時現在是 `+0`，和這個模式其他剛好為零的結果一樣，原本是 `-0` 的梯度（`tanh` 捨入成 `±1` 且上游梯度為負）會變號；小到捨入成零的梯度保留原本的正負號。預設的 tape 不變。
 - `Tape.Custom` 現在接受裝置上的張量，所以你自己的 kernel 可以夾在 Insyra 的常駐運算之間並參與反向傳播，資料全程不離開裝置。tape 必須使用新的 `accel.PrecisionFloat32` 模式，`SetPrecision` 現在接受它：所有內建運算的計算方式與 `PrecisionFloat32Rounded` 相同，但因為你的 kernel 結果取決於裝置，tape 不再保證換一個裝置仍得到相同的位元。常駐的輸出與反向規則回傳的梯度由 tape 擁有，並在 `Clear` 時釋放。`Tensor.DeviceBuffer()` 把常駐張量的緩衝區借給 kernel，`nn.NewDeviceTensor(shape, buffer)` 則把 kernel 寫好的緩衝區包成擁有它的張量（[#546](https://github.com/HazelnutParadise/insyra/issues/546)）。
+- `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
+- `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`Clear(ClearOptions{KeepGradients: true})` 讓那一次清除保留參數梯度（不帶參數的 `Clear()` 仍會清掉），`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態，`ClipGradNorm` 也不把凍結參數算進範數或縮放。`Float32` 與 `Float32Rounded` 的 tape 跑的是同一套 Adam，可以互相讀取對方存的最佳化器狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
+- `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
 
 ### `stats`
 
@@ -64,12 +67,6 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響；只有把函式本身存進舊函式型別變數（例如 `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`）的寫法要改用新的結果型別。
 - `stats.DiscreteTimeHazard(durations, observed, opts...)` 以 Allison 的人期（person-period）方法估計離散時間風險模型：一段狀態持續越久是否越容易結束、還有哪些因素會改變這個機率；`stats.PersonPeriod` 回傳它所用的人期表。`GLM` 的二項分布支援 `Cloglog` 連結函數。結果與 R 的 `glm` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
-
-### `ml` 與 `nn`
-
-- `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
-- `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`Clear(ClearOptions{KeepGradients: true})` 讓那一次清除保留參數梯度（不帶參數的 `Clear()` 仍會清掉），`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態，`ClipGradNorm` 也不把凍結參數算進範數或縮放。`Float32` 與 `Float32Rounded` 的 tape 跑的是同一套 Adam，可以互相讀取對方存的最佳化器狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
-- `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
 
 ### `quant`
 
