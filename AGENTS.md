@@ -278,6 +278,7 @@ Code traps that have already cost a fix once. Each line is the condition, then w
 - `ToSQL` with `Replace` keeps DROP and CREATE in one transaction on SQLite and PostgreSQL and uses a staging table with `RENAME TABLE` only on MySQL; do not move SQLite to a rename swap, because SQLite rewrites dependent views to follow `ALTER TABLE ... RENAME TO`.
 - A SQLite test that uses more than one pooled connection opens a file database with `?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)` (`newFileSQLite` on `0.4`), never `:memory:`, which is a separate database per connection; without the busy timeout a statement after a cancelled transaction fails with `SQLITE_BUSY`.
 - Never derive a random seed from floating-point results (a hash of loadings, a sum): they differ in the last bits between amd64 and arm64, so each platform draws unrelated values; use a fixed or caller-given seed.
+- A test that reads a text file from the repository (a changelog, a doc, a spec) normalises `\r\n` to `\n` before comparing lines: the Windows leg of the Test workflow checks files out with CRLF endings, and an exact line match such as `line == "## Unreleased"` then never matches.
 
 ## Follow-ups
 
