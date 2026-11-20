@@ -275,6 +275,17 @@ func TestPinnedEnvironmentEndToEnd(t *testing.T) {
 	if got, err := Run[any](ctx, `insyra.Return(10**400)`); err == nil || !strings.Contains(err.Error(), "float64") {
 		t.Errorf("an integer too large for a float64 gave %v, %v; want an error", got, err)
 	}
+	// An integer beyond 64 bits came back as the nearest float64 with no
+	// error (#415). It is refused where no float was asked for.
+	if got, err := Run[any](ctx, `insyra.Return(2**64 + 4)`); err == nil || !strings.Contains(err.Error(), "fits neither an int64 nor a uint64") {
+		t.Errorf("2**64 + 4 into any gave %#v, %v; want an error", got, err)
+	}
+	if got, err := Run[float64](ctx, `insyra.Return(2**64 + 4)`); err != nil || got != 18446744073709551620.0 {
+		t.Errorf("2**64 + 4 into a float64 gave %v, %v", got, err)
+	}
+	if _, err := Run[*insyra.DataTable](ctx, `insyra.Return(pl.DataFrame({"s": pl.Series([2**64 + 4], dtype=pl.Object)}))`); err == nil {
+		t.Errorf("a DataFrame holding 2**64 + 4 came back with no error")
+	}
 
 	// A column called name was taken for the DataFrame's name.
 	nameColumn, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"name": ["x", "y"], "v": [1, 2]}))`)
