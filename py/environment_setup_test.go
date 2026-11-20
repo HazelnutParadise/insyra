@@ -320,6 +320,51 @@ insyra.Return(df)`)
 		t.Errorf("a DataFrame of ids and floats came back with %#v and %#v", a, b)
 	}
 
+	// polars sent a column through NumPy, which has no missing integer: an id
+	// column with a null left Python as floats, a null came back as NaN, and
+	// a list column made json.dumps raise (#415).
+	plNulls, err := Run[*insyra.DataTable](ctx, `insyra.Return(pl.DataFrame({"id": [2**53 + 1, None], "x": [1.5, float("nan")], "u": pl.Series([2**64 - 1, None], dtype=pl.UInt64)}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, null, u := plNulls.GetElementByNumberIndex(0, 0), plNulls.GetElementByNumberIndex(1, 0), plNulls.GetElementByNumberIndex(0, 2); id != any(int64(9007199254740993)) || null != nil || u != any(uint64(math.MaxUint64)) || plNulls.GetElementByNumberIndex(1, 2) != nil {
+		t.Errorf("a polars id column with a null came back as %#v, %#v and %#v", id, null, u)
+	}
+	if x := plNulls.GetElementByNumberIndex(1, 1); !math.IsNaN(asFloat(x)) {
+		t.Errorf("a polars NaN came back as %#v, want NaN", x)
+	}
+	plNested, err := Run[*insyra.DataTable](ctx, `insyra.Return(pl.DataFrame({"l": [[1, 2], None], "s": [{"x": 1}, None]}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := plNested.GetElementByNumberIndex(0, 0).([]any)
+	record, _ := plNested.GetElementByNumberIndex(0, 1).(map[string]any)
+	if len(list) != 2 || list[0] != any(1.0) || list[1] != any(2.0) || record["x"] != any(1.0) || plNested.GetElementByNumberIndex(1, 0) != nil || plNested.GetElementByNumberIndex(1, 1) != nil {
+		t.Errorf("polars list and struct columns came back as %#v and %#v", plNested.GetElementByNumberIndex(0, 0), plNested.GetElementByNumberIndex(0, 1))
+	}
+
+	// pandas wrote pd.NA as nothing json could send, and turned Int64 into
+	// floats.
+	pdNulls, err := Run[*insyra.DataTable](ctx, `insyra.Return(pd.DataFrame({"id": pd.Series([2**53 + 1, None], dtype="Int64"), "b": pd.Series([True, None], dtype="boolean"), "s": pd.Series(["a", None], dtype="string")}))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, b, s := pdNulls.GetElementByNumberIndex(0, 0), pdNulls.GetElementByNumberIndex(0, 1), pdNulls.GetElementByNumberIndex(0, 2); id != any(int64(9007199254740993)) || b != any(true) || s != any("a") {
+		t.Errorf("pandas nullable columns came back as %#v, %#v and %#v", id, b, s)
+	}
+	for c := range 3 {
+		if v := pdNulls.GetElementByNumberIndex(1, c); v != nil {
+			t.Errorf("pd.NA in column %d came back as %#v, want nil", c, v)
+		}
+	}
+	pdSeries, err := Run[*insyra.DataList](ctx, `insyra.Return(pd.Series([2**53 + 1, None], dtype="Int64"))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pdSeries.Len() != 2 || pdSeries.Get(0) != any(int64(9007199254740993)) || pdSeries.Get(1) != nil {
+		t.Errorf("a pandas Int64 Series came back as %v", pdSeries.Data())
+	}
+
 	var version string
 	if err := RunCodeContext(ctx, &version, "import platform\ninsyra.Return(platform.python_version())"); err != nil {
 		t.Fatal(err)
