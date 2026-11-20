@@ -120,3 +120,61 @@ func TestIntegersWithin64BitsAndFloatsAreUnchanged(t *testing.T) {
 		t.Errorf("an integer sent as a string: got %+v, %v", s, err)
 	}
 }
+
+// selfDecodingRecord records that its own UnmarshalJSON ran.
+type selfDecodingRecord struct{ V float64 }
+
+func (s *selfDecodingRecord) UnmarshalJSON(b []byte) error {
+	s.V = -1
+	return nil
+}
+
+type selfDecodingList []float64
+
+func (s *selfDecodingList) UnmarshalJSON(b []byte) error {
+	*s = selfDecodingList{-1}
+	return nil
+}
+
+type selfDecodingMap map[string]float64
+
+func (s *selfDecodingMap) UnmarshalJSON(b []byte) error {
+	*s = selfDecodingMap{"k": -1}
+	return nil
+}
+
+// The review of py-wide-integers-refused measured a type with its own
+// UnmarshalJSON decoded by its kind instead, its float fields taking the
+// rounded integer with a nil error.
+func TestATypeThatDecodesItselfRefusesAnIntegerBeyond64Bits(t *testing.T) {
+	var s selfDecodingRecord
+	if err := bindMessage(t, `{"V": `+above64+`}`, &s); !isWideIntegerError(err) {
+		t.Errorf("struct: got %+v, %v", s, err)
+	}
+	var l selfDecodingList
+	if err := bindMessage(t, `[`+above64+`]`, &l); !isWideIntegerError(err) {
+		t.Errorf("slice: got %v, %v", l, err)
+	}
+	var m selfDecodingMap
+	if err := bindMessage(t, `{"k": `+above64+`}`, &m); !isWideIntegerError(err) {
+		t.Errorf("map: got %v, %v", m, err)
+	}
+	var r struct{ P *selfDecodingRecord }
+	if err := bindMessage(t, `{"P": {"V": `+above64+`}}`, &r); !isWideIntegerError(err) {
+		t.Errorf("pointer field: got %+v, %v", r.P, err)
+	}
+	// Without such an integer the type's own method still runs.
+	var ok selfDecodingRecord
+	if err := bindMessage(t, `{"V": 1}`, &ok); err != nil || ok.V != -1 {
+		t.Errorf("a small integer: got %+v, %v", ok, err)
+	}
+}
+
+// Parsing to a float64 and then narrowing rounds twice: 2**64 + 2**40 + 1
+// became 2**64, where the nearest float32 is the next one up.
+func TestAFloat32TakesTheNearestFloat32(t *testing.T) {
+	var f float32
+	if err := bindMessage(t, "18446745173221179393", &f); err != nil || f != float32(0x1.000002p+64) {
+		t.Errorf("got %v, %v; want %v", f, err, float32(0x1.000002p+64))
+	}
+}
