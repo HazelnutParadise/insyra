@@ -219,3 +219,14 @@ x * x * x
 - Exported `stats` APIs do not use `LogWarning`/`LogFatal` for failure signaling.
 - Callers must handle `err` explicitly.
 - See `Docs/stats.md` and `Docs/tutorials/*` for updated error-return usage examples.
+
+## 過往教訓
+
+- To check this line's `GPFoblq`/`GPForth` port, compare it start by start against R's unexported `GPArotation:::GPFoblq.legacy`, with `Tmat = S` in R and the loadings premultiplied (`L*S`) in Go; `GPFoblq(algorithm = "legacy")` in GPArotation 2026.8.2 is a different algorithm, so rates measured against it mislead.
+- A test in `package stats` cannot use the `package stats_test` helpers `refTable` (`anova_test.go`) and `itoa` (`regression_test.go`); read `testdata/*_reference.txt` there with `acfReference` from `autocorrelation_test.go`.
+- A test that needs a factor rotation to run out of iterations goes in `stats/internal/fa`, through `RotOpts.MaxIter`: `FactorAnalysisOptions.MaxIter` governs extraction only and `buildRotation` does not pass it on, so no public call can starve a rotation.
+- Prove a change to a rotation criterion with pinned GPArotation `vgQ` values in `stats/internal/fa`, not with the strict factor parity count: a combination where the Go search reaches a lower minimum than psych passes as "a different minimum from R's, and a lower one" and skips the frame fields, so the count of failing leaves cannot move. Read those verdict lines with `-v`.
+- Do not start two `INSYRA_STRICT_FACTOR_R_PARITY=1` runs at once in one checkout: a checkout without `stats/testdata/baseline_cache` regenerates every R baseline on the first run, and `writeBaselineCache` writes through the fixed name `<path>.tmp`.
+- When timing a factor rotation with `Restarts > 1`, time `buildStarts` apart from the rotations: the informed Varimax start can cost more than the whole search.
+- A result type that embeds another by value gets its own nil-safe `String`/`Show`, and a new result type is probed with `String` on a zero value and a nil pointer: a method promoted through value embedding dereferences a nil outer pointer before it runs.
+- In an R reference that calls GPArotation's `GPFoblq` or `GPForth`, name the step `algorithm = "legacy"` or `"bb"` explicitly: GPArotation 2026.8.2 turns any other name (`"gpa"`) into `"bb"` without an error.

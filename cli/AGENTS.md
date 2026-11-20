@@ -2,14 +2,7 @@
 
 Guidance for working in `cli/`. The top-level [AGENTS.md](../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `cli/`** so you don't reinvent them.
 
-> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below. If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
-
-## Where things live
-
-- `cli/commands/` — every DSL/CLI command (one file per command or per closely-related group)
-- `cli/repl/` — interactive prompt, line editing, completion
-- `cli/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
-- `cli/style/` — terminal styling primitives
+> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below; where each package lives is in [README.md](README.md). If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
 
 ## Always-reuse helpers (commands/helpers.go)
 
@@ -114,3 +107,10 @@ Helpers in this list are imported across commands. A signature change to `parseA
 - the command's own `Usage`, `Forms` and `Examples`, which `insyra help <command>` prints
 
 Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.
+
+## Known pitfalls
+
+- Run the CLI under test as a built binary with `HOME` set to a scratch directory: any run with the real `HOME`, even `help`, appends to `~/.insyra/envs/default/history.txt` and rewrites `state.json`.
+- A test that writes a temp path into a line the DSL tokenizer reads (dev: `cli/repl` `tokenize`, behind `DSLSession.ExecuteFile` and the REPL; 0.4: `internal/dsl.Tokenize`, behind `Session.ExecuteFile`) passes it through `filepath.ToSlash`: the tokenizer treats every backslash as an escape, so `C:\Users\…` loses its separators on Windows. `run`'s `splitScriptTokens` keeps backslashes.
+- Test a change to how the CLI opens an environment through `NewRootCommand` with `SetArgs` (as `TestRawArgCommandIgnoresABrokenDefaultEnvironment` does) or a built binary with its own `HOME`, not only through the `Manager`: commands with `DisableFlagParsing` (`newdl`, `addcol`, `addrow`, `show`, the hypothesis tests) take `--env` off in `wrapRawArgCommand`, after `PersistentPreRunE` has run.
+- When running the CLI or a docs example with `HOME` pointed at a temporary directory (to keep `~/.insyra` clean), also pass `GOMODCACHE=$(go env GOMODCACHE)` and `GOCACHE=$(go env GOCACHE)`; otherwise Go puts a read-only module cache under that `HOME` and removing the directory fails until `chmod -R u+w`.
