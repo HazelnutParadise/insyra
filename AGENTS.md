@@ -2,14 +2,6 @@
 
 This file is the primary guidance for AI coding agents working in this repository. `CLAUDE.md` re-exports it via `@AGENTS.md`.
 
-## What This Repo Is
-
-**Insyra** (`github.com/HazelnutParadise/insyra`) is a Go data analysis library (v0.3.x, "Huashan") providing:
-- `DataList` and `DataTable` as the core data structures
-- **CCL** (Column Calculation Language) — a domain-specific expression language for column transforms
-- A CLI/REPL (`insyra` binary) built with Cobra
-- Sub-packages for stats, plotting, LP, Python interop, parallel processing, file I/O, etc.
-
 ## Required artifacts
 
 Each entry says *when* reading it stops being optional. That trigger is the part that only exists here — the files describe their own contents.
@@ -171,66 +163,9 @@ Dependencies move on their own schedule; ours is the release. **Before `dev` is 
 
 Why this is a rule and not a habit: dependencies only moved when Dependabot filed an alert, which means the graph only moved once something was already broken, and the fix was taken under time pressure. Dependabot also reads the default branch, so an alert raised against a released version stays open until the next merge to `main` no matter how quickly it is fixed on `dev`.
 
-## Architecture
-
-### Core Package (`github.com/HazelnutParadise/insyra`)
-
-The root package defines everything central:
-- [interfaces.go](interfaces.go) — `IDataList` and `IDataTable` interfaces (authoritative API surface)
-- [datalist.go](datalist.go) / [datatable.go](datatable.go) — concrete implementations
-- [ccl.go](ccl.go) — wires the CCL engine into `DataTable.AddColUsingCCL` etc.
-- [config.go](config.go) — global `Config` singleton (log level, colored output, thread safety, panic behavior)
-- [atomic.go](atomic.go) — actor-model serialization for thread-safe operations on DataList/DataTable
-- [logger.go](logger.go) — structured logging used throughout
-
-### Sub-packages
-
-| Package | Purpose |
-|---|---|
-| `isr/` | Syntax-sugar wrappers — **for convenient code; the root package for performance** |
-| `stats/` | Statistical tests (t-test, ANOVA, chi-square, PCA, regression, …) |
-| `plot/` | Interactive charts via go-echarts |
-| `gplot/` | Static publication charts via gonum/plot |
-| `csvxl/` | CSV and Excel I/O |
-| `parquet/` | Parquet file I/O via Apache Arrow |
-| `datafetch/` | HTTP data fetching helpers |
-| `parallel/` | Run zero-argument functions at once and collect their results (`GroupUp(...).Run().AwaitResult()`) |
-| `lp/` / `lpgen/` | Linear programming |
-| `mkt/` | Market data helpers |
-| `quant/` | Strategy and portfolio evaluation: performance and risk metrics, CAPM, options, bootstrap, walk-forward, event studies |
-| `quant/ta/` | Technical-analysis tools (indicators, turning points, regimes) to test, not to trust |
-| `py/` | Python interop (runs Python via embedded env) |
-| `pd/` | Pandas-like wrappers built on `py/` |
-| `engine/` | Re-exported stable internals (BiIndex, Ring, AtomicDo, CCL compiler, sort utils) |
-| `allpkgs/` | Blank-import of all packages for `go get` convenience |
-
-### CLI (`cli/`)
-
-Built with Cobra. Entry point: [cmd/insyra/main.go](cmd/insyra/main.go) → `cli.Execute()`.
-- `cli/commands/` — the public names of the command registry, and `BuildCobraCommands`, which builds the shell from it
-- `cli/repl/` — interactive REPL and tab completion
-- `cli/env/` — public names of named environment management (variable persistence between sessions)
-- `cli/style/` — public names of the terminal styling
-
-The command language itself is not in `cli/`: `internal/dsl/commands/` holds every command and the registry, `internal/dsl/env/` and `internal/dsl/style/` the environments and styling, and `internal/dsl/` the session `engine/dsl` exposes. `engine/dsl` must not depend on `cli/`, Cobra or readline (`TestEngineDSLDoesNotDependOnTheCLI`); [internal/dsl/AGENTS.md](internal/dsl/AGENTS.md) has the rules for writing commands.
-
-### Internal packages (`internal/`)
-
-Not exported to consumers. Key ones:
-- `internal/ccl/` — CCL lexer, parser, AST, evaluator; `MapContext` for testing CCL without a DataTable
-- `internal/core/` — `BiIndex` (bidirectional id↔name index), `Ring` (circular buffer)
-- `internal/algorithms/` — parallel stable sort, `CompareAny` for mixed-type ordering
-
-### CCL (Column Calculation Language)
-
-CCL has two modes used by different DataTable methods:
-- **Expression mode** (`AddColUsingCCL`, `EditColByIndexUsingCCL`, `EditColByNameUsingCCL`) — pure expressions only, no assignment
-- **Statement mode** (`ExecuteCCL`) — supports assignment syntax and `NEW()` for creating columns
-
-Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or named references `['ColName']`.
-
 ## Key Conventions
 
+- **The command language sits below the shell.** `engine/dsl` and everything under `internal/dsl/` must not depend on `cli/`, Cobra or readline; `TestEngineDSLDoesNotDependOnTheCLI` fails when they do. [internal/dsl/AGENTS.md](internal/dsl/AGENTS.md) has the rules for writing commands.
 - **One column selector, everywhere.** Every parameter and config field that picks a column takes the same three forms: a `string` is an Excel-style index (`"A"`, `"B"`, `"AA"`), `Name("price")` is a column name, an `int` is a 0-based position (negative counts from the end). A bare string is never looked up as a name, so a call means the same thing whatever the columns are called; the column names shape only the failure message, which offers the `Name(...)` form when the table has that name. The core accessors keep explicit spellings beside the generic one (`GetColByIndex`/`ByName`/`ByNumber`, and the same for `UpdateCol`), and the analysis operations do not, because the selector already says which kind it was given. `isr.Name` is the same type as `insyra.Name`.
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
 - Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged; it removes only the per-instance lock of `DataList`/`DataTable` (`AtomicDo`, `AtomicDoAll`), and `Config.TurnOnThreadSafety()` restores it without touching other settings.
@@ -306,6 +241,69 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 [skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents working through the CLI, the REPL, `.isr` scripts or the Go DSL.
 
 A skill is installed into an agent's environment and outlives the version it came from, so it teaches what does not change between releases: when to reach for Insyra, how to think about it, the conventions that hold across it, how to verify a result, and how to find the exact API for the version in use (the module's own `Docs/`, `go doc`, `insyra help`). It does not list functions or commands, and it has no reference files that repeat `Docs/`. A detail a skill used to carry lives in `Docs/`; before removing anything from a skill, make sure `Docs/` holds it (`agent-skills` spec).
+
+## Working across `dev` and `0.4`
+
+How changes move between the two release lines, through CI, review and OpenSpec.
+
+- **After `dev` is merged into `0.4`, dedupe `## Unreleased` in both changelogs against the 0.3.x release sections the merge brings in**: drop an entry that already shipped there as a backport and rewrite one that 0.4 changed further to the difference, so the 0.4 release note says only what a 0.3.x user newly sees.
+- **The Codex PR reviewer does not always start by itself.** Comment `@codex review` once per head commit, and gate a merge on its summary comment showing the review completed with no unresolved findings for the current head SHA, not on older inline comments, which stay listed after a fix.
+- **A single `dev` fix needed on `0.4` goes over with `git cherry-pick -x`, not a full `dev` merge.** Run `git merge-tree --write-tree --name-only origin/0.4 origin/dev` before and after, and put any 0.4-only follow-up on `dev` as well, so the next `dev`→`0.4` merge does not conflict.
+- **Merge `dev` into `0.4` with `-s ours`, then replay the dev-only commits one by one with `git cherry-pick -x`**, adapting each to 0.4's rules (`Name(...)` selectors, sticky `Err()`, never panic, refuse unknown encodings) and keeping archived OpenSpec directories as 0.4 has them. A plain merge brings 0.3.x compatibility code back through clean auto-merges.
+- **`Closes #n` in a commit on `dev` or `0.4` does not close the issue**, because the default branch is `main`; close it with `gh issue close` after pushing.
+- **`main` is guarded by the repository ruleset "Protect main"**: no deletion or force push, a PR with 0 approvals, and nine required checks (Tests on ubuntu, macOS and windows, GolangCI-Lint, OpenSpec strict validation, Vulnerability Scan, Cross-language and round-trip verification, Slow KNN parity gate, Slow clustering parity gate). A CI job added or renamed that must gate a release goes into the ruleset's required checks in the same change; when writing the ruleset through the API, set `require_extra_approval_for_unattributed_changes` to false explicitly, because it defaults to true and can block a sole maintainer.
+- At a `dev`→`0.4` merge, keep 0.4's `internal/dsl/commands/accel.go`, which refuses `accel --precision` with the other unused arguments, and drop dev's `TestRunAccelCommandIgnoresTheRetiredPrecisionFlag`.
+- After `openspec archive`, stage `openspec/changes/<id>`, `openspec/changes/archive` and `openspec/specs/<cap>` by name: `git add -A openspec/changes` also stages every other change in progress.
+- When porting `dev` code to `0.4`, `insyra.AtomicDoAll` takes `...insyra.Lockable`, not `...any`: declare the handles as `insyra.Lockable` (a nil interface is skipped), and rewrite column selectors and their tests the 0.4 way (`insyra.Name(...)`).
+- Before deleting a branch, confirm it is merged: it is an ancestor of `origin/main`, `origin/dev` or `origin/0.4`, or a merged PR's `headRefOid` equals its tip (squash merges); list the verified names first and pass them literally.
+- When a `dev` PR cherry-picked onto `0.4` conflicts in the changelogs, reset `CHANGELOG.md` and `CHANGELOG_TW.md` with `git checkout origin/0.4 -- <file>` and add only this work's entries, taken from `git show origin/dev:CHANGELOG.md`: keeping both sides drags dev-only entries into 0.4.
+- A change that lands on both lines is archived on each line, and the Purpose archiving leaves as `TBD` is rewritten on each.
+- **A fixed Codex review finding stays unresolved until its thread is resolved**: reply on the thread, resolve it with the GraphQL `resolveReviewThread` mutation (`gh api graphql`), then check that every `reviewThreads` entry is `isResolved` and that the Codex review state's commit SHA equals the head. Give each finding a regression test that fails without the fix.
+- At a `dev`→`0.4` merge, a file `dev` adds under `cli/commands/` or `cli/env/` stays there, because `cli/commands` still exists and Git sees no directory rename, and it will not compile against the alias package: move it to `internal/dsl/commands/` or `internal/dsl/env/` by hand.
+- After resolving a conflict between two Follow-ups added at the top of the list, check that every `###` entry still ends with its `- **Status**:` line: the shared trailing Status line sits outside the conflict hunk, so keeping both sides leaves the first entry without one.
+- To wait for CI on a push, poll `gh run list --limit 30 --json headSha,name,status,conclusion` and filter on the head SHA: `--branch` and `--commit` have returned only older runs, so a poll on them never ends.
+- Before listing a capability under New Capabilities in a proposal, check whether `openspec/specs/<name>/` exists; if it does, write `MODIFIED` requirements, because `openspec archive` silently appends `ADDED` ones to the existing spec and can leave it contradicting itself.
+- For work that reads another line's files over hours (a port between `dev` and `0.4`), pin the source to a commit SHA rather than `origin/<branch>:path`; other sessions push to both lines meanwhile, and a moving ref silently returns newer content.
+- After rebasing onto a branch others moved, find your own commit with `git log --format="%H %s"` filtered by your change id or subject, never by `HEAD~N`, before citing its SHA in an issue or commit message.
+- When a PR conflicts in `CHANGELOG.md`/`CHANGELOG_TW.md` after a sibling PR merged, keep both sides' entries, each under its own package heading in `## Unreleased`, and expect CI to rerun. A `dev` to `0.4` cherry-pick touching `NewTape` conflicts in `nn/autodiff.go` because `0.4`'s records an error for more than one seed; keep that.
+- The README H1 tagline is the series slogan (`# Insyra - <slogan>` in `README.md` and `README_TW.md`), and the READMEs never name the series; a new series changes `VersionName` in `version.go` and both taglines.
+- When a cherry-pick of a README section move between `dev` and `0.4` conflicts, take the target line's `README.md`/`README_TW.md` and redo the move with a line-based script that asserts the multiset of lines is unchanged, rather than hand-merging hunks: the two lines word some sections differently.
+- A `0.4` change that only implements what the v0.3 documentation already described is ported to `dev` directly, even when it changes a v0.3.2 result: the documented behaviour is the contract, and the old result was the defect.
+- Design a new public API or name with concrete call examples, show them to the owner and get approval before implementing it; abstract lists and signature dumps are not a design. A technical choice cites literature or an industry convention, and a choice with neither is not made.
+- To find CI runs for a commit, list `gh api "repos/HazelnutParadise/insyra/actions/runs?per_page=40"` and match the `head_sha` prefix; never take an empty `head_sha`-filtered result as 'no runs', since the filter can return nothing for many minutes after the runs finished.
+- Run the OpenSpec CLI as `npx --yes @fission-ai/openspec@1.14.1`, the version the OpenSpec strict validation job pins; the npm package named `openspec` is an unrelated one.
+- A `MODIFIED` requirement in a spec delta keeps every scenario name the main spec has, with new content where needed; `openspec validate --strict` refuses one that drops a scenario. To drop one, use `REMOVED` plus `ADDED`, or `RENAMED` FROM/TO followed by `MODIFIED` under the new name.
+- GitHub auto-merge is off for this repository: merge a PR by hand with `gh pr merge --merge` once its checks pass, and never squash or rebase a `dev` to `0.4` merge PR, whose history must survive.
+- Before handing back a port between `dev` and `0.4`, probe the behaviour the ported code changes against the base branch (nil versus receiver, copy versus alias, where a sheet lands, locking), not only the test suite; green build, test, race and lint runs still let breaking changes through.
+- Before reviewing or merging a fix or performance PR, run `gh pr list --state open` and compare file lists for another PR on the same files; keep one and close the other.
+- When the `macOS-latest` leg of the Test workflow fails after about 15 minutes with no log, read `gh api repos/HazelnutParadise/insyra/check-runs/<job id>/annotations`; "The job was not acquired by Runner of type hosted" means GitHub never got a runner, not a code failure, so rerun with `gh run rerun <run> --failed`.
+
+## Known pitfalls
+
+Code traps that have already cost a fix once. Each line is the condition, then what to do.
+
+- **`ReadSQL` puts raw `[]byte` cells in a table.** `convertSQLValue` keeps every binary column (`isBinaryColumn`: BLOB, BYTEA, BINARY, VARBINARY and the MySQL BLOB sizes) as `[]byte`, so a change to how cells are compared, hashed or displayed must handle uncomparable cells that arrive through an ordinary read, not only through `Append`.
+- **A finding in `project/api-review.md` is fixed through an OpenSpec change**, then its row is marked `已修正` with the change name and its GitHub issue (label `api-review`) is closed. Second-round codes (`CLI-`, `CCL-`, `IN-`, `SEC-`, `TS-`, `RP-`) are in its 第二輪 section.
+- A package page's H1 is `# [ pkg ] Package`: `tools/gendocs` (`titleFromFile`) copies the first `#` heading verbatim into the generated sidebar.
+- A module that is required but never imported is neither compiled nor does its `go` directive constrain the build; when weighing such a dependency, count its graph visibility (`go list -m all`, Dependabot, dependency review) and CI upkeep, not binary size or minimum Go.
+- **A config field whose enum has a meaningful zero value and that also needs an unset state is a pointer**, written with Go 1.26 `new(expr)`: `PivotConfig.AggFunc *AggregateOp` takes `new(insyra.OpSum)`, and nil means duplicates are refused.
+- To list every caller of a method before deprecating it when another type shares its name, rename it temporarily and compile each package with `go test -c -gcflags=-e -o /dev/null ./pkg/`, then restore it with `git checkout`: `go vet` stops at 10 errors per package.
+- A test of a deprecated name goes in the package's internal test package, as `datafetch/deprecated_names_test.go` (`package datafetch`) does: staticcheck SA1019 reports a deprecated insyra name only when it is used from another package.
+- **A coverage change for a package with no tests is planned with a fix change beside it**: so far every package at 0% coverage held a real defect that its first test found.
+- A test that pins exported return types names them as struct fields filled from the constructors, not `var _ func(...) *T = Ctor` (staticcheck QF1011) or `[]*T{&T{}}` (gofmt's simplify); check with `gofmt -s -l`.
+- **A builder that adds columns from a map iterates its keys in sorted order**: Go's map order changes between runs, and so would the column order.
+- **CCL's `date - date` produces `time.Duration` cells**, so anything that serialises or type-switches cells handles `time.Duration` as well as `time.Time`.
+- A test that re-runs the test binary as a child passes it `-test.gocoverdir` and `GOCOVERDIR` when `testing.CoverMode() != ""`, and neither otherwise: under `go test -coverprofile`, which the macOS CI leg runs, a child whose TMPDIR is missing dies with `error setting GOCOVERDIR`, and a binary built without coverage refuses the flag.
+- A `DataList` method that needs statistics of its own values computes them with `observedStats` (`datalist_numeric.go`), not `Mean()` or `Stdev()`: those count NaN in their sums and warn on every cell they skip.
+- After methods in a file are rewritten in place, diff the file's exported functions before and after (`grep '^func' <file> | sort` against the same from `git show HEAD:<file>`): a per-method review does not notice a deleted method that sat between rewritten ones.
+- `tools/gendocs` rewrites `<dir>/index.html`, `_navbar.md`, `docs.css` and `logo.webp` in place besides the sidebar; to see its effect, run it on a copy of `Docs/` in a scratch directory, not on `./Docs`.
+- When a Go doc comment shows text with two single quotes in a row (CCL's `'it''s'` escape), put it in an indented preformatted block, as `internal/ccl/ccl_tokenizer.go` does; `gofmt` rewrites `''` in ordinary comment text into a typographic right double quote.
+- Before converting a `float64` to `int`, `int64` or `time.Duration`, check it is in range with the upper bound written as `< 2^63` (not `<= float64(math.MaxInt64)`, which rounds up to 2^63): Go leaves an out-of-range conversion undefined, amd64 gives `MinInt64` and arm64 saturates, so the result differs by platform. Test such code on amd64 as well as arm64.
+- `local/` is gitignored but inside the module, so `go build ./...` and `go vet ./...` compile any `.go` file left there; delete probe programs in `local/` before changing an exported signature, or every later build fails on them.
+- To read or copy an `IDataList` you were handed, use the `*DataList` its `AtomicDo` hands over, or `AppendDataList`; never rebuild it with `NewDataList(dl.Data()...)`, because the constructor flattens every slice cell into several values.
+- In a test, put `return` after `t.Fatal`/`t.Fatalf` in an `if err == nil` branch when the next line calls a method on `err` (such as `Err()` or `PopErr()`'s `*ErrorInfo`): `ErrorInfo.Error` has a value receiver, so the call dereferences the pointer and CI's staticcheck SA5011 reports it.
+- A SQLite test that uses more than one pooled connection opens a file database with `?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)` (`newFileSQLite` on `0.4`), never `:memory:`, which is a separate database per connection; without the busy timeout a statement after a cancelled transaction fails with `SQLITE_BUSY`.
+- Never derive a random seed from floating-point results (a hash of loadings, a sum): they differ in the last bits between amd64 and arm64, so each platform draws unrelated values; use a fixed or caller-given seed.
 
 ## Follow-ups
 

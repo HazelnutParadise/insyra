@@ -2,15 +2,9 @@
 
 Guidance for working on the command language: `internal/dsl/` and the `cli/` packages built on it. The top-level [AGENTS.md](../../AGENTS.md) covers the wider repo; this file focuses on **shared helpers and patterns inside `internal/dsl/commands/`** so you don't reinvent them.
 
-> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below. If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
+> Rule of thumb: before writing a parser, lookup, or registration helper, check the lists below; where each package lives is in [README.md](README.md). If it's already here, use it. If you're tempted to write a near-duplicate, refactor the existing one instead.
 
-## Where things live
-
-- `internal/dsl/commands/` — every DSL/CLI command (one file per command or per closely-related group) and the registry
-- `internal/dsl/env/` — named environment persistence (`~/.insyra/envs/<name>/`)
-- `internal/dsl/style/` — terminal styling primitives
-- `internal/dsl/` — the session `engine/dsl` exposes, and the tokenizer every mode shares
-- `cli/` — the Cobra shell (`cli/commands/cobra.go` builds it from the registry), the REPL (`cli/repl/`), and the public names `cli/commands`, `cli/env` and `cli/style` give the internal packages
+## Package boundary
 
 Nothing under `internal/dsl/` imports `cli/`, Cobra or readline; `TestEngineDSLDoesNotDependOnTheCLI` in `engine/dsl` fails when something does. Shell-only code goes in `cli/`.
 
@@ -132,3 +126,11 @@ Helpers in this list are imported across commands. A signature change to `parseA
 - the command's own `Usage`, `Forms` and `Examples`, which `insyra help <command>` prints
 
 Keep these in sync. `Docs/cli-dsl.md` and `help` are what AI agents read: [skills/use-insyra-cli/SKILL.md](../../skills/use-insyra-cli/SKILL.md) teaches them to look there and lists no commands itself.
+
+## Known pitfalls
+
+- A test of the one-shot shell builds it with `buildCobraCommands(ctx, names, handlers, dispatch)` (`cli/commands/cobra.go`) over its own handlers and a recording dispatcher; replacing the `Registry` variable of `cli/commands` does not reach the internal registry.
+- Run the CLI under test as a built binary with `HOME` set to a scratch directory: any run with the real `HOME`, even `help`, appends to `~/.insyra/envs/default/history.txt` and rewrites `state.json`.
+- A test that writes a temp path into a line the DSL tokenizer reads (dev: `cli/repl` `tokenize`, behind `DSLSession.ExecuteFile` and the REPL; 0.4: `internal/dsl.Tokenize`, behind `Session.ExecuteFile`) passes it through `filepath.ToSlash`: the tokenizer treats every backslash as an escape, so `C:\Users\…` loses its separators on Windows. `run`'s `splitScriptTokens` keeps backslashes.
+- After rebasing a branch older than `dsl-outside-cli` (9d043c9a) onto `0.4`, `git mv` every command or test file it added under `cli/commands/` into `internal/dsl/commands/`: the rebase carries edits to moved files but leaves new files behind, where they compile against the deprecated aliases or not at all.
+- When running the CLI or a docs example with `HOME` pointed at a temporary directory (to keep `~/.insyra` clean), also pass `GOMODCACHE=$(go env GOMODCACHE)` and `GOCACHE=$(go env GOCACHE)`; otherwise Go puts a read-only module cache under that `HOME` and removing the directory fails until `chmod -R u+w`.
