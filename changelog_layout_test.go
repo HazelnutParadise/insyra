@@ -19,7 +19,8 @@ func TestChangelogUnreleasedLayout(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		lines := strings.Split(string(data), "\n")
+		// A Windows checkout may turn every line ending into "\r\n".
+		lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 		unreleased := -1
 		for i, line := range lines {
 			if line == "## Unreleased" {
