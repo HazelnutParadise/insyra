@@ -248,3 +248,41 @@ func TestCCLPlanString(t *testing.T) {
 		t.Errorf("CCLMode names: %v, %v", CCLMode(9), CCLStreamed)
 	}
 }
+
+// The review measured A > A.(MAX(B)) reading the file three times where the
+// plan, read from no rows, said two and promised the count was exact.
+func TestExplainFlagsARowComputedFromTheData(t *testing.T) {
+	path := writePlanFixture(t)
+	ctx := context.Background()
+	for _, expr := range []string{"A > A.(MAX(B))", "A > A.(A.0)", "CUMSUM(A + A.(A.0))"} {
+		plan, err := ExplainFilterWithCCL(ctx, path, expr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := passesOf(t, func() error {
+			_, err := FilterWithCCL(ctx, path, expr)
+			return err
+		})
+		if !plan.MayReadMore || got < plan.MinDataPasses {
+			t.Errorf("%s: MayReadMore %v, plan %d passes, call %d", expr, plan.MayReadMore, plan.MinDataPasses, got)
+		}
+	}
+}
+
+// The review measured ExplainApplyCCL accepting Z = A + 1 on a file without
+// Z, which ApplyCCL refuses before it writes.
+func TestExplainApplyCCLRefusesAMissingTarget(t *testing.T) {
+	path := writePlanFixture(t)
+	callErr := ApplyCCL(context.Background(), path, "Z = A + 1")
+	_, planErr := ExplainApplyCCL(context.Background(), path, "Z = A + 1")
+	if callErr == nil || planErr == nil || callErr.Error() != planErr.Error() {
+		t.Errorf("the call said %v, Explain said %v", callErr, planErr)
+	}
+}
+
+func TestApplyCCLRefusesANilContext(t *testing.T) {
+	//lint:ignore SA1012 the nil context is what is being tested
+	if err := ApplyCCL(nil, writePlanFixture(t), "NEW('C') = A"); !errors.Is(err, errNilContext) { //nolint:staticcheck
+		t.Errorf("got %v", err)
+	}
+}
