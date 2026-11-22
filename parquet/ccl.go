@@ -2658,6 +2658,9 @@ func sourceLayout(path string) (layout cclOutputLayout, err error) {
 // its own and replaces path only when it is complete, so a failure leaves the
 // original as it was; an input with no rows leaves it untouched too.
 func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
 	// The layout is settled before anything is read or written, so settings
 	// Write would refuse, or a file whose layout cannot be read, leave the file
 	// as it was.

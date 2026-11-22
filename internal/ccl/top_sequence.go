@@ -132,3 +132,16 @@ func TopSequenceReadsTable(n CCLNode) (string, bool) {
 	}
 	return "", false
 }
+
+// FixedRowReadsTable reports whether n holds a fixed row whose row is itself
+// computed from the table, such as A.(MAX(B)), and describes it. Which row
+// that is, and so whether reading it takes a pass of its own, is known only
+// once the table is read.
+func FixedRowReadsTable(n CCLNode) (string, bool) {
+	for _, part := range collectWholeTableParts(n) {
+		if op, ok := part.(*cclBinaryOpNode); ok && op.op == "." && len(collectWholeTableParts(op.right)) > 0 {
+			return describeNode(part), true
+		}
+	}
+	return "", false
+}

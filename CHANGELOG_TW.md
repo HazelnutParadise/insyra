@@ -354,7 +354,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `WriteTo` 與 `WriteToContext` 在 row group 無法開始時回傳錯誤而不是 panic；`WriteToContext` 在寫 footer 期間 context 被取消時回傳 `ctx.Err()`。
 - `Compression` 印出常數名稱，未知的值回報為 `Compression(n)`。
 - 新增 `ExplainFilterWithCCL` 與 `ExplainApplyCCL`：只看檔案的中繼資料和式子，就能知道 `FilterWithCCL` 和 `ApplyCCL` 的每一句會怎麼跑，包括是一批批處理還是要把整欄載進記憶體、原因是什麼、會讀哪些欄、留哪些欄、要讀幾遍檔案，以及留在記憶體的欄大約多大。`CCLPlan` 有 `String()` 與 `Show()`（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
-- `FilterWithCCL` 可以多傳一個 `FilterWithCCLOptions`。`MaxRows` 會在第一個超出上限的列停止讀取，回傳 `nil` 和符合 `ErrCCLRowLimit` 的錯誤；`RefuseWholeColumns` 會讓需要載入整欄的式子回傳符合 `ErrCCLWholeColumnsRefused` 的錯誤，計畫已經看得出來時，連一筆資料都不會讀（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
+- `FilterWithCCL` 可以多傳一個 `FilterWithCCLOptions`。`MaxRows` 會在第一個超出上限的列停止讀取，回傳 `nil` 和符合 `ErrCCLRowLimit` 的錯誤；`RefuseWholeColumns` 會讓需要載入整欄的式子回傳符合 `ErrCCLWholeColumnsRefused` 的錯誤，計畫已經看得出來時，連一筆資料都不會讀。傳入 nil context 時，`FilterWithCCL` 與 `ApplyCCL` 改為回傳錯誤，不再 panic（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。

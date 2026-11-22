@@ -17,7 +17,7 @@
 `MinDataPasses` and `HeldCells` SHALL be exact for a run that succeeds. `MayReadMore` SHALL be true, with a reason, when only the data decides whether the call reads more or loads whole columns. `EstimatedHeldBytes` SHALL be documented as an estimate from the file's metadata.
 
 #### Scenario: A sequence period computed from the data
-- **WHEN** a file is explained for `LAG(A, COUNT(A)) > 0`
+- **WHEN** a file is explained for `LAG(A, COUNT(A))`
 - **THEN** `MayReadMore` is true and a reason names the period
 
 ### Requirement: Explain refuses what the call refuses
