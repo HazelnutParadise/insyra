@@ -17,9 +17,9 @@ import (
 // file. ExplainFilterWithCCL and ExplainApplyCCL read it from the file's
 // metadata and the expression alone, without evaluating a row.
 //
-// MinDataPasses and HeldCells are exact for a run that succeeds. A run that
-// fails on the data can stop sooner, and MayReadMore says when the data can
-// make it read more. EstimatedHeldBytes is an estimate.
+// MinDataPasses and HeldCells are exact for a run that succeeds, unless
+// MayReadMore says the data can make it read more. A run that fails on the
+// data can stop sooner. EstimatedHeldBytes is an estimate.
 type CCLPlan struct {
 	// Mode is how the rows are evaluated.
 	Mode CCLMode
@@ -303,6 +303,12 @@ func planNode(node ccl.CCLNode, totalRows int, names []string) (plan CCLPlan, ro
 		plan.Mode = CCLStreamed
 		plan.MinDataPasses = passes
 	}
+	if row, ok := ccl.FixedRowReadsTable(node); ok && !route.wholeColumns {
+		// Which row it is comes from the data, and a plan read from no rows
+		// does not know whether reading it takes a pass of its own.
+		plan.MayReadMore = true
+		plan.Reasons = append(plan.Reasons, fmt.Sprintf("the row of %s is computed from the data, which can take another pass to read", row))
+	}
 	if bindErr != nil && plan.Mode != CCLWholeColumns {
 		plan.Reasons = append(plan.Reasons, fmt.Sprintf("%v; the call reports it when it evaluates the first row", bindErr))
 	}
@@ -372,16 +378,18 @@ func ExplainApplyCCL(ctx context.Context, path string, cclScript string) ([]CCLP
 			plans = append(plans, CCLPlan{NumRows: int64(totalRows), Reasons: []string{"the statement writes nothing, so ApplyCCL skips it"}})
 			continue
 		}
+		// ApplyCCL refuses an assignment to a column the file does not have
+		// before it reads, whichever route the statement takes.
+		if target, ok := ccl.GetAssignmentTarget(node); ok {
+			if _, found := resolveAssignTarget(target, names); !found {
+				return nil, fmt.Errorf("failed to apply CCL: %w", assignTargetError(target, names))
+			}
+		}
 		plan, route, err := planNode(node, totalRows, names)
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply CCL: %w", err)
 		}
 		if route.wholeColumns && plan.Mode == CCLWholeColumns {
-			if target, ok := ccl.GetAssignmentTarget(node); ok {
-				if _, found := resolveAssignTarget(target, names); !found {
-					return nil, fmt.Errorf("failed to apply CCL: %w", assignTargetError(target, names))
-				}
-			}
 			if totalRows == 0 {
 				// A statement over no rows has nothing to load.
 				plan.MinDataPasses--

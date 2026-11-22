@@ -379,8 +379,8 @@ type CCLPlan struct {
 **Description:** Says how `FilterWithCCL`, or each statement of `ApplyCCL`, would run on a file, without evaluating any row: only the file's metadata is read. Use it to see beforehand whether an expression reads the file again for an aggregate, loads whole columns, or keeps every matching row.
 
 - `Mode` is `CCLStreamed` when the rows are evaluated batch by batch, `CCLStreamedSequence` for a sequence function such as `LAG` that is the whole expression, and `CCLWholeColumns` when the columns the expression reads are loaded whole, with the reason in `Reasons`.
-- `MinDataPasses` and `HeldCells` are exact for a run that succeeds. An aggregate such as `AVG(A)` adds a read before the rows are kept, `VAR` and `STDEV` two. A run that fails on the data can stop sooner.
-- `MayReadMore` is true when only the data decides, such as `LAG(A, COUNT(B))`, whose period is computed from the file.
+- `MinDataPasses` and `HeldCells` are exact for a run that succeeds, unless `MayReadMore` is true. An aggregate such as `AVG(A)` adds a read before the rows are kept, `VAR` and `STDEV` two. A run that fails on the data can stop sooner.
+- `MayReadMore` is true when only the data decides, such as `LAG(A, COUNT(B))`, whose period is computed from the file, or `A > A.(MAX(B))`, whose row is.
 - `EstimatedHeldBytes` is an estimate from the file's metadata; the columns usually take more memory than that.
 - A plan Explain refuses, such as an expression that does not compile, is one the call refuses the same way. An accepted plan does not promise the call succeeds on the data. A column name the file does not have is reported in `Reasons`, because the call reports it only when it evaluates the first row.
 - `ExplainApplyCCL` returns one plan per statement. Each counts the reads its statement adds before the file is written; `ApplyCCL` then reads the file once more to write it, and twice more again when a column it writes holds another type of value further on, which only the data shows. A statement that writes nothing is reported as skipped. The file can change between `ExplainApplyCCL` and `ApplyCCL`.
