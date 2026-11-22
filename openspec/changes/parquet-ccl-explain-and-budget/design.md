@@ -68,7 +68,17 @@ Explain answers in one direction only: a plan Explain refuses (a syntax error, a
 
 `FilterWithCCL` and `ApplyCCL` will build the same plan and run from it, so Explain cannot drift from the call. Tests count the passes the call really makes, with a counter like the existing `wholeColumnsLoaded`, and compare them with `MinDataPasses`.
 
-`ExplainApplyCCL` returns one plan per statement, in order. A statement that writes nothing is reported with `CCLStreamed`, zero passes and a reason saying it is skipped, since `ApplyCCL` skips it.
+`ExplainApplyCCL` returns one plan per statement, in order. A statement's `MinDataPasses` counts the passes that statement adds before anything is written; `ApplyCCL` then reads the file once more to write it, and twice more again when a written column turns out to hold another type of value further on, which no plan can predict and the documentation states. A whole-column statement's `HeldCells` counts the columns it loads while it is computed and the column it keeps until the file is written. A statement that writes nothing is reported with `CCLStreamed`, zero passes and a reason saying it is skipped, since `ApplyCCL` skips it.
+
+`CCLPlan` has `String()` and `Show()`, like the other result types, printing the plan as a few lines:
+
+```
+Plan: whole columns (MEDIAN cannot be computed batch by batch)
+Reads:   amount
+Holds:   amount, 50,000,000 rows (about 400 MB on disk, uncompressed)
+Passes:  at least 2
+Result:  every kept row is held in memory
+```
 
 Example:
 
