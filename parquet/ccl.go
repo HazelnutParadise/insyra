@@ -2041,6 +2041,7 @@ func cclFileInfo(path string) (totalRows int, colNames []string, schema *arrow.S
 // record, in order. The reader stops when fn returns, and fn must not keep rec
 // after it returns.
 func forEachRecord(ctx context.Context, path string, fn func(rec arrow.RecordBatch) error) error {
+	cclDataPasses.Add(1)
 	// The reader stops when this call returns, so an early return cannot leave
 	// it blocked on a batch nobody reads, holding the file open.
 	ctx, cancel := context.WithCancel(ctx)
@@ -2138,6 +2139,11 @@ func appliedBatches(ctx context.Context, path string, colNames []string, prior [
 // reads, which is what keeps an expression that needs whole columns from holding
 // the file.
 var wholeColumnsLoaded atomic.Int64
+
+// cclDataPasses counts the reads of a file's data FilterWithCCL and ApplyCCL
+// make, one for each call of forEachRecord. The tests hold CCLPlan's
+// MinDataPasses to it.
+var cclDataPasses atomic.Int64
 
 // columnsAfter returns the columns the statements nodes leave, in order: the
 // file's own, and one for each NEW.
@@ -2381,7 +2387,18 @@ func eachRun(ctx context.Context, path string, colNames []string, fn func(r cclR
 // columns it reads, and only those, into memory and evaluating it the way the
 // DataTable CCL methods do, so its answer, or its error, is the loaded table's.
 // An expression that needs every column (@) holds the whole file that way.
-func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error) {
+func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...FilterWithCCLOptions) (*insyra.DataTable, error) {
+	opt, err := filterOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		return nil, errNilContext
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Compile CCL expression once
 	compiledExpr, err := ccl.CompileExpression(filterExpr)
 	if err != nil {
@@ -2399,22 +2416,31 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 		return nil, err
 	}
 
+	// A filter that must not hold whole columns is refused before anything is
+	// read when its plan already says it would.
+	if opt.RefuseWholeColumns {
+		plan, _, err := planNode(compiledExpr, totalRows, colNames)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate CCL expression: %w", err)
+		}
+		if plan.Mode == CCLWholeColumns {
+			return nil, fmt.Errorf("%w: %s", ErrCCLWholeColumnsRefused, strings.Join(plan.Reasons, "; "))
+		}
+	}
+
 	// An expression the batches cannot answer is computed over whole columns. So
 	// is a top-level sequence function the stream cannot take (a name a caller
 	// registered, a column argument that does not change from row to row): the
 	// table's own procedure gives the table's answer or error for those.
-	var resolved ccl.CCLNode
-	var seq *ccl.TopSequence
-	isSequence := false
-	wholeColumns := ccl.StreamRefusal(compiledExpr) != nil
-	if !wholeColumns {
-		resolved, err = ccl.ResolveWholeTable(compiledExpr, totalRows, colNames, appliedBatches(ctx, path, colNames, nil, 0, nil))
-		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate CCL expression: %w", err)
-		}
-		var seqErr error
-		seq, isSequence, seqErr = ccl.NewTopSequence(resolved, totalRows, colNames)
-		wholeColumns = seqErr != nil
+	route, err := routeCCL(compiledExpr, totalRows, colNames, appliedBatches(ctx, path, colNames, nil, 0, nil))
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate CCL expression: %w", err)
+	}
+	resolved, seq, isSequence, wholeColumns := route.resolved, route.seq, route.isSequence, route.wholeColumns
+	if wholeColumns && opt.RefuseWholeColumns {
+		// The data decided it: a sequence whose period it computed could not be
+		// streamed.
+		return nil, fmt.Errorf("%w: %s", ErrCCLWholeColumnsRefused, route.reason)
 	}
 
 	// One slice per column, grown across every batch. Appending into
@@ -2422,16 +2448,24 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 	// batch, because that method returns a copy of the column: a 2500-row file
 	// filtered on a condition every row satisfies came back with 1000 rows.
 	kept := make([][]any, len(colNames))
-	keep := func(r cclRun, decisions []any) {
+	keptRows := int64(0)
+	keep := func(r cclRun, decisions []any) error {
 		for rowIdx, val := range decisions {
 			if !passesFilter(val) {
 				continue
 			}
+			// The row past the limit stops the read, so the rows after it are
+			// never held.
+			if opt.MaxRows > 0 && keptRows == opt.MaxRows {
+				return fmt.Errorf("%w: it keeps more than %d rows, row %d being the first past the limit", ErrCCLRowLimit, opt.MaxRows, r.offset+rowIdx)
+			}
+			keptRows++
 			// Add this row to the filtered results
 			for colIdx := range kept {
 				kept[colIdx] = append(kept[colIdx], r.cols[colIdx][rowIdx])
 			}
 		}
+		return nil
 	}
 
 	switch {
@@ -2449,8 +2483,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				return fmt.Errorf("the file holds rows %d to %d, past the %d rows the filter was computed over; it changed while it was being read",
 					r.offset, end-1, len(decisions))
 			}
-			keep(r, decisions[r.offset:end])
-			return nil
+			return keep(r, decisions[r.offset:end])
 		}); err != nil {
 			return nil, err
 		}
@@ -2462,10 +2495,13 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 		// decisions are written into a column of their own, which is the last
 		// column of every run that leaves the stage.
 		stage := &sequenceStage{seq: seq, newName: filterColumnName, target: -1}
-		take := func(runs []cclRun) {
+		take := func(runs []cclRun) error {
 			for _, run := range runs {
-				keep(run, run.cols[len(colNames)])
+				if err := keep(run, run.cols[len(colNames)]); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
 		if err := eachRun(ctx, path, colNames, func(r cclRun) error {
 			out, err := stage.push(r)
@@ -2476,8 +2512,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				return fmt.Errorf("error evaluating CCL in rows %d to %d: %w",
 					r.offset, r.offset+r.rows()-1, err)
 			}
-			take(out)
-			return nil
+			return take(out)
 		}); err != nil {
 			return nil, err
 		}
@@ -2486,7 +2521,9 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 		if err != nil {
 			return nil, fmt.Errorf("error evaluating CCL: %w", err)
 		}
-		take(tail)
+		if err := take(tail); err != nil {
+			return nil, err
+		}
 
 	default:
 		// Every other filter is answered over each batch as it arrives. A value
@@ -2507,8 +2544,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 				}
 				decisions[rowIdx] = rowOf(val, rowInvariant, totalRows, r.offset+rowIdx)
 			}
-			keep(r, decisions)
-			return nil
+			return keep(r, decisions)
 		}); err != nil {
 			return nil, err
 		}
@@ -2622,6 +2658,9 @@ func sourceLayout(path string) (layout cclOutputLayout, err error) {
 // its own and replaces path only when it is complete, so a failure leaves the
 // original as it was; an input with no rows leaves it untouched too.
 func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteOptions) error {
+	if ctx == nil {
+		return errNilContext
+	}
 	// The layout is settled before anything is read or written, so settings
 	// Write would refuse, or a file whose layout cannot be read, leave the file
 	// as it was.
@@ -2684,21 +2723,15 @@ func ApplyCCL(ctx context.Context, path string, cclScript string, opts ...WriteO
 		// from row to row): the table's own procedure gives the table's answer or
 		// error for those.
 		position := len(resolved)
-		r := node
-		wholeColumns := ccl.StreamRefusal(node) != nil
-		if !wholeColumns {
-			var err error
-			r, err = ccl.ResolveWholeTable(node, totalRows, names, appliedBatches(ctx, path, colNames, slices.Clone(resolved), totalRows, precomputed))
-			if err != nil {
-				return fmt.Errorf("failed to apply CCL: %w", err)
-			}
-			_, _, seqErr := ccl.NewTopSequence(ccl.GetExpressionNode(r), totalRows, names)
-			wholeColumns = seqErr != nil
+		route, err := routeCCL(node, totalRows, names, appliedBatches(ctx, path, colNames, slices.Clone(resolved), totalRows, precomputed))
+		if err != nil {
+			return fmt.Errorf("failed to apply CCL: %w", err)
 		}
-		if wholeColumns {
-			// The original node stands for the statement from here on: nothing of
-			// it was resolved, and the column is the one the table would write.
-			r = node
+		// On the whole-column route the original node stands for the statement
+		// from here on: nothing of it was resolved, and the column is the one the
+		// table would write.
+		r := route.resolved
+		if route.wholeColumns {
 			values, err := wholeColumnValues(ctx, path, colNames, resolved, totalRows, precomputed, node)
 			if err != nil {
 				return fmt.Errorf("failed to apply CCL: %w", err)
