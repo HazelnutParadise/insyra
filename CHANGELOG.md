@@ -351,6 +351,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - A panic inside the `io.ReaderAt` given to `ReadFrom` or `StreamFrom` is an error. Arrow reads columns in goroutines, where `recover` in the caller cannot catch it, so the whole program ended.
 - `WriteTo` and `WriteToContext` return the error of a row group that cannot be started instead of panicking, and `WriteToContext` returns `ctx.Err()` when the context is cancelled while the footer is written.
 - `Compression` prints its constant's name, and an unknown one is reported as `Compression(n)`.
+- `ExplainFilterWithCCL` and `ExplainApplyCCL` say how `FilterWithCCL` and each statement of `ApplyCCL` would run, from the file's metadata and the expression alone: whether the rows are evaluated batch by batch or whole columns are loaded and why, which columns are read and held, how many times the file's data is read, and an estimate of the held columns' size. `CCLPlan` has `String()` and `Show()` ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).
+- `FilterWithCCL` takes an optional `FilterWithCCLOptions`. `MaxRows` stops the read at the first kept row past the limit and returns `nil` with an error matching `ErrCCLRowLimit`; `RefuseWholeColumns` makes an expression that would load whole columns an error matching `ErrCCLWholeColumnsRefused`, before any data is read when the plan already says so ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).
 
 ### `mkt`
 - **BREAKING**: `CAI` is now a function instead of a variable holding `CustomerActivityIndex`. Calls are unchanged; assigning to it no longer compiles.

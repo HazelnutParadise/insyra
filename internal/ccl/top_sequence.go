@@ -114,3 +114,21 @@ func sequenceCallIn(n cclNode) (string, bool) {
 	}
 	return "", false
 }
+
+// TopSequenceReadsTable reports whether n, or the expression of a NEW or an
+// assignment, is a sequence function call one of whose periods or windows is
+// computed from the table, such as LAG(A, COUNT(A)), and describes that part.
+// Whether NewTopSequence accepts such a call depends on the value the table
+// gives the part, so it cannot be known before the table is read.
+func TopSequenceReadsTable(n CCLNode) (string, bool) {
+	call, ok := GetExpressionNode(n).(*funcCallNode)
+	if !ok || !IsSequenceFunction(strings.ToUpper(call.name)) || len(call.args) < 2 {
+		return "", false
+	}
+	for _, arg := range call.args[1:] {
+		if parts := collectWholeTableParts(arg); len(parts) > 0 {
+			return describeNode(parts[0]), true
+		}
+	}
+	return "", false
+}
