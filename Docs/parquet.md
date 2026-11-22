@@ -17,6 +17,7 @@ The `parquet` package provides read and write support for the Apache Parquet fil
 - [CCL Support](#ccl-support)
   - [FilterWithCCL](#filterwithccl)
   - [ApplyCCL](#applyccl)
+  - [ExplainFilterWithCCL, ExplainApplyCCL](#explainfilterwithccl-explainapplyccl)
   - [Type Constraints](#type-constraints)
 - [Examples](#examples)
 
@@ -272,7 +273,12 @@ Anything else that reads beyond the current row is computed by reading the whole
 ### FilterWithCCL
 
 ```go
-func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error)
+func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...FilterWithCCLOptions) (*insyra.DataTable, error)
+
+type FilterWithCCLOptions struct {
+    MaxRows            int64 // 0 = no limit
+    RefuseWholeColumns bool
+}
 ```
 
 **Description:** Applies a CCL filter expression to a Parquet file and returns filtered results as a `DataTable`. The filter expression should evaluate to a boolean value for each row.
@@ -282,6 +288,9 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 - `ctx`: Context for cancellation
 - `path`: Path to the input Parquet file
 - `filterExpr`: CCL expression that evaluates to boolean (e.g., `"(A > 100) && (B == 'active')"`)
+- `opts`: Optional, at most one. Limits what the filter may hold in memory; the zero value sets no limit.
+  - `MaxRows`: the most rows the filter may keep. The call stops reading at the first kept row past it, closes the file and returns `nil` with an error matching `errors.Is(err, parquet.ErrCCLRowLimit)`. No partial table is returned. It limits the result only: the columns an expression that needs whole columns loads are what `RefuseWholeColumns` is for. A negative value is an error.
+  - `RefuseWholeColumns`: an expression that would load whole columns into memory (see [Batches of 1,000 rows](#batches-of-1000-rows)) is an error matching `errors.Is(err, parquet.ErrCCLWholeColumnsRefused)`, with the reason. When the plan already says so, the file's data is not read at all; when only the data decides it, the call fails as soon as it does.
 
 **Returns:**
 
@@ -298,6 +307,13 @@ if err != nil {
     panic(err)
 }
 filtered.Show()
+
+// Keep at most a million rows, and refuse an expression that would load whole columns.
+filtered, err = parquet.FilterWithCCL(ctx, "data.parquet", "A > 100",
+    parquet.FilterWithCCLOptions{MaxRows: 1_000_000, RefuseWholeColumns: true})
+if errors.Is(err, parquet.ErrCCLRowLimit) {
+    // more than a million rows matched; filtered is nil
+}
 ```
 
 ### ApplyCCL
@@ -338,6 +354,52 @@ err := parquet.ApplyCCL(ctx, "data.parquet", `
 if err != nil {
     panic(err)
 }
+```
+
+### ExplainFilterWithCCL, ExplainApplyCCL
+
+```go
+func ExplainFilterWithCCL(ctx context.Context, path string, filterExpr string) (CCLPlan, error)
+func ExplainApplyCCL(ctx context.Context, path string, cclScript string) ([]CCLPlan, error)
+
+type CCLPlan struct {
+    Mode               CCLMode  // CCLStreamed, CCLStreamedSequence or CCLWholeColumns
+    Reasons            []string // why the mode is not CCLStreamed, or what only the data decides
+    NeededColumns      []string // the columns the expression reads
+    HeldColumns        []string // the columns loaded whole into memory
+    NumRows            int64    // the file's row count
+    MinDataPasses      int      // how many times the file's data is read
+    HeldCells          int64    // values held in memory besides the kept rows
+    HoldsResult        bool     // every kept row is held in memory
+    MayReadMore        bool     // only the data decides whether the call reads more
+    EstimatedHeldBytes int64    // estimate: the held columns' uncompressed size in the file
+}
+```
+
+**Description:** Says how `FilterWithCCL`, or each statement of `ApplyCCL`, would run on a file, without evaluating any row: only the file's metadata is read. Use it to see beforehand whether an expression reads the file again for an aggregate, loads whole columns, or keeps every matching row.
+
+- `Mode` is `CCLStreamed` when the rows are evaluated batch by batch, `CCLStreamedSequence` for a sequence function such as `LAG` that is the whole expression, and `CCLWholeColumns` when the columns the expression reads are loaded whole, with the reason in `Reasons`.
+- `MinDataPasses` and `HeldCells` are exact for a run that succeeds. An aggregate such as `AVG(A)` adds a read before the rows are kept, `VAR` and `STDEV` two. A run that fails on the data can stop sooner.
+- `MayReadMore` is true when only the data decides, such as `LAG(A, COUNT(B))`, whose period is computed from the file.
+- `EstimatedHeldBytes` is an estimate from the file's metadata; the columns usually take more memory than that.
+- A plan Explain refuses, such as an expression that does not compile, is one the call refuses the same way. An accepted plan does not promise the call succeeds on the data. A column name the file does not have is reported in `Reasons`, because the call reports it only when it evaluates the first row.
+- `ExplainApplyCCL` returns one plan per statement. Each counts the reads its statement adds before the file is written; `ApplyCCL` then reads the file once more to write it, and twice more again when a column it writes holds another type of value further on, which only the data shows. A statement that writes nothing is reported as skipped. The file can change between `ExplainApplyCCL` and `ApplyCCL`.
+- `CCLPlan` has `String()` and `Show()`.
+
+**Example:**
+
+```go
+// sales.parquet has a column named amount.
+plan, err := parquet.ExplainFilterWithCCL(ctx, "sales.parquet", "['amount'] > MEDIAN(['amount'])")
+if err != nil {
+    panic(err)
+}
+plan.Show()
+// Plan: whole columns (aggregate function MEDIAN is not supported when the table is read in batches)
+// Reads:   amount
+// Holds:   amount, 50,000,000 rows (about 400 MB on disk, uncompressed)
+// Passes:  at least 2
+// Result:  every kept row is held in memory
 ```
 
 ### Type Constraints

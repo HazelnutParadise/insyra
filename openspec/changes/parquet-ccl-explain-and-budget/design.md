@@ -60,7 +60,7 @@ func ExplainApplyCCL(ctx context.Context, path string, cclScript string) ([]CCLP
 How each field is known:
 
 - `Mode`, `HeldColumns`: from the checks the real call runs first (`StreamRefusal`, the structural part of `NewTopSequence`). One case depends on the data: a sequence function whose argument is itself whole-file, such as `LAG(A, COUNT(A))`, is streamed only if that value is accepted. Explain then reports `CCLStreamedSequence` with `MayReadMore` and a reason, rather than reading data.
-- `MinDataPasses`: the passes `ResolveWholeTable` takes (one per round for fixed rows, one per round per aggregate source, two for `VAR`/`STDEV`), plus the column load, plus the final read. A zero-row file reads nothing. `ApplyCCL` may read twice more when a written column changes type, which `MayReadMore` reports.
+- `MinDataPasses`: the passes `ResolveWholeTable` takes (one per round for fixed rows, one per round per aggregate source, two for `VAR`/`STDEV`), plus the column load, plus the final read. The plan gets the count by deciding the route the call decides, against a file of no rows that counts how often it is read: each part is read the same number of times whatever the rows hold. `ApplyCCL` may read twice more when a written column changes type, which the documentation states.
 - `NeededColumns`: the expression bound against the file's column names, as the loaded table binds it. Each pass still reads every column of each batch today; narrowing that is a separate change.
 - Explain takes a context because it opens the file and reads its footer.
 
