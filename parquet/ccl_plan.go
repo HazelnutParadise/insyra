@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/ccl"
 	"github.com/apache/arrow-go/v18/parquet/file"
 )
@@ -262,12 +261,6 @@ func planNode(node ccl.CCLNode, totalRows int, names []string) (plan CCLPlan, ro
 		colNameMap[name] = i
 	}
 	bound, bindErr := ccl.Bind(node, colNameMap)
-	if bindErr == nil {
-		if word, index, found := ccl.FirstColPastEnd(bound, len(names)); found {
-			letters, _ := insyra.ColNumberToIndex(index)
-			bindErr = ccl.PastLastColumnError(word, letters, len(names), colNameMap)
-		}
-	}
 	var needed []int
 	if bindErr == nil {
 		needed, bindErr = ccl.ReferencedColumns(bound, len(names))

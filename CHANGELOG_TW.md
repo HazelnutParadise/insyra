@@ -111,6 +111,10 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `py`
 - **BREAKING（行為）**：回傳的 polars DataFrame 裡的缺值，以及 pandas 的 `pd.NA`，現在會變成 `nil`。過去 polars 和 pandas 會先把整個 DataFrame 轉成 NumPy，而 NumPy 沒有可以缺值的整數，所以 polars 任何欄位的 null 都回成 `NaN`，和單獨回傳同一個 polars Series 時不一樣。polars 的 list、struct 欄位，以及含 `pd.NA` 的 pandas `boolean`、`string` 欄位、`Int64` Series，或旁邊還有其他欄位的 `Int64` 欄位，過去會讓 `insyra.Return` 出錯，struct 欄位則會變成一串浮點數，現在分別回成 slice、map 和 `nil`。polars 本身存的 NaN 值，以及 NumPy 型別 pandas 欄位裡的 NaN，仍然回成 NaN。原本用 `ClearNaNs` 清掉這些值的地方，改用 `ClearNils`。
 
+### `parquet`
+- 新增 `ExplainFilterWithCCL` 與 `ExplainApplyCCL`：只看檔案的中繼資料和式子，就能知道 `FilterWithCCL` 和 `ApplyCCL` 的每一句會怎麼跑，包括是一批批處理還是要把整欄載進記憶體、原因是什麼、會讀哪些欄、留哪些欄、要讀幾遍檔案，以及留在記憶體的欄大約多大。`CCLPlan` 有 `String()` 與 `Show()`（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
+- `FilterWithCCL` 可以多傳一個 `FilterWithCCLOptions`。`MaxRows` 會在第一個超出上限的列停止讀取，回傳 `nil` 和符合 `ErrCCLRowLimit` 的錯誤；`RefuseWholeColumns` 會讓需要載入整欄的式子回傳符合 `ErrCCLWholeColumnsRefused` 的錯誤，計畫已經看得出來時，連一筆資料都不會讀。傳入 nil context 時，`FilterWithCCL` 與 `ApplyCCL` 改為回傳錯誤，不再 panic（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
+
 ### 容器映像
 
 - 每次發版都會發佈容器映像 `ghcr.io/hazelnutparadise/insyra:<版號>`，支援 `linux/amd64` 與 `linux/arm64`：以 Go 官方映像為底，預裝該版本的 `insyra` CLI，並附 Vulkan loader 與驅動，讓 `accel` 能用宿主機的 GPU（Linux 上 NVIDIA 用 `--gpus all`，AMD、Intel 用 `--device /dev/dri`）。`0.3` 與 `latest` 依版號指向最高的正式版。詳見 [Docs/container.md](Docs/container.md)。

@@ -19,4 +19,4 @@
 ## 4. 驗證與移植
 
 - [x] 4.1 `gofmt -s -l`、`go build ./...`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate parquet-ccl-explain-and-budget --strict`
-- [ ] 4.2 cherry-pick 到 dev 並重跑 4.1（在 dev 的 PR 裡完成）
+- [x] 4.2 cherry-pick 到 dev 並重跑 4.1
