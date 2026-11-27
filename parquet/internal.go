@@ -584,6 +584,12 @@ func getVal(arr arrow.Array, i int) any {
 // For anything else the two are the same: flattening a []any of scalars
 // already produces one cell per element.
 func newColumn(data any, name string) *insyra.DataList {
+	// chunkedToSlice gives nil for a column with no values, and NewDataList(nil)
+	// is a list holding one nil, which turned a file with no rows into a table
+	// of one row.
+	if data == nil {
+		return insyra.NewDataList().SetName(name)
+	}
 	if vals, ok := data.([]any); ok {
 		return insyra.NewDataList().Append(vals...).SetName(name)
 	}
