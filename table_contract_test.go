@@ -15,9 +15,9 @@ func rowsOf(dt *DataTable) [][]any { return dt.To2DSlice() }
 
 func TestContractGroupByFirstAndLastSkipMissingValues(t *testing.T) {
 	g := NewDataTable(NewDataList("b", "a", "b", "a", "b").SetName("k"), NewDataList(nil, 1, 5, nil, 7).SetName("v"))
-	out := g.GroupBy(Name("k")).Aggregate(
-		AggregateConfig{SourceCol: Name("v"), Op: OpFirst},
-		AggregateConfig{SourceCol: Name("v"), Op: OpLast},
+	out := g.GroupBy("k").Aggregate(
+		AggregateConfig{SourceCol: "v", Op: OpFirst},
+		AggregateConfig{SourceCol: "v", Op: OpLast},
 	)
 	if err := out.Err(); err != nil {
 		t.Fatal(err)

@@ -25,12 +25,13 @@ func TestReadingAFileWithNoRowsGivesNoRows(t *testing.T) {
 	if rows, cols := back.Size(); rows != 0 || cols != 2 || !slices.Equal(back.ColNames(), []string{"p", "q"}) {
 		t.Errorf("Read gave %d x %d with columns %q, want 0 x 2 named p and q", rows, cols, back.ColNames())
 	}
-	for dt, err := range Stream(context.Background(), path, ReadOptions{}, 10) {
-		if err != nil {
-			t.Fatal(err)
-		}
+	tables, errs := Stream(context.Background(), path, ReadOptions{}, 10)
+	for dt := range tables {
 		if rows, _ := dt.Size(); rows != 0 {
 			t.Errorf("Stream gave a batch of %d rows from an empty file", rows)
 		}
+	}
+	if err := <-errs; err != nil {
+		t.Fatal(err)
 	}
 }
