@@ -18,4 +18,4 @@
 ## 4. 驗證與移植
 
 - [x] 4.1 `gofmt -s -l`、`go vet ./...`、`go test ./...`、`golangci-lint run`、`openspec validate --strict`
-- [ ] 4.2 cherry-pick 到 dev 並重跑 4.1
+- [x] 4.2 cherry-pick 到 dev 並重跑 4.1
