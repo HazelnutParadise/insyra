@@ -328,6 +328,12 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: when #371 is fixed in a gogpu/wgpu release, take it, drop `settleWriteLocked`, and rerun the GPU suites on the GT 1030 and the M3.
 - **Status**: pending (waits on upstream)
 
+### [2026-11-28] — `gorilla/websocket` pinned to an untagged commit for an advisory
+- **Where**: `go.mod`, `github.com/gorilla/websocket`, reached through `datafetch`
+- **What**: v1.5.3, the newest tag, is inside GO-2026-6278; the fix is only in commit `d67f41855da4` (2024-07-01), so `go.mod` names `v1.5.4-0.20240701034025-d67f41855da4`. The same refresh took `gobwas/ws` to v1.5.0 (GO-2026-6940) and `go.opentelemetry.io/otel` to v1.47.0 (GO-2026-6974). The Vulnerability Scan job went red on every branch on 2026-11-27; with these, govulncheck reports no affected module, and `go.mod`'s `go` directive is unchanged.
+- **Suggestion**: move to the next tagged release of `gorilla/websocket` as soon as one exists and drop this entry.
+- **Status**: pending (a pseudo-version is a decision for the owner, as with `excelize`)
+
 ### [2026-10-21] — device tensors live on one card per process
 - **Where**: `accel/internal/wgpu/wgpu.go` `open`, `accel/resident.go` `ResidentDevice`, `nn/device_tensor.go` `To`
 - **What**: the WebGPU backend opens the adapter WebGPU names as its default and has no way to be told which one. `accel.DefaultDevice` returns the first device of the session's list, which on a host with several cards may not be that adapter, and `Tensor.To(device)` uses the `Device` only as a label. Operands on different devices are refused, so nothing runs wrongly, but a program cannot choose a card. `Config.Devices`, `PreferredDevices` and `INSYRA_ACCEL_DEVICES` narrow what is discovered, not where tensors are placed. Only a single-card host has been available to test.
