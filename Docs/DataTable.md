@@ -4356,7 +4356,7 @@ dt.Summary() // Displays summary to console
 func (dt *DataTable) Size() (numRows int, numCols int)
 ```
 
-**Description:** Returns the dimensions of the DataTable.
+**Description:** Returns the dimensions of the DataTable. The row count is the length of the longest column; a shorter column reads as `nil` past its end. A table with no columns therefore has no rows: removing its last column also removes its row names.
 
 **Parameters:**
 
