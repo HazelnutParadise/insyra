@@ -2381,6 +2381,29 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...
 	if err != nil {
 		return nil, err
 	}
+	var kept [][]any
+	names, err := filterKept(ctx, path, filterExpr, opt, func(names []string, cols [][]any) error {
+		if kept == nil {
+			kept = make([][]any, len(names))
+		}
+		for i := range cols {
+			kept[i] = append(kept[i], cols[i]...)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return tableOf(names, kept), nil
+}
+
+// filterKept runs filterExpr over the file at path and hands emit the rows it
+// keeps, one run at a time, in file order, as the columns of opt.Columns. It
+// returns those columns' names. FilterWithCCL and StreamFilterWithCCL are both
+// built on it, so they keep the same rows. An error from emit stops the read
+// and is returned; with MaxRows, the rows within the limit are emitted before
+// ErrCCLRowLimit is returned.
+func filterKept(ctx context.Context, path string, filterExpr string, opt FilterWithCCLOptions, emit func(names []string, cols [][]any) error) ([]string, error) {
 	if ctx == nil {
 		return nil, errNilContext
 	}
@@ -2401,6 +2424,10 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...
 	// costs no extra pass, and a row or column the expression names is checked
 	// against the file rather than against a batch.
 	totalRows, colNames, _, err := cclFileInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	outNames, proj, err := projectColumns(colNames, opt.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -2432,29 +2459,38 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...
 		return nil, fmt.Errorf("%w: %s", ErrCCLWholeColumnsRefused, route.reason)
 	}
 
-	// One slice per column, grown across every batch. Appending into
-	// result.GetColByNumber(i) per batch threw away everything past the first
-	// batch, because that method returns a copy of the column: a 2500-row file
-	// filtered on a condition every row satisfies came back with 1000 rows.
-	kept := make([][]any, len(colNames))
+	// keep emits the rows of one run its decisions keep, as the columns of the
+	// result.
 	keptRows := int64(0)
 	keep := func(r cclRun, decisions []any) error {
+		var kept [][]any
+		send := func() error {
+			if kept == nil {
+				return nil
+			}
+			return emit(outNames, kept)
+		}
 		for rowIdx, val := range decisions {
 			if !passesFilter(val) {
 				continue
 			}
 			// The row past the limit stops the read, so the rows after it are
-			// never held.
+			// never held; the rows within it are handed on first.
 			if opt.MaxRows > 0 && keptRows == opt.MaxRows {
+				if err := send(); err != nil {
+					return err
+				}
 				return fmt.Errorf("%w: it keeps more than %d rows, row %d being the first past the limit", ErrCCLRowLimit, opt.MaxRows, r.offset+rowIdx)
 			}
 			keptRows++
-			// Add this row to the filtered results
-			for colIdx := range kept {
-				kept[colIdx] = append(kept[colIdx], r.cols[colIdx][rowIdx])
+			if kept == nil {
+				kept = make([][]any, len(proj))
+			}
+			for i, c := range proj {
+				kept[i] = append(kept[i], r.cols[c][rowIdx])
 			}
 		}
-		return nil
+		return send()
 	}
 
 	switch {
@@ -2539,25 +2575,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...
 		}
 	}
 
-	// build assembles the result once, on whichever path ends the stream, so an
-	// empty file and a filter that matched nothing produce the same shape.
-	if len(kept[0]) == 0 {
-		result := insyra.NewDataTable()
-		for _, name := range colNames {
-			dl := insyra.NewDataList()
-			dl.SetName(name)
-			result.AppendCols(dl)
-		}
-		return result, nil
-	}
-	result := insyra.NewDataTable()
-	for i, name := range colNames {
-		dl := insyra.NewDataList()
-		dl.SetName(name)
-		dl.Append(kept[i]...)
-		result.AppendCols(dl)
-	}
-	return result, nil
+	return outNames, nil
 }
 
 // cclOutputLayout is how ApplyCCL writes the file back: the codec of each

@@ -16,6 +16,7 @@ The `parquet` package provides read and write support for the Apache Parquet fil
   - [ReadColumn](#readcolumn)
 - [CCL Support](#ccl-support)
   - [FilterWithCCL](#filterwithccl)
+  - [StreamFilterWithCCL](#streamfilterwithccl)
   - [ApplyCCL](#applyccl)
   - [ExplainFilterWithCCL, ExplainApplyCCL](#explainfilterwithccl-explainapplyccl)
   - [Type Constraints](#type-constraints)
@@ -276,8 +277,9 @@ Anything else that reads beyond the current row is computed by reading the whole
 func FilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...FilterWithCCLOptions) (*insyra.DataTable, error)
 
 type FilterWithCCLOptions struct {
-    MaxRows            int64 // 0 = no limit
+    MaxRows            int64    // 0 = no limit
     RefuseWholeColumns bool
+    Columns            []string // the result's columns, by name; empty = all
 }
 ```
 
@@ -290,6 +292,7 @@ type FilterWithCCLOptions struct {
 - `filterExpr`: CCL expression that evaluates to boolean (e.g., `"(A > 100) && (B == 'active')"`)
 - `opts`: Optional, at most one. Limits what the filter may hold in memory; the zero value sets no limit.
   - `MaxRows`: the most rows the filter may keep. The call stops reading at the first kept row past it, closes the file and returns `nil` with an error matching `errors.Is(err, parquet.ErrCCLRowLimit)`. No partial table is returned. It limits the result only: the columns an expression that needs whole columns loads are what `RefuseWholeColumns` is for. A negative value is an error.
+  - `Columns`: the columns of the result, by name, in the order given; empty means every column. The filter can still read any column of the file, and every pass still reads every column, so it saves the result's memory only. A name the file does not have, or one given twice, is an error before anything is read.
   - `RefuseWholeColumns`: an expression that would load whole columns into memory (see [Batches of 1,000 rows](#batches-of-1000-rows)) is an error matching `errors.Is(err, parquet.ErrCCLWholeColumnsRefused)`, with the reason. When the plan already says so, the file's data is not read at all; when only the data decides it, the call fails as soon as it does.
 
 **Returns:**
@@ -313,6 +316,33 @@ filtered, err = parquet.FilterWithCCL(ctx, "data.parquet", "A > 100",
     parquet.FilterWithCCLOptions{MaxRows: 1_000_000, RefuseWholeColumns: true})
 if errors.Is(err, parquet.ErrCCLRowLimit) {
     // more than a million rows matched; filtered is nil
+}
+```
+
+### StreamFilterWithCCL
+
+```go
+func StreamFilterWithCCL(ctx context.Context, path string, filterExpr string, opts ...FilterWithCCLOptions) iter.Seq2[*insyra.DataTable, error]
+```
+
+**Description:** Gives the rows `FilterWithCCL` would return, in the same order, batch by batch, without holding them, so a filter that keeps most of a large file can be written to a CSV file, a database or any other sink as it is read. `FilterWithCCL` is this filter collected into one table. Measured on a 1,000,000-row file of an integer and a text column kept whole: `FilterWithCCL` peaked at 123 to 190 MB of heap, the stream at 71 MB whatever the row groups.
+
+- A batch holds the kept rows of one read of the file, at most 1,000; batch sizes are not promised. When nothing is kept, one table with the columns and no rows is given, so a sink still has its header.
+- `opts` work as for `FilterWithCCL`. With `MaxRows`, the rows within the limit are given before the error matching `ErrCCLRowLimit`.
+- An expression that needs whole columns still holds them, and one value per row, as `ExplainFilterWithCCL` reports; its plan describes the stream too, except that the stream does not hold the result.
+- A failure arrives once, as a `nil` table and the error, and ends the sequence. One after the first batch, such as an evaluation error at a later row or a cancelled `ctx`, comes after the earlier batches were given; what your sink already wrote is yours to keep or discard. Leaving the loop early stops the read and closes the file.
+
+**Example:**
+
+```go
+for batch, err := range parquet.StreamFilterWithCCL(ctx, "sales.parquet", "['amount'] > 100",
+    parquet.FilterWithCCLOptions{Columns: []string{"id", "amount"}}) {
+    if err != nil {
+        return err
+    }
+    if err := save(batch); err != nil { // your sink: a database insert, a file, a channel
+        return err
+    }
 }
 ```
 
