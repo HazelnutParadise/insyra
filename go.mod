@@ -46,8 +46,7 @@ require (
 	github.com/go-webgpu/goffi v0.6.7 // indirect
 	github.com/go-webgpu/webgpu v0.5.5 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
-	github.com/gobwas/pool v0.2.1 // indirect
-	github.com/gobwas/ws v1.4.0 // indirect
+	github.com/gobwas/ws v1.5.0 // indirect
 	github.com/gogpu/gpucontext v0.31.3 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
@@ -144,7 +143,7 @@ require (
 	github.com/gogpu/naga v0.20.4
 	github.com/gogpu/wgpu v0.34.5
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d

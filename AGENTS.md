@@ -284,6 +284,12 @@ Code traps that have already cost a fix once. Each line is the condition, then w
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-11-28] — `gorilla/websocket` pinned to an untagged commit for an advisory
+- **Where**: `go.mod`, `github.com/gorilla/websocket`, reached through `datafetch`
+- **What**: v1.5.3, the newest tag, is inside GO-2026-6278; the fix is only in commit `d67f41855da4` (2024-07-01), so `go.mod` names `v1.5.4-0.20240701034025-d67f41855da4`. The same refresh took `gobwas/ws` to v1.5.0 (GO-2026-6940). The Vulnerability Scan job went red on every branch on 2026-11-27; with these, govulncheck reports no affected module, and `go.mod`'s `go` directive is unchanged.
+- **Suggestion**: move to the next tagged release of `gorilla/websocket` as soon as one exists and drop this entry.
+- **Status**: pending (a pseudo-version is a decision for the owner, as with `excelize`)
+
 ### [2026-11-07] — the cross-entropy kernels still run each array in one launch
 - **Where**: `accel/internal/wgpu/softmax_ce.go`, `accel/internal/wgpu/soft_ce.go`
 - **What**: Windows resets a GPU whose dispatch runs about two seconds. `accel-split-elementwise-launches` split the elementwise resident kernels in `resident_kernels.go` into bounded launches after a GT 1030 lost the device on a 16.8-million-element `tanh`, but the cross-entropy kernels were left whole: their per-element kernels (`rounded-ce-exp`, `rounded-soft-u`, the distillation ones) run the fixed-point exp or log over `rows × classes` in one launch, and their per-row kernels loop over every class in one invocation. On the M3 the fixed-point `exp` takes 1.40 s for 2^24 elements, so a batch of 1,024 rows over a 16,000-class vocabulary is already near the limit on a card a few times slower. Not measured on a large vocabulary.
