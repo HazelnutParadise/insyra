@@ -175,7 +175,8 @@ type FilterWithCCLOptions struct {
 	// empty means every column. They are names, as in ReadOptions.Columns. The
 	// filter can read any column of the file, and every pass still reads every
 	// column: Columns saves the result's memory only. A name the file does not
-	// have, or one given twice, is an error before anything is read.
+	// have, or one given twice, is an error before anything is read. When the
+	// file has two columns of one name, the name selects the first.
 	Columns []string
 }
 
@@ -184,9 +185,9 @@ var (
 	// return when the filter would keep more rows than
 	// FilterWithCCLOptions.MaxRows.
 	ErrCCLRowLimit = errors.New("parquet: the filter kept more rows than MaxRows")
-	// ErrCCLWholeColumnsRefused is the error FilterWithCCL returns when the
-	// expression needs whole columns and FilterWithCCLOptions.RefuseWholeColumns
-	// forbids it.
+	// ErrCCLWholeColumnsRefused is the error FilterWithCCL and
+	// StreamFilterWithCCL return when the expression needs whole columns and
+	// FilterWithCCLOptions.RefuseWholeColumns forbids it.
 	ErrCCLWholeColumnsRefused = errors.New("parquet: the expression needs whole columns, which RefuseWholeColumns forbids")
 )
 

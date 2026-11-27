@@ -237,7 +237,7 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 
 ### Batches of 1,000 rows
 
-`FilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and give the answer the same expression gives on the file loaded with `Read`:
+`FilterWithCCL`, `StreamFilterWithCCL` and `ApplyCCL` read the file 1,000 rows at a time and give the answer the same expression gives on the file loaded with `Read`:
 
 - an aggregate such as `AVG(A)`, `SUM(A:C)` or `STDEV(A - 1)` is computed over the whole file;
 - the row index `#` is the row's position in the file, counted from 0;
@@ -292,7 +292,7 @@ type FilterWithCCLOptions struct {
 - `filterExpr`: CCL expression that evaluates to boolean (e.g., `"(A > 100) && (B == 'active')"`)
 - `opts`: Optional, at most one. Limits what the filter may hold in memory; the zero value sets no limit.
   - `MaxRows`: the most rows the filter may keep. The call stops reading at the first kept row past it, closes the file and returns `nil` with an error matching `errors.Is(err, parquet.ErrCCLRowLimit)`. No partial table is returned. It limits the result only: the columns an expression that needs whole columns loads are what `RefuseWholeColumns` is for. A negative value is an error.
-  - `Columns`: the columns of the result, by name, in the order given; empty means every column. The filter can still read any column of the file, and every pass still reads every column, so it saves the result's memory only. A name the file does not have, or one given twice, is an error before anything is read.
+  - `Columns`: the columns of the result, by name, in the order given; empty means every column. The filter can still read any column of the file, and every pass still reads every column, so it saves the result's memory only. A name the file does not have, or one given twice, is an error before anything is read. When the file has two columns of one name, the name selects the first.
   - `RefuseWholeColumns`: an expression that would load whole columns into memory (see [Batches of 1,000 rows](#batches-of-1000-rows)) is an error matching `errors.Is(err, parquet.ErrCCLWholeColumnsRefused)`, with the reason. When the plan already says so, the file's data is not read at all; when only the data decides it, the call fails as soon as it does.
 
 **Returns:**
