@@ -356,6 +356,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `ExplainFilterWithCCL` 與 `ExplainApplyCCL`：只看檔案的中繼資料和式子，就能知道 `FilterWithCCL` 和 `ApplyCCL` 的每一句會怎麼跑，包括是一批批處理還是要把整欄載進記憶體、原因是什麼、會讀哪些欄、留哪些欄、要讀幾遍檔案，以及留在記憶體的欄大約多大。`CCLPlan` 有 `String()` 與 `Show()`（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
 - `FilterWithCCL` 可以多傳一個 `FilterWithCCLOptions`。`MaxRows` 會在第一個超出上限的列停止讀取，回傳 `nil` 和符合 `ErrCCLRowLimit` 的錯誤；`RefuseWholeColumns` 會讓需要載入整欄的式子回傳符合 `ErrCCLWholeColumnsRefused` 的錯誤，計畫已經看得出來時，連一筆資料都不會讀。傳入 nil context 時，`FilterWithCCL` 與 `ApplyCCL` 改為回傳錯誤，不再 panic（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
 - `Read` 讀取有欄位但沒有列的檔案時，會回傳同樣欄位、沒有列的表格。過去 `Read` 會多出一列 `nil`，因為空欄位被當成只含一個 `nil` 的清單（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
+- 新增 `StreamFilterWithCCL`：以 `iter.Seq2` 一批一批交出 `FilterWithCCL` 篩選出的列，不會整包留在記憶體，篩選結果很大的檔案也能邊讀邊寫到其他地方；`FilterWithCCL` 就是同一個篩選收集成一張表。`FilterWithCCLOptions.Columns` 可依欄名選擇輸出欄位（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
 
 ### `mkt`
 - **BREAKING**：`CAI` 改成一般函式，不再是存著 `CustomerActivityIndex` 的變數。呼叫方式不變，只有對它賦值會編譯失敗。
