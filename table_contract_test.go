@@ -91,3 +91,28 @@ func TestContractATableWithNoColumnsHasNoRows(t *testing.T) {
 		t.Errorf("got %d x %d, row names %q, error %v", rows, cols, dt.RowNames(), dt.Err())
 	}
 }
+
+// Merge groups matched rows by key in the order the key first appears in the
+// left table, then the unmatched rows; Docs/DataTable.md states it.
+func TestContractMergeRowOrder(t *testing.T) {
+	left := NewDataTable(NewDataList("a", "b", "a", "d").SetName("k"), NewDataList(1, 2, 3, 4).SetName("x"))
+	right := NewDataTable(NewDataList("b", "a", "c").SetName("k"), NewDataList(10, 20, 30).SetName("y"))
+	cases := []struct {
+		mode MergeMode
+		want [][]any
+	}{
+		{MergeModeInner, [][]any{{"a", 1, 20}, {"a", 3, 20}, {"b", 2, 10}}},
+		{MergeModeLeft, [][]any{{"a", 1, 20}, {"a", 3, 20}, {"b", 2, 10}, {"d", 4, nil}}},
+		{MergeModeRight, [][]any{{"b", 2, 10}, {"a", 1, 20}, {"a", 3, 20}, {"c", nil, 30}}},
+		{MergeModeOuter, [][]any{{"a", 1, 20}, {"a", 3, 20}, {"b", 2, 10}, {"d", 4, nil}, {"c", nil, 30}}},
+	}
+	for _, tt := range cases {
+		out, err := left.Merge(right, MergeDirectionHorizontal, tt.mode, "k")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rowsOf(out); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%v: got %v, want %v", tt.mode, got, tt.want)
+		}
+	}
+}
