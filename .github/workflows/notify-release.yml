@@ -1,0 +1,23 @@
+name: Notify release webhook
+on:
+  release:
+    types: [published]
+permissions: {}
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST release info to Grok Bot routine
+        env:
+          URL: ${{ secrets.GROKBOT_WEBHOOK_URL }}
+          KEY: ${{ secrets.GROKBOT_WEBHOOK_KEY }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          REL_URL: ${{ github.event.release.html_url }}
+        run: |
+          jq -n --arg repo "$REPO" --arg tag "$TAG" --arg url "$REL_URL" \
+            '{repo: $repo, tag: $tag, url: $url}' \
+          | curl -fsS -X POST "$URL" \
+              -H "Authorization: Bearer $KEY" \
+              -H "Content-Type: application/json" \
+              --data-binary @-
