@@ -14,60 +14,63 @@ A Likert questionnaire is checked for internal consistency before its items are 
 
 ## Proposed API
 
+Revised after an independent review: the items are chosen in the call, reversal no longer shifts means, and a constant item is refused.
+
 ```go
 // CronbachAlphaOptions are the optional settings of CronbachAlpha.
 type CronbachAlphaOptions struct {
-	// ReverseItems are the items scored in the opposite direction, as column
-	// selectors. Each is replaced by min + max - x, min and max taken over all
-	// items, as psych's keys does.
-	ReverseItems []any
+	// ReverseScored are the items scored in the opposite direction, as column
+	// selectors of the table passed to CronbachAlpha.
+	ReverseScored []any
 }
 
-// CronbachAlphaResult is the reliability of a scale.
+// CronbachAlphaResult is the internal consistency of a scale.
 type CronbachAlphaResult struct {
 	Alpha                    float64 // raw alpha, from the item covariances
 	StandardizedAlpha        float64 // from the mean inter-item correlation
 	MeanInterItemCorrelation float64
 	NumItems                 int
-	NumObservations          int // the rows used: those with every item a finite number
-	Items                    []ItemReliability
+	N                        int // rows used: those with every item a finite number
+	RowsDropped              int // rows left out because an item was NaN or ±Inf
+	Items                    []CronbachAlphaItem
 }
 
-// ItemReliability is one item's part of the scale.
-type ItemReliability struct {
-	Name                          string
-	Mean, SD                      float64 // SD with n - 1
-	CorrectedItemTotalCorrelation float64 // the item against the sum of the other items (psych's r.drop)
-	AlphaIfDeleted                float64 // raw alpha of the other items
+// CronbachAlphaItem is one item's part of the scale.
+type CronbachAlphaItem struct {
+	Name     string
+	Reversed bool
+	Mean, SD float64 // of the item as it is in the table, SD with n - 1
+	// ItemRestCorrelation is the correlation of the item with the sum of the
+	// other items: SPSS's Corrected Item-Total Correlation, psych's r.drop.
+	ItemRestCorrelation float64
+	AlphaIfDeleted      float64 // raw alpha of the other items; NaN for a two-item scale
 }
 
-func CronbachAlpha(items insyra.IDataTable, opts ...CronbachAlphaOptions) (*CronbachAlphaResult, error)
+func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptions) (*CronbachAlphaResult, error)
 ```
 
-Every column of `items` is an item and every row a respondent; select the items with `ColRange` first. The result has `String()` and `Show()` like every `stats` result.
+`items` are column selectors of `dt`; nil or empty means every column. Selectors in `ReverseScored` are read against the same table, so `"D"` is the table's column D whichever items are chosen. The result has `String()` and `Show()` like every `stats` result.
 
 Example:
 
 ```go
 survey, _ := insyra.ReadCSVFile("survey.csv")
-res, err := stats.CronbachAlpha(survey.ColRange(insyra.Name("q1"), insyra.Name("q6")),
-	stats.CronbachAlphaOptions{ReverseItems: []any{insyra.Name("q4")}})
+res, err := stats.CronbachAlpha(survey,
+	[]any{insyra.Name("q1"), insyra.Name("q3"), insyra.Name("q4"), insyra.Name("q7")},
+	stats.CronbachAlphaOptions{ReverseScored: []any{insyra.Name("q4")}})
 if err != nil {
 	return err
 }
-fmt.Printf("alpha %.3f\n", res.Alpha)
-for _, it := range res.Items {
-	fmt.Printf("%s: r.drop %.2f, alpha if deleted %.3f\n", it.Name, it.CorrectedItemTotalCorrelation, it.AlphaIfDeleted)
-}
+res.Show()
 ```
 
 ## Decisions in the draft
 
-- **Missing values: listwise**, as SPSS does and as `stats.FactorAnalysis` already does: a row with a `NaN` or `±Inf` in any item is left out, and `NumObservations` says how many rows were used; a blank or text cell is an error naming the column and the row, from 0, the way every `stats` function refuses one. psych's default is pairwise, which can give a covariance matrix no data set has; a parity test runs psych on complete data, where the two agree.
-- **Reverse-keyed items: `ReverseItems` only**, no automatic `check.keys`. psych turned its automatic reversal off by default because users reported alphas without noticing items had been reversed.
-- **An item with no variance stays in the scale**, as in SPSS: alpha is defined, the item adds nothing to it, and its corrected item-total correlation is `NaN`. psych drops it; the parity test calls psych with `delete = FALSE`.
-- **Errors**: fewer than two items, fewer than two usable rows, or a total score with no variance (alpha undefined).
-- **A negative alpha is returned as it is**, the sign of items scored in opposite directions.
+- **Missing values: listwise**, as SPSS does and as `stats.FactorAnalysis` already does: a row with a `NaN` or `±Inf` in any item is left out and counted in `RowsDropped`. A blank numeric cell in a CSV is read as `NaN`, so a skipped question drops its row. A text cell is an error naming the column and the row, from 0. psych's default is pairwise, which can give a covariance matrix no data set has; the parity test runs psych on complete data, where the two agree.
+- **Reverse-scored items are negated internally.** Alpha, SD and the item-rest correlation do not depend on the constant psych adds (`min + max - x` over all items), which only shifts the mean, wrongly when items have different ranges. `Mean` is the item's own mean and `Reversed` marks the item. There is no automatic `check.keys`: psych turned it off by default because users reported alphas without noticing items had been reversed.
+- **An item with no variance is an error naming it.** Its correlations are 0/0, so standardized alpha and the mean inter-item correlation would be undefined; the caller drops the column knowingly. psych drops it with a warning.
+- **Two items:** alpha is defined, but alpha with an item deleted is the alpha of one item, which is not defined, so `AlphaIfDeleted` is `NaN`.
+- **Errors**: a nil or empty table; fewer than two items; an item or reverse-scored selector that is not a column, or given twice; a reverse-scored item that is not among the items; fewer than two usable rows; more than one options value. A negative alpha is returned as it is.
 - **Out of scope for the first version**: confidence intervals (psych's Feldt and Duhachek–Iacobucci intervals; SPSS offers none), Guttman's lambda 6, `raw.r`/`std.r`/`r.cor`, scale-if-deleted means and variances, and response frequencies.
 
 ## Both lines
@@ -76,4 +79,4 @@ The function is new, so it ships on `0.4` and on `dev` (0.3.6) with the same sig
 
 ## Testing
 
-A cross-language parity test against `psych::alpha()` in `stats/testdata/crosslang_baseline.R`'s style: raw and standardized alpha, `r.drop`, `alpha.drop$raw_alpha`, item mean and SD, on a six-item scale, two items, a constant item, a negatively correlated item and a reversed item, and a data set with `NaN` rows compared with psych on its complete cases.
+A cross-language parity test against `psych::alpha()` in `stats/testdata/crosslang_baseline.R`'s style: raw and standardized alpha, `r.drop`, `alpha.drop$raw_alpha`, item mean and SD, on a six-item scale, two items (alpha only), a negatively correlated item and a reversed item with equal ranges, and a data set with `NaN` rows compared with psych on its complete cases; the constant item is an error, tested on its own.
