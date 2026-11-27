@@ -165,7 +165,7 @@ func TestStreamFilterWithCCLIntoACSVSink(t *testing.T) {
 			t.Fatal(err)
 		}
 		var part bytes.Buffer
-		if err := batch.WriteCSV(&part); err != nil {
+		if err := batch.WriteCSV(&part, insyra.CSVWriteOptions{SetColNamesToFirstRow: true}); err != nil {
 			t.Fatal(err)
 		}
 		b := part.Bytes()
@@ -174,8 +174,11 @@ func TestStreamFilterWithCCLIntoACSVSink(t *testing.T) {
 		}
 		header = false
 		buf.Write(b)
+		if len(b) > 0 && b[len(b)-1] != '\n' {
+			buf.WriteByte('\n')
+		}
 	}
-	back, err := insyra.ReadCSV(&buf)
+	back, err := insyra.ReadCSV(&buf, insyra.CSVReadOptions{FirstRowToColNames: true})
 	if err != nil {
 		t.Fatal(err)
 	}
