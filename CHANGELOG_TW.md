@@ -36,6 +36,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
 - `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變。`isr.Name` 現在回傳同一個型別（`isr.NameSelector` 是 `insyra.NameSelector` 的別名），與 0.4 相同，兩者在 `isr` 和 `arrowipc` 都能用。
 - `ReadExcelSheet`、`ReadExcel`、`DataTable.ToExcel`、`DataTable.WriteExcel`、`ExcelWriteOptions`、`SheetExistsPolicy`、`SheetExistsFail`、`SheetExistsReplace` 與 `ErrSheetExists` 標為棄用，請改用新的 [`excel`](Docs/excel.md) 套件，0.4 會移除。0.4 把 Excel 移出核心，不用 Excel 的程式不會再把 Excel 函式庫編進去。這些名稱目前照常可用（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
+- `DataTable.StandardScale`、`MinMaxScale`、`RobustScale`、`MaxAbsScale`、`OneHotEncode`、`LabelEncode`、`OrdinalEncode`，各縮放器、編碼器與補值器型別及其建構函式與選項，以及 `NaNPolicy`、`UnknownPolicy`、`LabelSort`、`ImputationStrategy` 與其常數 標為棄用，改用新的 [`preprocess`](Docs/preprocess.md) 套件，0.4 移除。它們照常運作，CLI 的 `scale`、`encode` 指令仍使用它們（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
 
 ### CLI
 
@@ -59,6 +60,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `nn` 的矩陣乘法、卷積與 edge sum 現在依 `runtime.GOMAXPROCS(0)` 決定執行緒數，不再用 `runtime.NumCPU()`，所以調低 `GOMAXPROCS` 或同時跑多個乘法的程式不會再超額使用 CPU；結果不變（[#537](https://github.com/HazelnutParadise/insyra/issues/537)）。
 - `Tape.SaveOptimizerState` 與 `LoadOptimizerState` 以有版本的二進位 SafeTensors 檔保存具名參數的 Adam／AdamW 動量、步數與 momentum 速度，也支援裝置上的 Adam 狀態；匯入依已註冊參數限制讀取量，先驗證全部狀態，再一次替換。`LoadSafeTensors` 也修正了零維度的元素數計算，讓 scalar 的形狀描述與空張量能正確讀回。`Clear(ClearOptions{KeepGradients: true})` 讓那一次清除保留參數梯度（不帶參數的 `Clear()` 仍會清掉），`Parameter.SetFrozen(true)` 則跳過內建最佳化器的更新與權重衰減，並保留之後解凍要用的狀態，`ClipGradNorm` 也不把凍結參數算進範數或縮放。`Float32` 與 `Float32Rounded` 的 tape 跑的是同一套 Adam，可以互相讀取對方存的最佳化器狀態（[#376](https://github.com/HazelnutParadise/insyra/issues/376)）。
 - `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
+- 管線、`ColumnTransformer` 與 ONNX 匯出除了已棄用的核心型別，也接受新 `preprocess` 套件的縮放器、編碼器與補值器，兩者匯出的圖完全相同。
 
 ### `stats`
 - 新增 `CronbachAlpha(dt, items, opts...)`，計算量表的內部一致性：原始與標準化 alpha、平均題間相關，以及每一題的平均數、標準差、題目與其他題總分的相關（SPSS 的 Corrected Item-Total Correlation、psych 的 `r.drop`）和刪題後 alpha。有缺值的列會整列排除，反向題用 `CronbachAlphaOptions.ReverseScored` 指定，在完整資料上結果與 R 的 `psych::alpha` 一致（[#734](https://github.com/HazelnutParadise/insyra/issues/734)）。
@@ -119,6 +121,9 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `excel`
 - 新增 `excel` 套件，可把活頁簿的工作表讀成 `DataTable`，也可把 `DataTable` 寫成工作表，API 與 0.4 相同。`excel.Read(path, opts...)` 與 `excel.ReadFrom(r, opts...)` 接受一個選用的 `ReadOptions`（`Sheet`，留空代表第一個工作表、`NoHeaderRow`、`HasRowNames`、`RawStrings`），沒設 `RawStrings` 時會像讀 CSV 一樣判斷欄位型別；`excel.Write(dt, path, opts...)` 與 `excel.WriteTo(dt, w, opts...)` 接受一個選用的 `WriteOptions`（`Sheet`、`NoHeaderRow`、`HasRowNames`、`IfSheetExists`），預設會寫出欄名列；`excel.SheetNames(path)` 列出活頁簿的工作表。給超過一個選項值或傳入 nil 表格都會回傳錯誤（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
+
+### `preprocess`
+- 新增 `preprocess` 套件，收納可擬合的前處理步驟，API 與 0.4 相同：`StandardScale(dt, cols...)`、`MinMaxScale(dt, min, max, cols...)`、`RobustScale`、`MaxAbsScale` 與各自的 `New…Scaler` 建構函式，`OneHotEncode(dt, opts)`、`LabelEncode(dt, opts)`、`OrdinalEncode(dt, opts)`（`LabelEncodeOptions`、`OrdinalEncodeOptions` 在這裡叫 `LabelOptions`、`OrdinalOptions`），以及 `SimpleImputer`。選欄位用 0.4 的規則：單純字串是 Excel 式欄位索引，欄名寫成 `insyra.Name("price")`；核心方法則會先把單純字串當欄名找。很大的浮點數類別在 one-hot 欄名裡保留完整位數（`price_1500000`，核心方法寫成 `price_1.5e+06`）。核心型別存成 JSON 的縮放器可以載入 `preprocess` 型別，轉換結果相同。詳見 [Docs/preprocess.md](Docs/preprocess.md)（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
 
 ### `parquet`
 - 新增 `ExplainFilterWithCCL` 與 `ExplainApplyCCL`：只看檔案的中繼資料和式子，就能知道 `FilterWithCCL` 和 `ApplyCCL` 的每一句會怎麼跑，包括是一批批處理還是要把整欄載進記憶體、原因是什麼、會讀哪些欄、留哪些欄、要讀幾遍檔案，以及留在記憶體的欄大約多大。`CCLPlan` 有 `String()` 與 `Show()`（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。

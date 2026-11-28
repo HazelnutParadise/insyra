@@ -9,8 +9,12 @@ import (
 )
 
 // NaNPolicy controls how missing (nil or NaN) source values are encoded.
+//
+// Deprecated: use preprocess.NaNPolicy. Removed in 0.4.
 type NaNPolicy int
 
+// Deprecated: use the NaNPolicy constants in preprocess, which have the same
+// names. Removed in 0.4.
 const (
 	// NaNAsCategory makes missing values their own category.
 	NaNAsCategory NaNPolicy = iota
@@ -21,8 +25,12 @@ const (
 )
 
 // UnknownPolicy controls unseen categories encountered during Transform.
+//
+// Deprecated: use preprocess.UnknownPolicy. Removed in 0.4.
 type UnknownPolicy int
 
+// Deprecated: use the UnknownPolicy constants in preprocess, which have the
+// same names. Removed in 0.4.
 const (
 	// UnknownIgnore emits all-zero indicators or nil cells for unseen values.
 	UnknownIgnore UnknownPolicy = iota
@@ -33,8 +41,12 @@ const (
 )
 
 // LabelSort controls id assignment order for LabelEncode.
+//
+// Deprecated: use preprocess.LabelSort. Removed in 0.4.
 type LabelSort int
 
+// Deprecated: use the LabelSort constants in preprocess, which have the same
+// names. Removed in 0.4.
 const (
 	// LabelSortFirstSeen assigns ids in first-appearance order.
 	LabelSortFirstSeen LabelSort = iota
@@ -45,6 +57,10 @@ const (
 )
 
 // OneHotOptions configures DataTable one-hot encoding.
+//
+// Deprecated: use preprocess.OneHotOptions. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type OneHotOptions struct {
 	Columns        []string
 	DropFirst      bool
@@ -57,6 +73,10 @@ type OneHotOptions struct {
 }
 
 // LabelEncodeOptions configures DataTable label encoding.
+//
+// Deprecated: use preprocess.LabelOptions. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type LabelEncodeOptions struct {
 	Column       string
 	NewColumn    string
@@ -67,6 +87,10 @@ type LabelEncodeOptions struct {
 }
 
 // OrdinalEncodeOptions configures DataTable ordinal encoding.
+//
+// Deprecated: use preprocess.OrdinalOptions. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type OrdinalEncodeOptions struct {
 	Column       string
 	Order        []any
@@ -77,6 +101,8 @@ type OrdinalEncodeOptions struct {
 }
 
 // Encoder is the minimal shared surface for fitted categorical encoders.
+//
+// Deprecated: use preprocess.Encoder. Removed in 0.4.
 type Encoder interface {
 	Transform(dt *DataTable) (*DataTable, error)
 	InverseTransform(dt *DataTable) (*DataTable, error)
@@ -84,6 +110,8 @@ type Encoder interface {
 }
 
 // OneHotEncoder stores fitted one-hot category mappings.
+//
+// Deprecated: use preprocess.OneHotEncoder. Removed in 0.4.
 type OneHotEncoder struct {
 	opts          OneHotOptions
 	columns       []oneHotColumnState
@@ -101,6 +129,8 @@ type oneHotColumnState struct {
 }
 
 // LabelEncoder stores a fitted label encoding.
+//
+// Deprecated: use preprocess.LabelEncoder. Removed in 0.4.
 type LabelEncoder struct {
 	opts        LabelEncodeOptions
 	sourceRef   string
@@ -111,6 +141,8 @@ type LabelEncoder struct {
 }
 
 // OrdinalEncoder stores a fitted ordinal encoding.
+//
+// Deprecated: use preprocess.OrdinalEncoder. Removed in 0.4.
 type OrdinalEncoder struct {
 	opts        OrdinalEncodeOptions
 	sourceRef   string
@@ -121,6 +153,10 @@ type OrdinalEncoder struct {
 }
 
 // OneHotEncode fits one-hot indicators for selected columns and returns a new table.
+//
+// Deprecated: use preprocess.OneHotEncode(dt, opts). preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error) {
 	enc, err := fitOneHotEncoder(dt, opts)
 	if err != nil {
@@ -134,6 +170,10 @@ func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncode
 }
 
 // LabelEncode fits integer ids for a column and returns a new table.
+//
+// Deprecated: use preprocess.LabelEncode(dt, opts). preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error) {
 	enc, err := fitLabelEncoder(dt, opts)
 	if err != nil {
@@ -147,6 +187,10 @@ func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEnc
 }
 
 // OrdinalEncode fits explicit ordered ids for a column and returns a new table.
+//
+// Deprecated: use preprocess.OrdinalEncode(dt, opts). preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error) {
 	enc, err := fitOrdinalEncoder(dt, opts)
 	if err != nil {

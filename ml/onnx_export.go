@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 const (
@@ -379,33 +380,30 @@ func pipelineInputTypes(features []string, model Model, steps []fittedPipelineSt
 
 func transformerInputTypes(types map[string]int32, transformer Transformer) error {
 	switch transformer := transformer.(type) {
-	case *insyra.OneHotEncoder:
-		categories := transformer.Categories()
-		for _, column := range transformer.Columns() {
+	case *insyra.OneHotEncoder, *preprocess.OneHotEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		encoder := transformer.(oneHotSource)
+		categories := encoder.Categories()
+		for _, column := range encoder.Columns() {
 			dtype, err := onnxCategoryType(categories[column])
 			if err != nil {
 				return fmt.Errorf("encoder column %q: %w", column, err)
 			}
 			types[column] = dtype
 		}
-	case *insyra.LabelEncoder:
-		dtype, err := onnxCategoryType(transformer.Classes())
+	case *insyra.LabelEncoder, *insyra.OrdinalEncoder, *preprocess.LabelEncoder, *preprocess.OrdinalEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		encoder := transformer.(scalarEncoderSource)
+		dtype, err := onnxCategoryType(encoder.Classes())
 		if err != nil {
-			return fmt.Errorf("encoder column %q: %w", transformer.SourceColumn(), err)
+			return fmt.Errorf("encoder column %q: %w", encoder.SourceColumn(), err)
 		}
-		types[transformer.SourceColumn()] = dtype
-	case *insyra.OrdinalEncoder:
-		dtype, err := onnxCategoryType(transformer.Classes())
-		if err != nil {
-			return fmt.Errorf("encoder column %q: %w", transformer.SourceColumn(), err)
-		}
-		types[transformer.SourceColumn()] = dtype
+		types[encoder.SourceColumn()] = dtype
 	case *ColumnTransformer:
 		if transformer == nil || transformer.transformer == nil {
 			return errors.New("column transformer is nil")
 		}
 		return transformerInputTypes(types, transformer.transformer)
-	case *insyra.SimpleImputer, *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler:
+	case *insyra.SimpleImputer, *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler, //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		*preprocess.SimpleImputer, *preprocess.StandardScaler, *preprocess.MinMaxScaler, *preprocess.RobustScaler, *preprocess.MaxAbsScaler:
 		return nil
 	default:
 		return nil
@@ -587,21 +585,41 @@ func applyONNXTransformer(b *onnxBuilder, groups []onnxGroup, transformer Transf
 	switch transformer := transformer.(type) {
 	case *ColumnTransformer:
 		return applyONNXColumnTransformer(b, groups, transformer)
-	case *insyra.StandardScaler:
+	case *insyra.StandardScaler: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.MinMaxScaler:
+	case *insyra.MinMaxScaler: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.RobustScaler:
+	case *insyra.RobustScaler: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.MaxAbsScaler:
+	case *insyra.MaxAbsScaler: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.OneHotEncoder:
-		return applyONNXOneHot(b, groups, transformer)
-	case *insyra.LabelEncoder:
-		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), transformer.Options().Unknown, transformer.Options().NewColumn != "", transformer.Options().KeepOriginal)
-	case *insyra.OrdinalEncoder:
-		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), transformer.Options().Unknown, transformer.Options().NewColumn != "", transformer.Options().KeepOriginal)
-	case *insyra.SimpleImputer:
+	case *preprocess.StandardScaler:
+		return applyONNXScaler(b, groups, coreScalerParams(transformer.Params()), transformer.Kind())
+	case *preprocess.MinMaxScaler:
+		return applyONNXScaler(b, groups, coreScalerParams(transformer.Params()), transformer.Kind())
+	case *preprocess.RobustScaler:
+		return applyONNXScaler(b, groups, coreScalerParams(transformer.Params()), transformer.Kind())
+	case *preprocess.MaxAbsScaler:
+		return applyONNXScaler(b, groups, coreScalerParams(transformer.Params()), transformer.Kind())
+	case *insyra.OneHotEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		options := transformer.Options()
+		return applyONNXOneHot(b, groups, transformer, options.Unknown, options.Unknown == insyra.UnknownIgnore, options.KeepOriginal, options.DropFirst) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	case *preprocess.OneHotEncoder:
+		options := transformer.Options()
+		return applyONNXOneHot(b, groups, transformer, options.Unknown, options.Unknown == preprocess.UnknownIgnore, options.KeepOriginal, options.DropFirst)
+	case *insyra.LabelEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		options := transformer.Options()
+		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), options.Unknown, options.Unknown == insyra.UnknownIgnore, options.NewColumn != "", options.KeepOriginal) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	case *insyra.OrdinalEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		options := transformer.Options()
+		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), options.Unknown, options.Unknown == insyra.UnknownIgnore, options.NewColumn != "", options.KeepOriginal) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	case *preprocess.LabelEncoder:
+		options := transformer.Options()
+		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), options.Unknown, options.Unknown == preprocess.UnknownIgnore, options.NewColumn != "", options.KeepOriginal)
+	case *preprocess.OrdinalEncoder:
+		options := transformer.Options()
+		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), options.Unknown, options.Unknown == preprocess.UnknownIgnore, options.NewColumn != "", options.KeepOriginal)
+	case *insyra.SimpleImputer, *preprocess.SimpleImputer: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 		return nil, errors.New("ONNX export does not support SimpleImputer in this change")
 	case *PCATransformer:
 		return nil, errors.New("ONNX export does not support PCA transformers")
@@ -657,7 +675,7 @@ func applyONNXColumnTransformer(b *onnxBuilder, groups []onnxGroup, transformer 
 	return out, nil
 }
 
-func applyONNXScaler(b *onnxBuilder, groups []onnxGroup, params map[string]insyra.ScalerParams, kind string) ([]onnxGroup, error) {
+func applyONNXScaler(b *onnxBuilder, groups []onnxGroup, params map[string]insyra.ScalerParams, kind string) ([]onnxGroup, error) { //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
 	if len(params) == 0 {
 		return nil, fmt.Errorf("ONNX export %s scaler is not fitted", kind)
 	}
@@ -723,13 +741,42 @@ func (b *onnxBuilder) addArithmetic(op, input, operand string) string {
 	return output
 }
 
-func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotEncoder) ([]onnxGroup, error) {
-	if encoder == nil {
+// oneHotSource is what ONNX export reads from a fitted one-hot encoder, the
+// deprecated core one or preprocess's.
+type oneHotSource interface {
+	Columns() []string
+	Categories() map[string][]any
+	OutputColumns() []string
+	OutputColumnsByColumn() map[string][]string
+}
+
+// scalarEncoderSource is what ONNX export reads from a fitted label or ordinal
+// encoder, the deprecated core one or preprocess's.
+type scalarEncoderSource interface {
+	Classes() []any
+	SourceColumn() string
+}
+
+// coreScalerParams carries preprocess's fitted parameters in the core's type,
+// which applyONNXScaler reads; only the numbers it reads are copied.
+func coreScalerParams(params map[string]preprocess.ScalerParams) map[string]insyra.ScalerParams { //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	out := make(map[string]insyra.ScalerParams, len(params)) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	for name, p := range params {
+		out[name] = insyra.ScalerParams{ //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+			Kind: p.Kind, Mean: p.Mean, Std: p.Std, Min: p.Min, Max: p.Max,
+			Median: p.Median, Q1: p.Q1, Q3: p.Q3, IQR: p.IQR, MaxAbs: p.MaxAbs,
+			OutputMin: p.OutputMin, OutputMax: p.OutputMax,
+		}
+	}
+	return out
+}
+
+func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder oneHotSource, unknown any, unknownIgnore, keepOriginal, dropFirst bool) ([]onnxGroup, error) {
+	if isNilEncoder(encoder) {
 		return nil, errors.New("one-hot encoder is nil")
 	}
-	options := encoder.Options()
-	if options.Unknown != insyra.UnknownIgnore {
-		return nil, fmt.Errorf("one-hot encoder unknown policy %v cannot be represented by ONNX", options.Unknown)
+	if !unknownIgnore {
+		return nil, fmt.Errorf("one-hot encoder unknown policy %v cannot be represented by ONNX", unknown)
 	}
 	columns := encoder.Columns()
 	categories := encoder.Categories()
@@ -750,12 +797,12 @@ func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotE
 			result = append(result, group)
 			continue
 		}
-		if options.KeepOriginal {
+		if keepOriginal {
 			result = append(result, group)
 		}
 		values := categories[group.name]
 		start := 0
-		if options.DropFirst && len(values) > 0 {
+		if dropFirst && len(values) > 0 {
 			start = 1
 		}
 		selected := values[start:]
@@ -811,11 +858,11 @@ func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotE
 	return result, nil
 }
 
-func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output string, classes []any, unknown insyra.UnknownPolicy, hasNewColumn, keepOriginal bool) ([]onnxGroup, error) {
+func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output string, classes []any, unknown any, unknownIgnore, hasNewColumn, keepOriginal bool) ([]onnxGroup, error) {
 	if source == "" || output == "" {
 		return nil, errors.New("scalar encoder has no fitted column name")
 	}
-	if unknown != insyra.UnknownIgnore {
+	if !unknownIgnore {
 		return nil, fmt.Errorf("encoder column %q unknown policy %v cannot be represented by ONNX", source, unknown)
 	}
 	if len(classes) == 0 {
@@ -1477,4 +1524,17 @@ func appendONNXTreeRegressor(b *onnxBuilder, input string, model *DecisionTreeRe
 	b.addNode("TreeEnsembleRegressor", "ai.onnx.ml", []string{input}, []string{"prediction"}, attrs...)
 	b.addOutput("prediction", onnxTensorFloat, []int64{-1, 1})
 	return nil
+}
+
+// isNilEncoder reports a nil encoder pointer behind the interface.
+func isNilEncoder(encoder oneHotSource) bool {
+	switch e := encoder.(type) {
+	case nil:
+		return true
+	case *insyra.OneHotEncoder: //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+		return e == nil
+	case *preprocess.OneHotEncoder:
+		return e == nil
+	}
+	return false
 }

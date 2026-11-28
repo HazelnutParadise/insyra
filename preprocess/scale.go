@@ -1,0 +1,908 @@
+package preprocess
+
+import (
+	"bytes"
+	"fmt"
+	json "github.com/goccy/go-json"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/prep"
+)
+
+// ScalerParams reports the fitted parameters for a single scaled or imputed
+// column. Only the fields relevant to the fitted kind are populated; the rest
+// stay at their zero value.
+type ScalerParams struct {
+	Column any
+	Kind   string
+	// Replacement is populated by fitted imputers. It is nil for scalers.
+	Replacement any
+
+	Mean   float64
+	Std    float64
+	Min    float64
+	Max    float64
+	Median float64
+	Q1     float64
+	Q3     float64
+	IQR    float64
+	MaxAbs float64
+
+	OutputMin float64
+	OutputMax float64
+}
+
+// Scaler is the shared surface for fitted, reusable feature scalers.
+//
+// Unlike DataList.Normalize/Standardize (stateless, in-place), a Scaler fits
+// parameters once and can Transform/InverseTransform new tables with the same
+// parameters, which is the correct way to scale a test set with statistics
+// learned from the training set (no data leakage).
+type Scaler interface {
+	Fit(dt *insyra.DataTable, cols ...any) error
+	Transform(dt *insyra.DataTable) (*insyra.DataTable, error)
+	FitTransform(dt *insyra.DataTable, cols ...any) (*insyra.DataTable, error)
+	InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error)
+	Params() map[string]ScalerParams
+	Kind() string
+}
+
+// DataListScaler is the DataList-oriented counterpart of Scaler.
+type DataListScaler interface {
+	FitDataList(dl *insyra.DataList) error
+	TransformDataList(dl *insyra.DataList) (*insyra.DataList, error)
+	FitTransformDataList(dl *insyra.DataList) (*insyra.DataList, error)
+	InverseTransformDataList(dl *insyra.DataList) (*insyra.DataList, error)
+}
+
+// scalerColumn holds the fitted state for one column. Every scaler reduces to
+// the affine map y = (x-center)/scale*gain + offset, with the inverse
+// x = (y-offset)/gain*scale + center. Degenerate inputs set scale = 1 so the
+// transform never divides by zero and never panics.
+type scalerColumn struct {
+	ref    any
+	name   string
+	params ScalerParams
+
+	center float64
+	scale  float64
+	gain   float64
+	offset float64
+}
+
+// scaler is the embedded base shared by all concrete scalers. The concrete
+// type only carries the kind tag and (for min-max) the feature range.
+type scaler struct {
+	kind       string
+	featureMin float64
+	featureMax float64
+
+	cols   []scalerColumn
+	fitted bool
+}
+
+// StandardScaler scales columns to zero mean and unit (sample) standard
+// deviation, matching DataList.Standardize's use of the sample stdev.
+type StandardScaler struct{ scaler }
+
+// MinMaxScaler scales columns into a [featureMin, featureMax] range.
+type MinMaxScaler struct{ scaler }
+
+// RobustScaler centers on the median and scales by the IQR, making it robust
+// to outliers.
+type RobustScaler struct{ scaler }
+
+// MaxAbsScaler scales each column by its maximum absolute value, preserving
+// sign and mapping data into [-1, 1].
+type MaxAbsScaler struct{ scaler }
+
+// NewStandardScaler returns an unfitted standard scaler.
+func NewStandardScaler() *StandardScaler { return &StandardScaler{scaler{kind: "standard"}} }
+
+// NewMinMaxScaler returns an unfitted min-max scaler targeting the given range.
+func NewMinMaxScaler(featureMin, featureMax float64) *MinMaxScaler {
+	return &MinMaxScaler{scaler{kind: "minmax", featureMin: featureMin, featureMax: featureMax}}
+}
+
+// NewDefaultMinMaxScaler returns a min-max scaler targeting [0, 1].
+func NewDefaultMinMaxScaler() *MinMaxScaler { return NewMinMaxScaler(0, 1) }
+
+// NewRobustScaler returns an unfitted robust scaler.
+func NewRobustScaler() *RobustScaler { return &RobustScaler{scaler{kind: "robust"}} }
+
+// NewMaxAbsScaler returns an unfitted max-abs scaler.
+func NewMaxAbsScaler() *MaxAbsScaler { return &MaxAbsScaler{scaler{kind: "maxabs"}} }
+
+// StandardScale fits a StandardScaler on cols of dt and returns the scaled table
+// with the scaler, so the same parameters can transform other tables.
+func StandardScale(dt insyra.IDataTable, cols ...any) (*insyra.DataTable, *StandardScaler, error) {
+	sc := NewStandardScaler()
+	out, err := sc.FitTransform(tableOf(dt), cols...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, sc, nil
+}
+
+// MinMaxScale fits a MinMaxScaler on cols of dt and returns the scaled table.
+func MinMaxScale(dt insyra.IDataTable, featureMin, featureMax float64, cols ...any) (*insyra.DataTable, *MinMaxScaler, error) {
+	sc := NewMinMaxScaler(featureMin, featureMax)
+	out, err := sc.FitTransform(tableOf(dt), cols...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, sc, nil
+}
+
+// RobustScale fits a RobustScaler on cols of dt and returns the scaled table.
+func RobustScale(dt insyra.IDataTable, cols ...any) (*insyra.DataTable, *RobustScaler, error) {
+	sc := NewRobustScaler()
+	out, err := sc.FitTransform(tableOf(dt), cols...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, sc, nil
+}
+
+// MaxAbsScale fits a MaxAbsScaler on cols of dt and returns the scaled table.
+func MaxAbsScale(dt insyra.IDataTable, cols ...any) (*insyra.DataTable, *MaxAbsScaler, error) {
+	sc := NewMaxAbsScaler()
+	out, err := sc.FitTransform(tableOf(dt), cols...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, sc, nil
+}
+
+// Kind returns the scaler family name ("standard", "minmax", "robust", "maxabs").
+func (s *scaler) Kind() string { return s.kind }
+
+// Params returns the fitted parameters keyed by output column name.
+func (s *scaler) Params() map[string]ScalerParams {
+	out := make(map[string]ScalerParams, len(s.cols))
+	for _, c := range s.cols {
+		out[c.name] = c.params
+	}
+	return out
+}
+
+// Fit learns scaling parameters from the given columns without modifying dt.
+// cols is required; pass at least one column reference (name or Excel-style
+// index such as "A").
+func (s *scaler) Fit(dt *insyra.DataTable, cols ...any) error {
+	if dt == nil {
+		return fmt.Errorf("%sScaler.Fit: table is nil", s.kind)
+	}
+	if len(cols) == 0 {
+		return fmt.Errorf("%sScaler.Fit: at least one column is required", s.kind)
+	}
+	fitted := make([]scalerColumn, 0, len(cols))
+	var err error
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		seen := map[int]struct{}{}
+		for _, ref := range cols {
+			idx, label, problem := resolveColumn(names, ref)
+			if problem != "" {
+				err = fmt.Errorf("%sScaler.Fit: %s", s.kind, problem)
+				return
+			}
+			if _, dup := seen[idx]; dup {
+				err = fmt.Errorf("%sScaler.Fit: column %v listed more than once", s.kind, ref)
+				return
+			}
+			seen[idx] = struct{}{}
+
+			name := label
+			var vals []float64
+			vals, err = numericColumnValues(t.GetColByNumber(idx).Data(), s.kind+"Scaler.Fit")
+			if err != nil {
+				return
+			}
+			// The fitted column is remembered the way it can be found again:
+			// by name when it has one, by position when it does not.
+			var fittedRef any = idx
+			if names[idx] != "" {
+				fittedRef = insyra.Name(names[idx])
+			}
+			fitted = append(fitted, s.computeColumn(fittedRef, name, vals))
+		}
+	})
+	if err != nil {
+		return err
+	}
+	s.cols = fitted
+	s.fitted = true
+	return nil
+}
+
+// FitTransform fits on cols and immediately returns the scaled table.
+func (s *scaler) FitTransform(dt *insyra.DataTable, cols ...any) (*insyra.DataTable, error) {
+	if err := s.Fit(dt, cols...); err != nil {
+		return nil, err
+	}
+	return s.Transform(dt)
+}
+
+// Transform applies the fitted parameters to dt and returns a new table.
+// The original table is not modified. Unfitted columns pass through unchanged.
+// A fitted column missing from dt is an error.
+func (s *scaler) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	return s.apply(dt, false)
+}
+
+// InverseTransform restores the original scale of fitted columns and returns a
+// new table. Unfitted columns pass through unchanged; fitted columns absent
+// from dt are simply skipped (so predictions covering a subset still work).
+func (s *scaler) InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	return s.apply(dt, true)
+}
+
+func (s *scaler) apply(dt *insyra.DataTable, inverse bool) (*insyra.DataTable, error) {
+	op := "Transform"
+	if inverse {
+		op = "InverseTransform"
+	}
+	if !s.fitted {
+		return nil, fmt.Errorf("%sScaler.%s: scaler is not fitted", s.kind, op)
+	}
+	if dt == nil {
+		return nil, fmt.Errorf("%sScaler.%s: table is nil", s.kind, op)
+	}
+	out := insyra.NewDataTable()
+	var err error
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		colByIndex := map[int]*scalerColumn{}
+		for i := range s.cols {
+			idx, _, problem := resolveColumn(names, s.cols[i].ref)
+			if problem != "" {
+				if inverse {
+					continue
+				}
+				err = fmt.Errorf("%sScaler.%s: fitted column: %s", s.kind, op, problem)
+				return
+			}
+			colByIndex[idx] = &s.cols[i]
+		}
+		outCols := make([]*insyra.DataList, 0, len(names))
+		for idx := range names {
+			col := t.GetColByNumber(idx)
+			c, scaled := colByIndex[idx]
+			if !scaled {
+				outCols = append(outCols, col)
+				continue
+			}
+			var transformed *insyra.DataList
+			transformed, err = s.applyColumn(c, col.GetName(), col.Data(), inverse, op)
+			if err != nil {
+				return
+			}
+			outCols = append(outCols, transformed)
+		}
+		out.AppendCols(outCols...)
+		copyRowNames(out, t)
+		out.SetName(t.GetName())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *scaler) applyColumn(c *scalerColumn, name string, data []any, inverse bool, op string) (*insyra.DataList, error) {
+	// The values are collected first and appended in one call: Append takes
+	// the list's lock once per call, so one call per cell made the transform
+	// several times slower than the work it does.
+	vals := make([]any, len(data))
+	for i, raw := range data {
+		if prep.IsNilOrNaN(raw) {
+			vals[i] = raw
+			continue
+		}
+		x, ok := insyra.ToFloat64Safe(raw)
+		if !ok {
+			return nil, fmt.Errorf("%sScaler.%s: column %q has non-numeric value %v", s.kind, op, c.name, raw)
+		}
+		var y float64
+		if inverse {
+			y = (x-c.offset)/c.gain*c.scale + c.center
+		} else {
+			y = (x-c.center)/c.scale*c.gain + c.offset
+		}
+		vals[i] = y
+	}
+	dst := insyra.NewDataList()
+	dst.SetName(name)
+	dst.Append(vals...)
+	return dst, nil
+}
+
+// computeColumn turns a column's numeric values into fitted parameters; the
+// affine coefficients apply needs are derived from them by setAffine.
+func (s *scaler) computeColumn(ref any, name string, vals []float64) scalerColumn {
+	c := scalerColumn{ref: ref, name: name}
+	c.params.Column = name
+	c.params.Kind = s.kind
+
+	switch s.kind {
+	case "standard":
+		mean := meanOf(vals)
+		c.params.Mean = mean
+		c.params.Std = sampleStdOf(vals, mean)
+	case "minmax":
+		min, max := minMaxOf(vals)
+		c.params.Min = min
+		c.params.Max = max
+		c.params.OutputMin = s.featureMin
+		c.params.OutputMax = s.featureMax
+	case "robust":
+		sorted := append([]float64(nil), vals...)
+		sort.Float64s(sorted)
+		c.params.Q1 = quantileQuartile(sorted, 0.25)
+		c.params.Median = quantileQuartile(sorted, 0.5)
+		c.params.Q3 = quantileQuartile(sorted, 0.75)
+		c.params.IQR = c.params.Q3 - c.params.Q1
+	case "maxabs":
+		c.params.MaxAbs = maxAbsOf(vals)
+	}
+	s.setAffine(&c)
+	return c
+}
+
+// setAffine derives the four affine coefficients apply uses from the column's
+// stored parameters, so a scaler rebuilt from JSON scales exactly like the one
+// that was fitted. Degenerate spreads set scale = 1.
+func (s *scaler) setAffine(c *scalerColumn) {
+	c.gain = 1
+	c.offset = 0
+
+	switch s.kind {
+	case "standard":
+		c.center = c.params.Mean
+		c.scale = nonZero(c.params.Std)
+	case "minmax":
+		c.center = c.params.Min
+		c.scale = nonZero(c.params.Max - c.params.Min)
+		c.gain = s.featureMax - s.featureMin
+		c.offset = s.featureMin
+	case "robust":
+		c.center = c.params.Median
+		c.scale = nonZero(c.params.IQR)
+	case "maxabs":
+		c.center = 0
+		c.scale = nonZero(c.params.MaxAbs)
+	}
+}
+
+// FitDataList learns scaling parameters from a single DataList.
+func (s *scaler) FitDataList(dl *insyra.DataList) error {
+	if dl == nil {
+		return fmt.Errorf("%sScaler.FitDataList: list is nil", s.kind)
+	}
+	var fitted scalerColumn
+	var err error
+	dl.AtomicDo(func(d *insyra.DataList) {
+		var vals []float64
+		vals, err = numericColumnValues(d.Data(), s.kind+"Scaler.FitDataList")
+		if err != nil {
+			return
+		}
+		fitted = s.computeColumn(insyra.Name(d.GetName()), d.GetName(), vals)
+	})
+	if err != nil {
+		return err
+	}
+	s.cols = []scalerColumn{fitted}
+	s.fitted = true
+	return nil
+}
+
+// FitTransformDataList fits on dl and returns a new scaled DataList.
+func (s *scaler) FitTransformDataList(dl *insyra.DataList) (*insyra.DataList, error) {
+	if err := s.FitDataList(dl); err != nil {
+		return nil, err
+	}
+	return s.TransformDataList(dl)
+}
+
+// TransformDataList scales dl using the fitted parameters, returning a new
+// DataList. The original list is not modified.
+func (s *scaler) TransformDataList(dl *insyra.DataList) (*insyra.DataList, error) {
+	return s.applyList(dl, false)
+}
+
+// InverseTransformDataList restores the original scale of dl, returning a new
+// DataList.
+func (s *scaler) InverseTransformDataList(dl *insyra.DataList) (*insyra.DataList, error) {
+	return s.applyList(dl, true)
+}
+
+func (s *scaler) applyList(dl *insyra.DataList, inverse bool) (*insyra.DataList, error) {
+	op := "TransformDataList"
+	if inverse {
+		op = "InverseTransformDataList"
+	}
+	if !s.fitted || len(s.cols) == 0 {
+		return nil, fmt.Errorf("%sScaler.%s: scaler is not fitted", s.kind, op)
+	}
+	if dl == nil {
+		return nil, fmt.Errorf("%sScaler.%s: list is nil", s.kind, op)
+	}
+	c := &s.cols[0]
+	var out *insyra.DataList
+	var err error
+	dl.AtomicDo(func(d *insyra.DataList) {
+		out, err = s.applyColumn(c, d.GetName(), d.Data(), inverse, op)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// tableOf returns the *insyra.DataTable that dt holds, or nil when it holds
+// none. Going through AtomicDo reaches the table an embedding type such as an
+// isr table carries, and the callers then work on that table directly.
+func tableOf(dt insyra.IDataTable) *insyra.DataTable {
+	if insyra.IsNilTable(dt) {
+		return nil
+	}
+	var table *insyra.DataTable
+	dt.AtomicDo(func(t *insyra.DataTable) { table = t })
+	return table
+}
+
+// resolveColumn resolves a column reference against the column names of a
+// table, without recording anything on the table's Err(): the caller's public
+// method reports the failure. It returns the 0-based position, the label the
+// output uses for the column (its name, or the Excel-style index when unnamed)
+// and the problem to report when nothing resolved.
+func resolveColumn(names []string, ref any) (idx int, label string, problem string) {
+	if legacy, ok := ref.(legacyRef); ok {
+		// The 0.3.x core rule: a name first, then an Excel-style index.
+		if at := indexOfName(names, string(legacy)); at >= 0 {
+			ref = insyra.Name(string(legacy))
+		} else {
+			ref = string(legacy)
+		}
+	}
+	idx, _, problem = prep.LookupColumn(names, identityName, selectorName, ref)
+	if problem != "" {
+		return -1, "", problem
+	}
+	label = names[idx]
+	if label == "" {
+		label = fallbackColumnName(idx)
+	}
+	return idx, label, ""
+}
+
+func identityName(name string) string { return name }
+
+// selectorName recognises insyra.Name, for the selector rule in internal/prep.
+func selectorName(selector any) (string, bool) {
+	n, ok := selector.(insyra.NameSelector)
+	return n.Value(), ok
+}
+
+func fallbackColumnName(idx int) string {
+	if name, ok := prep.AlphaColIndex(idx); ok {
+		return name
+	}
+	return fmt.Sprintf("col_%d", idx)
+}
+
+// indexOfName returns the position of the first column called name, or -1.
+func indexOfName(names []string, name string) int {
+	for i, n := range names {
+		if n == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// copyRowNames gives out the row names of src. A table with no row names keeps
+// none. The caller holds src's lock.
+func copyRowNames(out, src *insyra.DataTable) {
+	names := src.RowNames()
+	for _, name := range names {
+		if name != "" {
+			if len(names) <= out.NumRows() {
+				out.SetRowNames(names)
+			}
+			return
+		}
+	}
+}
+
+// numericColumnValues extracts numeric values, skipping nil/NaN. A non-numeric,
+// non-missing value is an error (scalers only apply to numeric columns).
+func numericColumnValues(data []any, method string) ([]float64, error) {
+	vals := make([]float64, 0, len(data))
+	for _, raw := range data {
+		if prep.IsNilOrNaN(raw) {
+			continue
+		}
+		f, ok := insyra.ToFloat64Safe(raw)
+		if !ok {
+			return nil, fmt.Errorf("%s: non-numeric value %v", method, raw)
+		}
+		vals = append(vals, f)
+	}
+	return vals, nil
+}
+
+func nonZero(v float64) float64 {
+	if v == 0 || math.IsNaN(v) {
+		return 1
+	}
+	return v
+}
+
+func meanOf(vals []float64) float64 {
+	if len(vals) == 0 {
+		return math.NaN()
+	}
+	var sum float64
+	for _, v := range vals {
+		sum += v
+	}
+	return sum / float64(len(vals))
+}
+
+// sampleStdOf mirrors DataList.Stdev (sample standard deviation, ddof=1).
+// Fewer than two values yields 0 (treated as a degenerate, constant column).
+func sampleStdOf(vals []float64, mean float64) float64 {
+	if len(vals) < 2 {
+		return 0
+	}
+	var ss float64
+	for _, v := range vals {
+		d := v - mean
+		ss += d * d
+	}
+	return math.Sqrt(ss / float64(len(vals)-1))
+}
+
+func minMaxOf(vals []float64) (float64, float64) {
+	if len(vals) == 0 {
+		return math.NaN(), math.NaN()
+	}
+	min, max := vals[0], vals[0]
+	for _, v := range vals[1:] {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, max
+}
+
+func maxAbsOf(vals []float64) float64 {
+	var m float64
+	for _, v := range vals {
+		if a := math.Abs(v); a > m {
+			m = a
+		}
+	}
+	return m
+}
+
+// quantileQuartile computes the RobustScaler's quartiles with the library's
+// shared type-7 quantile (prep.QuantileType7), so they match Quartile / IQR /
+// Percentile / Describe and sklearn's RobustScaler (which uses np.percentile,
+// i.e. type-7).
+func quantileQuartile(sorted []float64, p float64) float64 {
+	return prep.QuantileType7(sorted, p)
+}
+
+// Scaler JSON: the layout is the one the root package wrote, so JSON written
+// before the move still decodes.
+
+// jsonFloat is a float64 that survives encoding/json. Finite values are written
+// as the shortest decimal that reads back bit for bit; the values JSON has no
+// number for travel as their Go names.
+type jsonFloat float64
+
+func (f jsonFloat) MarshalJSON() ([]byte, error) {
+	switch v := float64(f); {
+	case math.IsNaN(v):
+		return []byte(`"NaN"`), nil
+	case math.IsInf(v, 1):
+		return []byte(`"+Inf"`), nil
+	case math.IsInf(v, -1):
+		return []byte(`"-Inf"`), nil
+	}
+	return []byte(strconv.FormatFloat(float64(f), 'g', -1, 64)), nil
+}
+
+func (f *jsonFloat) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if len(s) > 0 && s[0] == '"' {
+		switch s {
+		case `"NaN"`:
+			*f = jsonFloat(math.NaN())
+			return nil
+		case `"+Inf"`:
+			*f = jsonFloat(math.Inf(1))
+			return nil
+		case `"-Inf"`:
+			*f = jsonFloat(math.Inf(-1))
+			return nil
+		}
+		return fmt.Errorf("insyra: scaler JSON: %s is not a known non-finite value", s)
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fmt.Errorf("insyra: scaler JSON: %s is not a number", s)
+	}
+	*f = jsonFloat(v)
+	return nil
+}
+
+// scalerJSON is the on-disk form of a fitted or unfitted scaler. The concrete
+// type is not recoverable from the fields alone, so kind is written out and
+// checked on the way back in.
+type scalerJSON struct {
+	Kind       string             `json:"kind"`
+	FeatureMin jsonFloat          `json:"featureMin"`
+	FeatureMax jsonFloat          `json:"featureMax"`
+	Fitted     bool               `json:"fitted"`
+	Columns    []scalerColumnJSON `json:"columns"`
+}
+
+// scalerRefJSON is a column selector in scaler JSON. Exactly one field is
+// set: an Excel-style index, a column name, or a 0-based position.
+type scalerRefJSON struct {
+	Index    *string `json:"index,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Position *int    `json:"position,omitempty"`
+	// legacy is a reference written as a plain string, the form the core
+	// scalers of 0.3.4 and 0.3.5 wrote. It is read back as a legacyRef.
+	legacy *string
+}
+
+// legacyRef is a column reference read from scaler JSON that the 0.3.x core
+// scalers wrote, where "ref" is a plain string. Those scalers looked it up as a
+// column name first and as an Excel-style index second, so it is resolved the
+// same way and written back as the same plain string. Only JSON produces one.
+type legacyRef string
+
+func (r scalerRefJSON) MarshalJSON() ([]byte, error) {
+	if r.legacy != nil {
+		return json.Marshal(*r.legacy)
+	}
+	type fields scalerRefJSON
+	return json.Marshal(fields(r))
+}
+
+func (r *scalerRefJSON) UnmarshalJSON(b []byte) error {
+	if trimmed := bytes.TrimSpace(b); len(trimmed) > 0 && trimmed[0] == '"' {
+		var legacy string
+		if err := json.Unmarshal(trimmed, &legacy); err != nil {
+			return err
+		}
+		*r = scalerRefJSON{legacy: &legacy}
+		return nil
+	}
+	type fields scalerRefJSON
+	var f fields
+	if err := json.Unmarshal(b, &f); err != nil {
+		return err
+	}
+	*r = scalerRefJSON(f)
+	return nil
+}
+
+func encodeScalerRef(ref any) (scalerRefJSON, error) {
+	switch v := ref.(type) {
+	case string:
+		return scalerRefJSON{Index: &v}, nil
+	case insyra.NameSelector:
+		val := v.Value()
+		return scalerRefJSON{Name: &val}, nil
+	case int:
+		return scalerRefJSON{Position: &v}, nil
+	case legacyRef:
+		text := string(v)
+		return scalerRefJSON{legacy: &text}, nil
+	default:
+		return scalerRefJSON{}, fmt.Errorf("insyra: scaler JSON: cannot write a column selector of type %T", ref)
+	}
+}
+
+func decodeScalerRef(r scalerRefJSON) (any, error) {
+	if r.legacy != nil {
+		if *r.legacy == "" {
+			return nil, fmt.Errorf("insyra: scaler JSON: a column reference is empty")
+		}
+		return legacyRef(*r.legacy), nil
+	}
+	count := 0
+	if r.Index != nil {
+		count++
+	}
+	if r.Name != nil {
+		count++
+	}
+	if r.Position != nil {
+		count++
+	}
+	if count != 1 {
+		return nil, fmt.Errorf("insyra: scaler JSON: a column reference needs exactly one of index, name or position")
+	}
+	if r.Index != nil {
+		return *r.Index, nil
+	}
+	if r.Name != nil {
+		return insyra.Name(*r.Name), nil
+	}
+	return *r.Position, nil
+}
+
+type scalerColumnJSON struct {
+	Ref       scalerRefJSON `json:"ref"`
+	Name      string        `json:"name"`
+	Mean      jsonFloat     `json:"mean"`
+	Std       jsonFloat     `json:"std"`
+	Min       jsonFloat     `json:"min"`
+	Max       jsonFloat     `json:"max"`
+	Median    jsonFloat     `json:"median"`
+	Q1        jsonFloat     `json:"q1"`
+	Q3        jsonFloat     `json:"q3"`
+	IQR       jsonFloat     `json:"iqr"`
+	MaxAbs    jsonFloat     `json:"maxAbs"`
+	OutputMin jsonFloat     `json:"outputMin"`
+	OutputMax jsonFloat     `json:"outputMax"`
+}
+
+// MarshalJSON writes the scaler's kind, its output range and the fitted
+// columns, so UnmarshalJSON on the same scaler type reads back one that
+// transforms identically.
+func (s *scaler) MarshalJSON() ([]byte, error) {
+	out := scalerJSON{
+		Kind:       s.kind,
+		FeatureMin: jsonFloat(s.featureMin),
+		FeatureMax: jsonFloat(s.featureMax),
+		Fitted:     s.fitted,
+		Columns:    make([]scalerColumnJSON, 0, len(s.cols)),
+	}
+	for _, c := range s.cols {
+		refJSON, err := encodeScalerRef(c.ref)
+		if err != nil {
+			return nil, err
+		}
+		out.Columns = append(out.Columns, scalerColumnJSON{
+			Ref:       refJSON,
+			Name:      c.name,
+			Mean:      jsonFloat(c.params.Mean),
+			Std:       jsonFloat(c.params.Std),
+			Min:       jsonFloat(c.params.Min),
+			Max:       jsonFloat(c.params.Max),
+			Median:    jsonFloat(c.params.Median),
+			Q1:        jsonFloat(c.params.Q1),
+			Q3:        jsonFloat(c.params.Q3),
+			IQR:       jsonFloat(c.params.IQR),
+			MaxAbs:    jsonFloat(c.params.MaxAbs),
+			OutputMin: jsonFloat(c.params.OutputMin),
+			OutputMax: jsonFloat(c.params.OutputMax),
+		})
+	}
+	return json.Marshal(out)
+}
+
+// unmarshalJSON reads what MarshalJSON wrote into a scaler of the given kind.
+// The receiver is left untouched unless everything decodes.
+func (s *scaler) unmarshalJSON(data []byte, kind string) error {
+	var in scalerJSON
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	if in.Kind != kind {
+		return fmt.Errorf("insyra: cannot read a %q scaler into a %s scaler", in.Kind, kind)
+	}
+	if in.Fitted != (len(in.Columns) > 0) {
+		return fmt.Errorf("insyra: scaler JSON: fitted=%v but %d columns", in.Fitted, len(in.Columns))
+	}
+
+	tmp := scaler{
+		kind:       kind,
+		featureMin: float64(in.FeatureMin),
+		featureMax: float64(in.FeatureMax),
+		fitted:     in.Fitted,
+	}
+	var cols []scalerColumn
+	seen := make(map[string]bool, len(in.Columns))
+	for _, c := range in.Columns {
+		ref, err := decodeScalerRef(c.Ref)
+		if err != nil {
+			return err
+		}
+		// Fit refuses a column selected twice, so a reference listed twice was
+		// not written by Fit, and reading it would keep only the last one.
+		key := fmt.Sprintf("%T:%v", ref, ref)
+		if seen[key] {
+			return fmt.Errorf("insyra: scaler JSON: column %v is listed twice", ref)
+		}
+		seen[key] = true
+		col := scalerColumn{
+			ref:  ref,
+			name: c.Name,
+			params: ScalerParams{
+				Column: c.Name,
+				Kind:   kind,
+				Mean:   float64(c.Mean),
+				Std:    float64(c.Std),
+				Min:    float64(c.Min),
+				Max:    float64(c.Max),
+				Median: float64(c.Median),
+				Q1:     float64(c.Q1),
+				Q3:     float64(c.Q3),
+				IQR:    float64(c.IQR),
+				MaxAbs: float64(c.MaxAbs),
+
+				OutputMin: float64(c.OutputMin),
+				OutputMax: float64(c.OutputMax),
+			},
+		}
+		tmp.setAffine(&col)
+		cols = append(cols, col)
+	}
+	tmp.cols = cols
+	*s = tmp
+	return nil
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *StandardScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "standard")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *MinMaxScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "minmax")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *RobustScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "robust")
+}
+
+// UnmarshalJSON reads a scaler written by MarshalJSON. It refuses JSON written
+// by another kind of scaler.
+func (s *MaxAbsScaler) UnmarshalJSON(data []byte) error {
+	return s.unmarshalJSON(data, "maxabs")
+}
+
+// compile-time interface checks
+var (
+	_ Scaler = (*StandardScaler)(nil)
+	_ Scaler = (*MinMaxScaler)(nil)
+	_ Scaler = (*RobustScaler)(nil)
+	_ Scaler = (*MaxAbsScaler)(nil)
+
+	_ DataListScaler = (*StandardScaler)(nil)
+	_ DataListScaler = (*MinMaxScaler)(nil)
+	_ DataListScaler = (*RobustScaler)(nil)
+	_ DataListScaler = (*MaxAbsScaler)(nil)
+
+	_ json.Marshaler   = (*StandardScaler)(nil)
+	_ json.Unmarshaler = (*StandardScaler)(nil)
+	_ json.Marshaler   = (*MinMaxScaler)(nil)
+	_ json.Unmarshaler = (*MinMaxScaler)(nil)
+	_ json.Marshaler   = (*RobustScaler)(nil)
+	_ json.Unmarshaler = (*RobustScaler)(nil)
+	_ json.Marshaler   = (*MaxAbsScaler)(nil)
+	_ json.Unmarshaler = (*MaxAbsScaler)(nil)
+)

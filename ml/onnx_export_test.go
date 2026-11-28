@@ -250,14 +250,14 @@ func onnxTreeInput() *insyra.DataTable {
 func onnxPipeline() ml.Estimator {
 	return ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			if err := scaler.Fit(x, "x1"); err != nil {
 				return nil, err
 			}
 			return ml.NewColumnTransformer(scaler, "x1"), nil
 		}},
 		{Name: "encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, DropFirst: true, SortCategories: true})
+			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, DropFirst: true, SortCategories: true}) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			if err != nil {
 				return nil, err
 			}

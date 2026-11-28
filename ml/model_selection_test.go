@@ -135,7 +135,7 @@ func TestCrossValidateRefitsPreprocessingAndReturnsFoldScores(t *testing.T) {
 
 	result, err := ml.CrossValidate(x, y, ml.Estimator{Name: "scaled", Fit: func(trainX *insyra.DataTable, _ *insyra.DataList) (ml.Model, error) {
 		fitCount++
-		scaler := insyra.NewStandardScaler()
+		scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 		scaled, err := scaler.FitTransform(trainX, "x")
 		if err != nil {
 			return nil, err
@@ -212,7 +212,7 @@ func (identityModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	return dt.GetColByName("x"), nil
 }
 
-type scaledModel struct{ scaler *insyra.StandardScaler }
+type scaledModel struct{ scaler *insyra.StandardScaler } //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 
 func (m *scaledModel) Features() []string { return []string{"x"} }
 func (m *scaledModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {

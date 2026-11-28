@@ -275,7 +275,7 @@ func TestOneShotKeepsFittedScaler(t *testing.T) {
 	runOneShot(t, "scale", "transform", "sc", "t", "as", "t3")
 
 	vars := restore(t)
-	if _, ok := vars["sc"].(*insyra.StandardScaler); !ok {
+	if _, ok := vars["sc"].(*insyra.StandardScaler); !ok { //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 		t.Fatalf("sc is %T, want *insyra.StandardScaler", vars["sc"])
 	}
 	scaled := tableVar(t, vars, "t3")
@@ -283,7 +283,7 @@ func TestOneShotKeepsFittedScaler(t *testing.T) {
 
 	// Fitting here in this process, from the table the environment handed
 	// back, gives the answer the saved scaler has to reproduce.
-	want, err := insyra.NewStandardScaler().FitTransform(restoredTable, "zeta")
+	want, err := insyra.NewStandardScaler().FitTransform(restoredTable, "zeta") //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if err != nil {
 		t.Fatalf("FitTransform: %v", err)
 	}

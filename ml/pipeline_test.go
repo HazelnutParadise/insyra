@@ -225,14 +225,14 @@ func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 	)
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "numeric scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			if err := scaler.Fit(x, "number"); err != nil {
 				return nil, err
 			}
 			return scaler, nil
 		}},
 		{Name: "categorical encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, SortCategories: true})
+			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}, SortCategories: true}) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			return encoder, err
 		}},
 	}, ml.Estimator{

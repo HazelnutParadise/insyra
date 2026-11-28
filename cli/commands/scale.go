@@ -70,19 +70,19 @@ func runScaleFit(ctx *ExecContext, args []string) error {
 		return err
 	}
 
-	var scaler insyra.Scaler
+	var scaler insyra.Scaler //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	switch method {
 	case "std", "standard":
-		scaler = insyra.NewStandardScaler()
+		scaler = insyra.NewStandardScaler() //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "minmax":
 		if !hasRange {
 			featureMin, featureMax = 0, 1
 		}
-		scaler = insyra.NewMinMaxScaler(featureMin, featureMax)
+		scaler = insyra.NewMinMaxScaler(featureMin, featureMax) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "robust":
-		scaler = insyra.NewRobustScaler()
+		scaler = insyra.NewRobustScaler() //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "maxabs":
-		scaler = insyra.NewMaxAbsScaler()
+		scaler = insyra.NewMaxAbsScaler() //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	default:
 		return fmt.Errorf("scale fit: unknown method %q (supported: std, minmax, robust, maxabs)", method)
 	}
@@ -165,19 +165,19 @@ func parseScaleFitOptions(ctx *ExecContext, args []string) (cols []string, featu
 	return cols, featureMin, featureMax, hasRange, nil
 }
 
-func getScalerVar(ctx *ExecContext, name string) (insyra.Scaler, error) {
+func getScalerVar(ctx *ExecContext, name string) (insyra.Scaler, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	value, exists := ctx.Vars[name]
 	if !exists {
 		return nil, fmt.Errorf("variable not found: %s", name)
 	}
-	scaler, ok := value.(insyra.Scaler)
+	scaler, ok := value.(insyra.Scaler) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	if !ok {
 		return nil, fmt.Errorf("variable %s is not a scaler (fit one with 'scale fit ...')", name)
 	}
 	return scaler, nil
 }
 
-func scaledColumnNames(scaler insyra.Scaler) []string {
+func scaledColumnNames(scaler insyra.Scaler) []string { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	params := scaler.Params()
 	names := make([]string, 0, len(params))
 	for name := range params {

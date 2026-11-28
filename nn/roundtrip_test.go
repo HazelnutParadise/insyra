@@ -126,7 +126,7 @@ func TestMLPipelineExportReadsBackAndReproducesItself(t *testing.T) {
 	features, regressionTarget, _ := roundtripFixture()
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			if err := scaler.Fit(x, "x1", "x2"); err != nil {
 				return nil, err
 			}

@@ -13,6 +13,8 @@ import (
 // ScalerParams reports the fitted parameters for a single scaled or imputed
 // column. Only the fields relevant to the fitted kind are populated; the rest
 // stay at their zero value.
+//
+// Deprecated: use preprocess.ScalerParams. Removed in 0.4.
 type ScalerParams struct {
 	Column string
 	Kind   string
@@ -47,6 +49,8 @@ type ScalerParams struct {
 // parameters once and can Transform/InverseTransform new tables with the same
 // parameters, which is the correct way to scale a test set with statistics
 // learned from the training set (no data leakage).
+//
+// Deprecated: use preprocess.Scaler. Removed in 0.4.
 type Scaler interface {
 	Fit(dt *DataTable, cols ...string) error
 	Transform(dt *DataTable) (*DataTable, error)
@@ -57,6 +61,8 @@ type Scaler interface {
 }
 
 // DataListScaler is the DataList-oriented counterpart of Scaler.
+//
+// Deprecated: use preprocess.DataListScaler. Removed in 0.4.
 type DataListScaler interface {
 	FitDataList(dl *DataList) error
 	TransformDataList(dl *DataList) (*DataList, error)
@@ -92,37 +98,77 @@ type scaler struct {
 
 // StandardScaler scales columns to zero mean and unit (sample) standard
 // deviation, matching DataList.Standardize's use of the sample stdev.
+//
+// Deprecated: use preprocess.StandardScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type StandardScaler struct{ scaler }
 
 // MinMaxScaler scales columns into a [featureMin, featureMax] range.
+//
+// Deprecated: use preprocess.MinMaxScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type MinMaxScaler struct{ scaler }
 
 // RobustScaler centers on the median and scales by the IQR, making it robust
 // to outliers.
+//
+// Deprecated: use preprocess.RobustScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type RobustScaler struct{ scaler }
 
 // MaxAbsScaler scales each column by its maximum absolute value, preserving
 // sign and mapping data into [-1, 1].
+//
+// Deprecated: use preprocess.MaxAbsScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type MaxAbsScaler struct{ scaler }
 
 // NewStandardScaler returns an unfitted standard scaler.
+//
+// Deprecated: use preprocess.NewStandardScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 func NewStandardScaler() *StandardScaler { return &StandardScaler{scaler{kind: "standard"}} }
 
 // NewMinMaxScaler returns an unfitted min-max scaler targeting the given range.
+//
+// Deprecated: use preprocess.NewMinMaxScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 func NewMinMaxScaler(featureMin, featureMax float64) *MinMaxScaler {
 	return &MinMaxScaler{scaler{kind: "minmax", featureMin: featureMin, featureMax: featureMax}}
 }
 
 // NewDefaultMinMaxScaler returns a min-max scaler targeting [0, 1].
+//
+// Deprecated: use preprocess.NewDefaultMinMaxScaler. preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func NewDefaultMinMaxScaler() *MinMaxScaler { return NewMinMaxScaler(0, 1) }
 
 // NewRobustScaler returns an unfitted robust scaler.
+//
+// Deprecated: use preprocess.NewRobustScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 func NewRobustScaler() *RobustScaler { return &RobustScaler{scaler{kind: "robust"}} }
 
 // NewMaxAbsScaler returns an unfitted max-abs scaler.
+//
+// Deprecated: use preprocess.NewMaxAbsScaler. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 func NewMaxAbsScaler() *MaxAbsScaler { return &MaxAbsScaler{scaler{kind: "maxabs"}} }
 
 // StandardScale fits a StandardScaler on cols and returns the scaled table.
+//
+// Deprecated: use preprocess.StandardScale(dt, cols...). preprocess reads a
+// bare string column as an Excel-style index, so write insyra.Name("price")
+// for a column name. Removed in 0.4.
 func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error) {
 	sc := NewStandardScaler()
 	out, err := sc.FitTransform(dt, cols...)
@@ -133,6 +179,10 @@ func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler,
 }
 
 // MinMaxScale fits a MinMaxScaler on cols and returns the scaled table.
+//
+// Deprecated: use preprocess.MinMaxScale(dt, featureMin, featureMax, cols...).
+// preprocess reads a bare string column as an Excel-style index, so write
+// insyra.Name("price") for a column name. Removed in 0.4.
 func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error) {
 	sc := NewMinMaxScaler(featureMin, featureMax)
 	out, err := sc.FitTransform(dt, cols...)
@@ -143,6 +193,10 @@ func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string)
 }
 
 // RobustScale fits a RobustScaler on cols and returns the scaled table.
+//
+// Deprecated: use preprocess.RobustScale(dt, cols...). preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error) {
 	sc := NewRobustScaler()
 	out, err := sc.FitTransform(dt, cols...)
@@ -153,6 +207,10 @@ func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, err
 }
 
 // MaxAbsScale fits a MaxAbsScaler on cols and returns the scaled table.
+//
+// Deprecated: use preprocess.MaxAbsScale(dt, cols...). preprocess reads a bare
+// string column as an Excel-style index, so write insyra.Name("price") for a
+// column name. Removed in 0.4.
 func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error) {
 	sc := NewMaxAbsScaler()
 	out, err := sc.FitTransform(dt, cols...)

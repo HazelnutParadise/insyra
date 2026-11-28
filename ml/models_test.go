@@ -362,7 +362,7 @@ func TestMLModelsRejectUnsupportedFeatureSchemasAndOffsets(t *testing.T) {
 
 func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	train := testFeatures().table
-	scaler := insyra.NewStandardScaler()
+	scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if _, err := scaler.FitTransform(train, "x1"); err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	categories := insyra.NewDataTable(dataList([]any{"red", "blue", "red"}, "color"))
-	_, encoder, err := categories.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}})
+	_, encoder, err := categories.OneHotEncode(insyra.OneHotOptions{Columns: []string{"color"}}) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	imputationInput := insyra.NewDataTable(dataList([]any{1.0, nil, 3.0}, "value"))
-	imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+	imputer := insyra.NewSimpleImputer(insyra.ImputeMean) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if err := imputer.Fit(imputationInput, "value"); err != nil {
 		t.Fatal(err)
 	}

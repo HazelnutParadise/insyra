@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -115,11 +116,19 @@ type KMeansOptions = stats.KMeansOptions
 type KNNOptions = stats.KNNOptions
 
 var (
-	_ Transformer = (*insyra.StandardScaler)(nil)
-	_ Transformer = (*insyra.MinMaxScaler)(nil)
-	_ Transformer = (*insyra.RobustScaler)(nil)
-	_ Transformer = (*insyra.MaxAbsScaler)(nil)
-	_ Transformer = (*insyra.OneHotEncoder)(nil)
-	_ Transformer = (*insyra.LabelEncoder)(nil)
-	_ Transformer = (*insyra.OrdinalEncoder)(nil)
+	_ Transformer = (*insyra.StandardScaler)(nil) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.MinMaxScaler)(nil)   //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.RobustScaler)(nil)   //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.MaxAbsScaler)(nil)   //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.OneHotEncoder)(nil)  //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.LabelEncoder)(nil)   //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*insyra.OrdinalEncoder)(nil) //nolint:staticcheck // ml accepts the deprecated core types until 0.4 removes them
+	_ Transformer = (*preprocess.StandardScaler)(nil)
+	_ Transformer = (*preprocess.MinMaxScaler)(nil)
+	_ Transformer = (*preprocess.RobustScaler)(nil)
+	_ Transformer = (*preprocess.MaxAbsScaler)(nil)
+	_ Transformer = (*preprocess.OneHotEncoder)(nil)
+	_ Transformer = (*preprocess.LabelEncoder)(nil)
+	_ Transformer = (*preprocess.OrdinalEncoder)(nil)
+	_ Transformer = (*preprocess.SimpleImputer)(nil)
 )

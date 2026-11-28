@@ -43,7 +43,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result, _, err = table.OneHotEncode(opts)
+		result, _, err = table.OneHotEncode(opts) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		if err != nil {
 			return err
 		}
@@ -52,7 +52,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result, _, err = table.LabelEncode(opts)
+		result, _, err = table.LabelEncode(opts) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		if err != nil {
 			return err
 		}
@@ -61,7 +61,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result, _, err = table.OrdinalEncode(opts)
+		result, _, err = table.OrdinalEncode(opts) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		if err != nil {
 			return err
 		}
@@ -73,8 +73,8 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) {
-	var opts insyra.OneHotOptions
+func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
+	var opts insyra.OneHotOptions //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	if len(args) == 0 {
 		return opts, fmt.Errorf("encode onehot: columns are required")
 	}
@@ -167,8 +167,8 @@ func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) {
 	return opts, nil
 }
 
-func parseLabelEncodeOptions(args []string) (insyra.LabelEncodeOptions, error) {
-	var opts insyra.LabelEncodeOptions
+func parseLabelEncodeOptions(args []string) (insyra.LabelEncodeOptions, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
+	var opts insyra.LabelEncodeOptions //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return opts, fmt.Errorf("encode label: column is required")
 	}
@@ -240,8 +240,8 @@ func parseLabelEncodeOptions(args []string) (insyra.LabelEncodeOptions, error) {
 	return opts, nil
 }
 
-func parseOrdinalEncodeOptions(args []string) (insyra.OrdinalEncodeOptions, error) {
-	var opts insyra.OrdinalEncodeOptions
+func parseOrdinalEncodeOptions(args []string) (insyra.OrdinalEncodeOptions, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
+	var opts insyra.OrdinalEncodeOptions //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return opts, fmt.Errorf("encode ordinal: column is required")
 	}
@@ -319,44 +319,44 @@ func parseOrdinalEncodeOptions(args []string) (insyra.OrdinalEncodeOptions, erro
 	return opts, nil
 }
 
-func parseEncodeNaNPolicy(raw, context string) (insyra.NaNPolicy, error) {
+func parseEncodeNaNPolicy(raw, context string) (insyra.NaNPolicy, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "category":
-		return insyra.NaNAsCategory, nil
+		return insyra.NaNAsCategory, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "error":
-		return insyra.NaNError, nil
+		return insyra.NaNError, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "skip":
-		return insyra.NaNSkip, nil
+		return insyra.NaNSkip, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	}
-	return insyra.NaNAsCategory, fmt.Errorf("%s: invalid value for nan %q (supported: category, error, skip)", context, raw)
+	return insyra.NaNAsCategory, fmt.Errorf("%s: invalid value for nan %q (supported: category, error, skip)", context, raw) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 }
 
-func parseEncodeUnknownPolicy(raw, context string, allowNew bool) (insyra.UnknownPolicy, error) {
+func parseEncodeUnknownPolicy(raw, context string, allowNew bool) (insyra.UnknownPolicy, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "ignore":
-		return insyra.UnknownIgnore, nil
+		return insyra.UnknownIgnore, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "error":
-		return insyra.UnknownError, nil
+		return insyra.UnknownError, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "new":
 		if allowNew {
-			return insyra.UnknownAsNew, nil
+			return insyra.UnknownAsNew, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		}
 	}
 	supported := "ignore, error"
 	if allowNew {
 		supported = "ignore, error, new"
 	}
-	return insyra.UnknownIgnore, fmt.Errorf("%s: invalid value for unknown %q (supported: %s)", context, raw, supported)
+	return insyra.UnknownIgnore, fmt.Errorf("%s: invalid value for unknown %q (supported: %s)", context, raw, supported) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 }
 
-func parseEncodeLabelSort(raw string) (insyra.LabelSort, error) {
+func parseEncodeLabelSort(raw string) (insyra.LabelSort, error) { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "firstseen":
-		return insyra.LabelSortFirstSeen, nil
+		return insyra.LabelSortFirstSeen, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "lex":
-		return insyra.LabelSortLexicographic, nil
+		return insyra.LabelSortLexicographic, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "freq":
-		return insyra.LabelSortByFrequency, nil
+		return insyra.LabelSortByFrequency, nil //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	}
-	return insyra.LabelSortFirstSeen, fmt.Errorf("encode label: invalid value for sortby %q (supported: firstseen, lex, freq)", raw)
+	return insyra.LabelSortFirstSeen, fmt.Errorf("encode label: invalid value for sortby %q (supported: firstseen, lex, freq)", raw) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 }
