@@ -95,18 +95,6 @@ func TestNumberTextInGeneratedColumnNames(t *testing.T) {
 	restoreConfig(t)
 	Config.SetLogLevel(LogLevelFatal)
 
-	dt := NewDataTable(NewDataList(1500000.0, 2500000.0, 1500000.0).SetName("price"))
-	out, _, err := dt.OneHotEncode(OneHotOptions{Columns: []any{Name("price")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := out.ColNames()
-	for _, want := range []string{"price_1500000", "price_2500000"} {
-		if !slices.Contains(names, want) {
-			t.Errorf("one-hot columns = %v, want %q among them", names, want)
-		}
-	}
-
 	pv := NewDataTable(
 		NewDataList("a", "b").SetName("id"),
 		NewDataList(1500000.0, 2500000.0).SetName("k"),
@@ -126,9 +114,6 @@ func TestNumberTextInGeneratedColumnNames(t *testing.T) {
 
 // nil is not a number and keeps its documented name.
 func TestNilCategoryNameUnchanged(t *testing.T) {
-	if got := oneHotCategoryColumnName("c", "", nil); got != "c_<nil>" {
-		t.Errorf("one-hot nil name = %q, want %q", got, "c_<nil>")
-	}
 	if got := pivotColLabel(nil); got != "<nil>" {
 		t.Errorf("pivot nil label = %q, want %q", got, "<nil>")
 	}

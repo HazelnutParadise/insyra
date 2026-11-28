@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/prep"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"math"
 	"reflect"
@@ -724,35 +725,8 @@ func matchesAny(matchers []func(any) bool, cell any) bool {
 	return false
 }
 
-// integerParts splits a Go integer into its value, widened to int64 when the
-// type is signed and to uint64 when it is not.
-func integerParts(v any) (s int64, u uint64, signed, ok bool) {
-	switch x := v.(type) {
-	case int:
-		return int64(x), 0, true, true
-	case int8:
-		return int64(x), 0, true, true
-	case int16:
-		return int64(x), 0, true, true
-	case int32:
-		return int64(x), 0, true, true
-	case int64:
-		return x, 0, true, true
-	case uint:
-		return 0, uint64(x), false, true
-	case uint8:
-		return 0, uint64(x), false, true
-	case uint16:
-		return 0, uint64(x), false, true
-	case uint32:
-		return 0, uint64(x), false, true
-	case uint64:
-		return 0, x, false, true
-	case uintptr:
-		return 0, uint64(x), false, true
-	}
-	return 0, 0, false, false
-}
+// integerParts is prep.IntegerParts.
+func integerParts(v any) (s int64, u uint64, signed, ok bool) { return prep.IntegerParts(v) }
 
 // ClearOutliers removes values from the DataList that are outside the specified number of standard deviations.
 // This method modifies the original DataList and returns it.
@@ -1613,33 +1587,9 @@ func (dl *DataList) Range() float64 {
 	return result
 }
 
-// quantileType7 returns the p-quantile (p in [0,1]) of an ascending-sorted,
-// non-empty slice using R's type-7 method (the R / numpy / pandas default):
-// linear interpolation at position h = p*(n-1). This is the single quantile
-// definition shared by Quantile, Quartile, Percentile and the RobustScaler so
-// they never disagree with each other or with Describe.
-func quantileType7(sorted []float64, p float64) float64 {
-	n := len(sorted)
-	if n == 0 {
-		return math.NaN()
-	}
-	if n == 1 {
-		return sorted[0]
-	}
-	h := p * float64(n-1)
-	lower := int(math.Floor(h))
-	upper := int(math.Ceil(h))
-	if lower < 0 {
-		lower = 0
-	}
-	if upper >= n {
-		upper = n - 1
-	}
-	if lower == upper {
-		return sorted[lower]
-	}
-	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
-}
+// quantileType7 is prep.QuantileType7: the type-7 quantile shared by Quantile,
+// Quartile, Percentile, Describe and preprocess.RobustScaler.
+func quantileType7(sorted []float64, p float64) float64 { return prep.QuantileType7(sorted, p) }
 
 // sortedObservations returns the list's numeric values in ascending order for
 // the quantile family (Quantile, Percentile, Quartile, IQR). nil and NaN cells

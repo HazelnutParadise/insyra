@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 const (
@@ -374,7 +374,7 @@ func pipelineInputTypes(features []string, model Model, steps []fittedPipelineSt
 
 func transformerInputTypes(types map[string]int32, transformer Transformer) error {
 	switch transformer := transformer.(type) {
-	case *insyra.OneHotEncoder:
+	case *preprocess.OneHotEncoder:
 		categories := transformer.Categories()
 		for _, column := range transformer.Columns() {
 			dtype, err := onnxCategoryType(categories[column])
@@ -383,13 +383,13 @@ func transformerInputTypes(types map[string]int32, transformer Transformer) erro
 			}
 			types[column] = dtype
 		}
-	case *insyra.LabelEncoder:
+	case *preprocess.LabelEncoder:
 		dtype, err := onnxCategoryType(transformer.Classes())
 		if err != nil {
 			return fmt.Errorf("encoder column %q: %w", transformer.SourceColumn(), err)
 		}
 		types[transformer.SourceColumn()] = dtype
-	case *insyra.OrdinalEncoder:
+	case *preprocess.OrdinalEncoder:
 		dtype, err := onnxCategoryType(transformer.Classes())
 		if err != nil {
 			return fmt.Errorf("encoder column %q: %w", transformer.SourceColumn(), err)
@@ -400,7 +400,7 @@ func transformerInputTypes(types map[string]int32, transformer Transformer) erro
 			return errors.New("column transformer is nil")
 		}
 		return transformerInputTypes(types, transformer.transformer)
-	case *insyra.SimpleImputer, *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler:
+	case *preprocess.SimpleImputer, *preprocess.StandardScaler, *preprocess.MinMaxScaler, *preprocess.RobustScaler, *preprocess.MaxAbsScaler:
 		return nil
 	default:
 		return nil
@@ -582,21 +582,21 @@ func applyONNXTransformer(b *onnxBuilder, groups []onnxGroup, transformer Transf
 	switch transformer := transformer.(type) {
 	case *ColumnTransformer:
 		return applyONNXColumnTransformer(b, groups, transformer)
-	case *insyra.StandardScaler:
+	case *preprocess.StandardScaler:
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.MinMaxScaler:
+	case *preprocess.MinMaxScaler:
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.RobustScaler:
+	case *preprocess.RobustScaler:
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.MaxAbsScaler:
+	case *preprocess.MaxAbsScaler:
 		return applyONNXScaler(b, groups, transformer.Params(), transformer.Kind())
-	case *insyra.OneHotEncoder:
+	case *preprocess.OneHotEncoder:
 		return applyONNXOneHot(b, groups, transformer)
-	case *insyra.LabelEncoder:
+	case *preprocess.LabelEncoder:
 		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), transformer.Options().Unknown, transformer.Options().NewColumn != "", transformer.Options().KeepOriginal)
-	case *insyra.OrdinalEncoder:
+	case *preprocess.OrdinalEncoder:
 		return applyONNXScalarEncoder(b, groups, transformer.SourceColumn(), transformer.OutputColumn(), transformer.Classes(), transformer.Options().Unknown, transformer.Options().NewColumn != "", transformer.Options().KeepOriginal)
-	case *insyra.SimpleImputer:
+	case *preprocess.SimpleImputer:
 		return nil, errors.New("ONNX export does not support SimpleImputer in this change")
 	case *PCATransformer:
 		return nil, errors.New("ONNX export does not support PCA transformers")
@@ -652,7 +652,7 @@ func applyONNXColumnTransformer(b *onnxBuilder, groups []onnxGroup, transformer 
 	return out, nil
 }
 
-func applyONNXScaler(b *onnxBuilder, groups []onnxGroup, params map[string]insyra.ScalerParams, kind string) ([]onnxGroup, error) {
+func applyONNXScaler(b *onnxBuilder, groups []onnxGroup, params map[string]preprocess.ScalerParams, kind string) ([]onnxGroup, error) {
 	if len(params) == 0 {
 		return nil, fmt.Errorf("ONNX export %s scaler is not fitted", kind)
 	}
@@ -718,12 +718,12 @@ func (b *onnxBuilder) addArithmetic(op, input, operand string) string {
 	return output
 }
 
-func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotEncoder) ([]onnxGroup, error) {
+func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *preprocess.OneHotEncoder) ([]onnxGroup, error) {
 	if encoder == nil {
 		return nil, errors.New("one-hot encoder is nil")
 	}
 	options := encoder.Options()
-	if options.Unknown != insyra.UnknownIgnore {
+	if options.Unknown != preprocess.UnknownIgnore {
 		return nil, fmt.Errorf("one-hot encoder unknown policy %v cannot be represented by ONNX", options.Unknown)
 	}
 	columns := encoder.Columns()
@@ -806,11 +806,11 @@ func applyONNXOneHot(b *onnxBuilder, groups []onnxGroup, encoder *insyra.OneHotE
 	return result, nil
 }
 
-func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output string, classes []any, unknown insyra.UnknownPolicy, hasNewColumn, keepOriginal bool) ([]onnxGroup, error) {
+func applyONNXScalarEncoder(b *onnxBuilder, groups []onnxGroup, source, output string, classes []any, unknown preprocess.UnknownPolicy, hasNewColumn, keepOriginal bool) ([]onnxGroup, error) {
 	if source == "" || output == "" {
 		return nil, errors.New("scalar encoder has no fitted column name")
 	}
-	if unknown != insyra.UnknownIgnore {
+	if unknown != preprocess.UnknownIgnore {
 		return nil, fmt.Errorf("encoder column %q unknown policy %v cannot be represented by ONNX", source, unknown)
 	}
 	if len(classes) == 0 {

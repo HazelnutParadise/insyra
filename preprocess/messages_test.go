@@ -1,8 +1,10 @@
-package insyra
+package preprocess
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 // A column name given as a bare string is read as an Excel-style index, and
@@ -10,10 +12,10 @@ import (
 // through a helper that dropped that explanation, so they answered "column Age
 // not found" about a column that is plainly there.
 func TestFittersTeachNameForABareColumnName(t *testing.T) {
-	table := func() *DataTable {
-		return NewDataTable(
-			NewDataList(20.0, 30.0, 40.0).SetName("Age"),
-			NewDataList("a", "b", "a").SetName("segment"),
+	table := func() *insyra.DataTable {
+		return insyra.NewDataTable(
+			insyra.NewDataList(20.0, 30.0, 40.0).SetName("Age"),
+			insyra.NewDataList("a", "b", "a").SetName("segment"),
 		)
 	}
 	cases := []struct {
@@ -29,15 +31,15 @@ func TestFittersTeachNameForABareColumnName(t *testing.T) {
 			return NewSimpleImputer(SimpleImputerOptions{Strategy: ImputeMean}).Fit(table(), "Age")
 		}},
 		{"OneHotEncode", `Name("segment")`, func() error {
-			_, _, err := table().OneHotEncode(OneHotOptions{Columns: []any{"segment"}})
+			_, _, err := OneHotEncode(table(), OneHotOptions{Columns: []any{"segment"}})
 			return err
 		}},
 		{"LabelEncode", `Name("segment")`, func() error {
-			_, _, err := table().LabelEncode(LabelEncodeOptions{Column: "segment"})
+			_, _, err := LabelEncode(table(), LabelOptions{Column: "segment"})
 			return err
 		}},
 		{"OrdinalEncode", `Name("segment")`, func() error {
-			_, _, err := table().OrdinalEncode(OrdinalEncodeOptions{Column: "segment", Order: []any{"a", "b"}})
+			_, _, err := OrdinalEncode(table(), OrdinalOptions{Column: "segment", Order: []any{"a", "b"}})
 			return err
 		}},
 	}

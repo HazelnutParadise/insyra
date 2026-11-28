@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func scaleCLITable() *insyra.DataTable {
@@ -35,7 +36,7 @@ func TestScaleCLIFitTransformInverseFlow(t *testing.T) {
 	if err := runScaleCommand(ctx, []string{"fit", "std", "sc", "train", "cols", "Age,Income"}); err != nil {
 		t.Fatalf("fit: %v", err)
 	}
-	if _, ok := ctx.Vars["sc"].(insyra.Scaler); !ok {
+	if _, ok := ctx.Vars["sc"].(preprocess.Scaler); !ok {
 		t.Fatalf("sc is not a scaler: %T", ctx.Vars["sc"])
 	}
 

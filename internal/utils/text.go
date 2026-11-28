@@ -24,7 +24,7 @@ func FloatText(f float64, bitSize int) string {
 
 // ValueText writes a cell value as text for output. Floats follow FloatText;
 // every other type keeps the text fmt.Sprint gives it, nil included —
-// OneHotEncode and Pivot name a nil category "<nil>" on purpose.
+// preprocess.OneHotEncode and Pivot name a nil category "<nil>" on purpose.
 func ValueText(v any) string {
 	switch x := v.(type) {
 	case float64:

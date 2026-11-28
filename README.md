@@ -468,6 +468,7 @@ How a cell treats a decimal, and why this package rather than another, compared 
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
 | **[excel](/Docs/excel.md)** | Read an Excel sheet into a `DataTable` and write a `DataTable` as a sheet; kept out of the core so programs that do not need Excel do not compile it. |
+| **[preprocess](/Docs/preprocess.md)** | Scale numeric columns, encode categorical columns and fill missing values with parameters fitted on training data, then apply them to a test set. |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[arrowipc](/Docs/arrowipc.md)** | Read-only Arrow IPC file / Feather V2 schema inspection and cancellable DataTable batch reading. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |

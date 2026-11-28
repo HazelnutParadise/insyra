@@ -1,20 +1,13 @@
 package insyra
 
 import (
-	"math"
+	"github.com/HazelnutParadise/insyra/internal/prep"
 	"reflect"
 	"sort"
 )
 
-func isMissing(v any) bool {
-	if v == nil {
-		return true
-	}
-	if f, ok := v.(float64); ok && math.IsNaN(f) {
-		return true
-	}
-	return false
-}
+// isMissing is prep.IsMissing.
+func isMissing(v any) bool { return prep.IsMissing(v) }
 
 func imputeLimit(limit []int) int {
 	if len(limit) == 0 || limit[0] <= 0 {

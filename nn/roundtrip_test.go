@@ -9,6 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/ml"
 	"github.com/HazelnutParadise/insyra/nn"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 // What insyra writes, insyra reads: every model family ml exports must load
@@ -127,7 +128,7 @@ func TestMLPipelineExportReadsBackAndReproducesItself(t *testing.T) {
 	features, regressionTarget, _ := roundtripFixture()
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := preprocess.NewStandardScaler()
 			if err := scaler.Fit(x, insyra.Name("x1"), insyra.Name("x2")); err != nil {
 				return nil, err
 			}

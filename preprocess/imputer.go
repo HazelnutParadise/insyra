@@ -1,10 +1,13 @@
-package insyra
+package preprocess
 
 import (
 	"errors"
 	"fmt"
 	"reflect"
 	"sort"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/prep"
 )
 
 // ImputationStrategy selects how a SimpleImputer derives replacements.
@@ -53,7 +56,7 @@ type SimpleImputerOptions struct {
 // no options it fills with each column's mean. Invalid options are reported by
 // Fit, matching the error-returning lifecycle of the Scaler interface.
 func NewSimpleImputer(opts ...SimpleImputerOptions) *SimpleImputer {
-	if msg := extraOptional("SimpleImputerOptions", len(opts)); msg != "" {
+	if msg := prep.ExtraOptional("SimpleImputerOptions", len(opts)); msg != "" {
 		return &SimpleImputer{strategy: ImputeMean, configErr: errors.New("SimpleImputer: " + msg)}
 	}
 	var o SimpleImputerOptions
@@ -91,7 +94,7 @@ func (i *SimpleImputer) Params() map[string]ScalerParams {
 }
 
 // Fit derives replacements from selected columns without modifying dt.
-func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
+func (i *SimpleImputer) Fit(dt *insyra.DataTable, cols ...any) error {
 	if i == nil {
 		return errors.New("SimpleImputer.Fit: imputer is nil")
 	}
@@ -107,10 +110,11 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 
 	fitted := make([]simpleImputerColumn, 0, len(cols))
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
 		seen := make(map[int]struct{}, len(cols))
 		for _, ref := range cols {
-			idx, label, problem := resolveEncodingColumn(t, ref)
+			idx, label, problem := resolveColumn(names, ref)
 			if problem != "" {
 				err = fmt.Errorf("SimpleImputer.Fit: %s", problem)
 				return
@@ -122,17 +126,14 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 			seen[idx] = struct{}{}
 
 			name := label
-			if t.columns[idx].name != "" {
-				name = t.columns[idx].name
-			}
-			replacement, deriveErr := i.deriveReplacement(name, t.columns[idx].data)
+			replacement, deriveErr := i.deriveReplacement(name, t.GetColByNumber(idx).Data())
 			if deriveErr != nil {
 				err = deriveErr
 				return
 			}
 			fittedRef := any(idx)
-			if t.columns[idx].name != "" {
-				fittedRef = Name(t.columns[idx].name)
+			if names[idx] != "" {
+				fittedRef = insyra.Name(names[idx])
 			}
 			fitted = append(fitted, simpleImputerColumn{
 				ref:         fittedRef,
@@ -150,7 +151,7 @@ func (i *SimpleImputer) Fit(dt *DataTable, cols ...any) error {
 }
 
 // FitTransform fits on cols and returns a transformed copy of dt.
-func (i *SimpleImputer) FitTransform(dt *DataTable, cols ...any) (*DataTable, error) {
+func (i *SimpleImputer) FitTransform(dt *insyra.DataTable, cols ...any) (*insyra.DataTable, error) {
 	if err := i.Fit(dt, cols...); err != nil {
 		return nil, err
 	}
@@ -158,7 +159,7 @@ func (i *SimpleImputer) FitTransform(dt *DataTable, cols ...any) (*DataTable, er
 }
 
 // Transform applies fitted replacements and returns a new table.
-func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
+func (i *SimpleImputer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if i == nil {
 		return nil, errors.New("SimpleImputer.Transform: imputer is nil")
 	}
@@ -169,13 +170,14 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 		return nil, errors.New("SimpleImputer.Transform: table is nil")
 	}
 
-	out := NewDataTable()
+	out := insyra.NewDataTable()
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
 		byIndex := make(map[int]*simpleImputerColumn, len(i.columns))
 		for idx := range i.columns {
 			column := &i.columns[idx]
-			resolved, _, problem := resolveEncodingColumn(t, Name(column.name))
+			resolved, _, problem := resolveColumn(names, insyra.Name(column.name))
 			if problem != "" {
 				err = fmt.Errorf("SimpleImputer.Transform: fitted column %q not found", column.name)
 				return
@@ -183,24 +185,28 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 			byIndex[resolved] = column
 		}
 
-		outColumns := make([]*DataList, 0, len(t.columns))
-		for idx, source := range t.columns {
+		outColumns := make([]*insyra.DataList, 0, len(names))
+		for idx := range names {
 			column, selected := byIndex[idx]
 			if !selected {
-				outColumns = append(outColumns, source.Clone())
+				outColumns = append(outColumns, t.GetColByNumber(idx))
 				continue
 			}
-			copy := source.Clone()
-			for row, value := range copy.data {
-				if isMissing(value) {
-					copy.data[row] = column.replacement
+			source := t.GetColByNumber(idx)
+			values := source.Data()
+			for row, value := range values {
+				if prep.IsMissing(value) {
+					values[row] = column.replacement
 				}
 			}
-			outColumns = append(outColumns, copy)
+			filled := insyra.NewDataList()
+			filled.SetName(source.GetName())
+			filled.Append(values...)
+			outColumns = append(outColumns, filled)
 		}
 		out.AppendCols(outColumns...)
-		copyRowNamesNotAtomic(out, t)
-		out.name = t.name
+		copyRowNames(out, t)
+		out.SetName(t.GetName())
 	})
 	if err != nil {
 		return nil, err
@@ -237,7 +243,7 @@ func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, error) 
 
 	observed := make([]any, 0, len(data))
 	for _, value := range data {
-		if !isMissing(value) {
+		if !prep.IsMissing(value) {
 			observed = append(observed, value)
 		}
 	}
@@ -249,11 +255,11 @@ func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, error) 
 	case ImputeMean, ImputeMedian:
 		values := make([]float64, len(observed))
 		for index, value := range observed {
-			converted, ok := ToFloat64Safe(value)
+			converted, ok := insyra.ToFloat64Safe(value)
 			if !ok {
 				// The caller selected this column, so leaving it unfilled
 				// would let the fit look complete when it is not.
-				return nil, fmt.Errorf("SimpleImputer.Fit: column %q holds %s values, and %s needs a number column; use ImputeMode or ImputeConstant for it", name, dataTypeOf(data), i.strategy)
+				return nil, fmt.Errorf("SimpleImputer.Fit: column %q holds %s values, and %s needs a number column; use ImputeMode or ImputeConstant for it", name, columnDataType(data), i.strategy)
 			}
 			values[index] = converted
 		}
@@ -273,9 +279,16 @@ func (i *SimpleImputer) deriveReplacement(name string, data []any) (any, error) 
 	}
 }
 
+// columnDataType names the DataType of a column's values for an error message.
+// Append stores the values as they are, so the list it builds holds the same
+// cells the column does.
+func columnDataType(data []any) insyra.DataType {
+	return insyra.NewDataList().Append(data...).DataType()
+}
+
 func hasObservedValues(data []any) bool {
 	for _, value := range data {
-		if !isMissing(value) {
+		if !prep.IsMissing(value) {
 			return true
 		}
 	}
@@ -323,5 +336,5 @@ func firstMode(values []any) any {
 //
 // What it does satisfy is the transformer shape, which is all a pipeline needs.
 var _ interface {
-	Transform(dt *DataTable) (*DataTable, error)
+	Transform(dt *insyra.DataTable) (*insyra.DataTable, error)
 } = (*SimpleImputer)(nil)

@@ -564,12 +564,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: choose the end of a value by dialect, `;` only for the ODBC-style `sqlserver` form, and take the last `@` before the host in the URL and MySQL forms. Add each measured case to the masking tests.
 - **Status**: pending
 
-### [2026-09-28] — a fitted scaler saved by dev cannot be read on this line
-- **Where**: `datatable_scale.go` `scalerRefJSON`, `decodeScalerRef`
-- **What**: dev writes a scaler's column reference as a plain string (`"ref":"a"`), the selector as the caller gave it. This line writes an object (`{"name":"a"}` or `{"position":0}`) and refuses a string: `cannot unmarshal string into … scalerRefJSON`. In the CLI such a variable is kept but unusable. The scaler JSON is unreleased on both lines, so nothing breaks today; it does if a 0.3.x release ships it before 0.4.
-- **Suggestion**: if a 0.3.x release ships scaler JSON first, read a plain string here the way that release resolved it, or mark the change BREAKING in 0.4's release note. Decide before the next 0.3.x release.
-- **Status**: pending
-
 ### [2026-09-28] — three smaller things the dev merge's review measured
 - **Where**: `internal/ccl/map_context.go` `MapContext.GetColData`; `stats/asdatalist.go`; `stats/nonparam_mwu.go` (the Hodges-Lehmann estimate)
 - **What**: measured on 2026-09-28, all present before the merge. (1) `engine/ccl`'s `MapContext` hands a registered aggregate the caller's own slice; an aggregate that sorts it in place changes the caller's map and the rest of the expression (`ZZSORTFIRST(A) + A.0` gives 2 instead of 4). `dataTableContext` copies. (2) `asDataList` turns a nil `*DataList` into an empty list but not a nil value of a type that embeds one, so `TwoSampleTTest(x, (*W)(nil))` still panics. (3) `MannWhitneyU` allocates all n1·n2 pairwise differences for its estimate; two groups of six million values panic with `makeslice: cap out of range`, and smaller ones run out of memory first.

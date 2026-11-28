@@ -1,12 +1,15 @@
-package insyra
+package preprocess
 
 import (
 	"fmt"
-	"github.com/HazelnutParadise/insyra/internal/utils"
 	"maps"
 	"reflect"
 	"sort"
 	"strconv"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/prep"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // NaNPolicy controls how missing (nil or NaN) source values are encoded.
@@ -45,7 +48,7 @@ const (
 	LabelSortByFrequency
 )
 
-// OneHotOptions configures DataTable one-hot encoding.
+// OneHotOptions configures one-hot encoding.
 type OneHotOptions struct {
 	Columns        []any
 	DropFirst      bool
@@ -57,8 +60,8 @@ type OneHotOptions struct {
 	SortCategories bool
 }
 
-// LabelEncodeOptions configures DataTable label encoding.
-type LabelEncodeOptions struct {
+// LabelOptions configures label encoding.
+type LabelOptions struct {
 	Column       any
 	NewColumn    string
 	SortBy       LabelSort
@@ -67,8 +70,8 @@ type LabelEncodeOptions struct {
 	KeepOriginal bool
 }
 
-// OrdinalEncodeOptions configures DataTable ordinal encoding.
-type OrdinalEncodeOptions struct {
+// OrdinalOptions configures ordinal encoding.
+type OrdinalOptions struct {
 	Column       any
 	Order        []any
 	NewColumn    string
@@ -79,8 +82,8 @@ type OrdinalEncodeOptions struct {
 
 // Encoder is the minimal shared surface for fitted categorical encoders.
 type Encoder interface {
-	Transform(dt *DataTable) (*DataTable, error)
-	InverseTransform(dt *DataTable) (*DataTable, error)
+	Transform(dt *insyra.DataTable) (*insyra.DataTable, error)
+	InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error)
 	Kind() string
 }
 
@@ -103,7 +106,7 @@ type oneHotColumnState struct {
 
 // LabelEncoder stores a fitted label encoding.
 type LabelEncoder struct {
-	opts        LabelEncodeOptions
+	opts        LabelOptions
 	sourceRef   any
 	sourceName  string
 	encodedName string
@@ -113,7 +116,7 @@ type LabelEncoder struct {
 
 // OrdinalEncoder stores a fitted ordinal encoding.
 type OrdinalEncoder struct {
-	opts        OrdinalEncodeOptions
+	opts        OrdinalOptions
 	sourceRef   any
 	sourceName  string
 	encodedName string
@@ -121,39 +124,45 @@ type OrdinalEncoder struct {
 	keyToID     map[string]int
 }
 
-// OneHotEncode fits one-hot indicators for selected columns and returns a new table.
-func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error) {
-	enc, err := fitOneHotEncoder(dt, opts)
+// OneHotEncode fits one-hot indicators for selected columns of dt and returns a
+// new table with the fitted encoder.
+func OneHotEncode(dt insyra.IDataTable, opts OneHotOptions) (*insyra.DataTable, *OneHotEncoder, error) {
+	table := tableOf(dt)
+	enc, err := fitOneHotEncoder(table, opts)
 	if err != nil {
 		return nil, nil, err
 	}
-	out, err := enc.Transform(dt)
-	if err != nil {
-		return nil, nil, err
-	}
-	return out, enc, nil
-}
-
-// LabelEncode fits integer ids for a column and returns a new table.
-func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error) {
-	enc, err := fitLabelEncoder(dt, opts)
-	if err != nil {
-		return nil, nil, err
-	}
-	out, err := enc.Transform(dt)
+	out, err := enc.Transform(table)
 	if err != nil {
 		return nil, nil, err
 	}
 	return out, enc, nil
 }
 
-// OrdinalEncode fits explicit ordered ids for a column and returns a new table.
-func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error) {
-	enc, err := fitOrdinalEncoder(dt, opts)
+// LabelEncode fits integer ids for a column of dt and returns a new table with
+// the fitted encoder.
+func LabelEncode(dt insyra.IDataTable, opts LabelOptions) (*insyra.DataTable, *LabelEncoder, error) {
+	table := tableOf(dt)
+	enc, err := fitLabelEncoder(table, opts)
 	if err != nil {
 		return nil, nil, err
 	}
-	out, err := enc.Transform(dt)
+	out, err := enc.Transform(table)
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, enc, nil
+}
+
+// OrdinalEncode fits explicit ordered ids for a column of dt and returns a new
+// table with the fitted encoder.
+func OrdinalEncode(dt insyra.IDataTable, opts OrdinalOptions) (*insyra.DataTable, *OrdinalEncoder, error) {
+	table := tableOf(dt)
+	enc, err := fitOrdinalEncoder(table, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	out, err := enc.Transform(table)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -161,20 +170,20 @@ func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *Ordi
 }
 
 // Transform applies this fitted one-hot encoder to a new table.
-func (e *OneHotEncoder) Transform(dt *DataTable) (*DataTable, error) {
+func (e *OneHotEncoder) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("OneHotEncoder.Transform: encoder is nil")
 	}
-	out := NewDataTable()
+	out := insyra.NewDataTable()
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		var cols []*DataList
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		var cols []*insyra.DataList
 		cols, err = e.transformNotAtomic(t)
 		if err != nil {
 			return
 		}
 		out.AppendCols(cols...)
-		copyRowNamesNotAtomic(out, t)
+		copyRowNames(out, t)
 	})
 	if err != nil {
 		return nil, err
@@ -183,20 +192,20 @@ func (e *OneHotEncoder) Transform(dt *DataTable) (*DataTable, error) {
 }
 
 // InverseTransform rebuilds source columns from one-hot indicators.
-func (e *OneHotEncoder) InverseTransform(dt *DataTable) (*DataTable, error) {
+func (e *OneHotEncoder) InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("OneHotEncoder.InverseTransform: encoder is nil")
 	}
-	out := NewDataTable()
+	out := insyra.NewDataTable()
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		var cols []*DataList
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		var cols []*insyra.DataList
 		cols, err = e.inverseTransformNotAtomic(t)
 		if err != nil {
 			return
 		}
 		out.AppendCols(cols...)
-		copyRowNamesNotAtomic(out, t)
+		copyRowNames(out, t)
 	})
 	if err != nil {
 		return nil, err
@@ -257,7 +266,7 @@ func (e *OneHotEncoder) Options() OneHotOptions {
 }
 
 // Transform applies this fitted label encoder to a new table.
-func (e *LabelEncoder) Transform(dt *DataTable) (*DataTable, error) {
+func (e *LabelEncoder) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("LabelEncoder.Transform: encoder is nil")
 	}
@@ -272,7 +281,7 @@ func (e *LabelEncoder) Transform(dt *DataTable) (*DataTable, error) {
 }
 
 // InverseTransform decodes the label column back to its source values.
-func (e *LabelEncoder) InverseTransform(dt *DataTable) (*DataTable, error) {
+func (e *LabelEncoder) InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("LabelEncoder.InverseTransform: encoder is nil")
 	}
@@ -306,9 +315,9 @@ func (e *LabelEncoder) OutputColumn() string {
 }
 
 // Options returns a copy of the options used to fit the encoder.
-func (e *LabelEncoder) Options() LabelEncodeOptions {
+func (e *LabelEncoder) Options() LabelOptions {
 	if e == nil {
-		return LabelEncodeOptions{}
+		return LabelOptions{}
 	}
 	return e.opts
 }
@@ -319,7 +328,7 @@ func (e *LabelEncoder) Inverse(values ...any) ([]any, error) {
 }
 
 // Transform applies this fitted ordinal encoder to a new table.
-func (e *OrdinalEncoder) Transform(dt *DataTable) (*DataTable, error) {
+func (e *OrdinalEncoder) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("OrdinalEncoder.Transform: encoder is nil")
 	}
@@ -334,7 +343,7 @@ func (e *OrdinalEncoder) Transform(dt *DataTable) (*DataTable, error) {
 }
 
 // InverseTransform decodes the ordinal column back to its source values.
-func (e *OrdinalEncoder) InverseTransform(dt *DataTable) (*DataTable, error) {
+func (e *OrdinalEncoder) InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("OrdinalEncoder.InverseTransform: encoder is nil")
 	}
@@ -368,9 +377,9 @@ func (e *OrdinalEncoder) OutputColumn() string {
 }
 
 // Options returns a copy of the options used to fit the encoder.
-func (e *OrdinalEncoder) Options() OrdinalEncodeOptions {
+func (e *OrdinalEncoder) Options() OrdinalOptions {
 	if e == nil {
-		return OrdinalEncodeOptions{}
+		return OrdinalOptions{}
 	}
 	options := e.opts
 	options.Order = append([]any(nil), options.Order...)
@@ -382,18 +391,22 @@ func (e *OrdinalEncoder) Inverse(values ...any) ([]any, error) {
 	return inverseIDs(values, e.inverseOne)
 }
 
-func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error) {
+func fitOneHotEncoder(dt *insyra.DataTable, opts OneHotOptions) (*OneHotEncoder, error) {
 	opts = normalizeOneHotOptions(opts)
 	if len(opts.Columns) == 0 {
 		return nil, fmt.Errorf("OneHotEncode: Columns requires at least one column")
 	}
+	if dt == nil {
+		return nil, fmt.Errorf("OneHotEncode: table is nil")
+	}
 
 	enc := &OneHotEncoder{opts: opts}
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
 		seenCols := map[int]struct{}{}
 		for _, ref := range opts.Columns {
-			idx, label, problem := resolveEncodingColumn(t, ref)
+			idx, label, problem := resolveColumn(names, ref)
 			if problem != "" {
 				err = fmt.Errorf("OneHotEncode: %s", problem)
 				return
@@ -414,11 +427,11 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 				prefix:      prefix,
 				keyToIndex:  map[string]int{},
 			}
-			if t.columns[idx].name != "" {
-				state.sourceName = t.columns[idx].name
-				state.sourceRef = Name(t.columns[idx].name)
+			if names[idx] != "" {
+				state.sourceName = names[idx]
+				state.sourceRef = insyra.Name(names[idx])
 			}
-			if err = collectOneHotCategories(&state, t.columns[idx].data, opts); err != nil {
+			if err = collectOneHotCategories(&state, t.GetColByNumber(idx).Data(), opts); err != nil {
 				return
 			}
 			if opts.SortCategories {
@@ -438,29 +451,33 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 	return enc, nil
 }
 
-func fitLabelEncoder(dt *DataTable, opts LabelEncodeOptions) (*LabelEncoder, error) {
-	if isEmptySelector(opts.Column) {
+func fitLabelEncoder(dt *insyra.DataTable, opts LabelOptions) (*LabelEncoder, error) {
+	if prep.IsEmptySelector(opts.Column, selectorName) {
 		return nil, fmt.Errorf("LabelEncode: Column is required")
+	}
+	if dt == nil {
+		return nil, fmt.Errorf("LabelEncode: table is nil")
 	}
 	enc := &LabelEncoder{opts: opts}
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		idx, label, problem := resolveEncodingColumn(t, opts.Column)
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		idx, label, problem := resolveColumn(names, opts.Column)
 		if problem != "" {
 			err = fmt.Errorf("LabelEncode: %s", problem)
 			return
 		}
 		enc.sourceRef = idx
 		enc.sourceName = label
-		if t.columns[idx].name != "" {
-			enc.sourceRef = Name(t.columns[idx].name)
-			enc.sourceName = t.columns[idx].name
+		if names[idx] != "" {
+			enc.sourceRef = insyra.Name(names[idx])
+			enc.sourceName = names[idx]
 		}
 		enc.encodedName = enc.sourceName
 		if opts.NewColumn != "" {
 			enc.encodedName = opts.NewColumn
 		}
-		enc.classes, enc.keyToID, err = collectLabelClasses(t.columns[idx].data, opts)
+		enc.classes, enc.keyToID, err = collectLabelClasses(t.GetColByNumber(idx).Data(), opts)
 	})
 	if err != nil {
 		return nil, err
@@ -468,32 +485,36 @@ func fitLabelEncoder(dt *DataTable, opts LabelEncodeOptions) (*LabelEncoder, err
 	return enc, nil
 }
 
-func fitOrdinalEncoder(dt *DataTable, opts OrdinalEncodeOptions) (*OrdinalEncoder, error) {
-	if isEmptySelector(opts.Column) {
+func fitOrdinalEncoder(dt *insyra.DataTable, opts OrdinalOptions) (*OrdinalEncoder, error) {
+	if prep.IsEmptySelector(opts.Column, selectorName) {
 		return nil, fmt.Errorf("OrdinalEncode: Column is required")
 	}
 	if len(opts.Order) == 0 {
 		return nil, fmt.Errorf("OrdinalEncode: Order requires at least one category")
 	}
+	if dt == nil {
+		return nil, fmt.Errorf("OrdinalEncode: table is nil")
+	}
 	enc := &OrdinalEncoder{opts: opts}
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		idx, label, problem := resolveEncodingColumn(t, opts.Column)
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		idx, label, problem := resolveColumn(names, opts.Column)
 		if problem != "" {
 			err = fmt.Errorf("OrdinalEncode: %s", problem)
 			return
 		}
 		enc.sourceRef = idx
 		enc.sourceName = label
-		if t.columns[idx].name != "" {
-			enc.sourceRef = Name(t.columns[idx].name)
-			enc.sourceName = t.columns[idx].name
+		if names[idx] != "" {
+			enc.sourceRef = insyra.Name(names[idx])
+			enc.sourceName = names[idx]
 		}
 		enc.encodedName = enc.sourceName
 		if opts.NewColumn != "" {
 			enc.encodedName = opts.NewColumn
 		}
-		enc.classes, enc.keyToID, err = collectOrdinalClasses(t.columns[idx].data, opts)
+		enc.classes, enc.keyToID, err = collectOrdinalClasses(t.GetColByNumber(idx).Data(), opts)
 	})
 	if err != nil {
 		return nil, err
@@ -515,7 +536,7 @@ func collectOneHotCategories(state *oneHotColumnState, values []any, opts OneHot
 	return nil
 }
 
-func collectLabelClasses(values []any, opts LabelEncodeOptions) ([]any, map[string]int, error) {
+func collectLabelClasses(values []any, opts LabelOptions) ([]any, map[string]int, error) {
 	type info struct {
 		value     any
 		firstSeen int
@@ -565,12 +586,12 @@ func collectLabelClasses(values []any, opts LabelEncodeOptions) ([]any, map[stri
 	return classes, keyToID, nil
 }
 
-func collectOrdinalClasses(values []any, opts OrdinalEncodeOptions) ([]any, map[string]int, error) {
+func collectOrdinalClasses(values []any, opts OrdinalOptions) ([]any, map[string]int, error) {
 	classes := []any{}
 	keyToID := map[string]int{}
 	for _, raw := range opts.Order {
 		v := raw
-		if isNilOrNaN(v) {
+		if prep.IsNilOrNaN(v) {
 			switch opts.HandleNaN {
 			case NaNError:
 				return nil, nil, fmt.Errorf("OrdinalEncode: Order contains missing value")
@@ -612,27 +633,29 @@ func collectOrdinalClasses(values []any, opts OrdinalEncodeOptions) ([]any, map[
 	return classes, keyToID, nil
 }
 
-func (e *OneHotEncoder) transformNotAtomic(t *DataTable) ([]*DataList, error) {
+func (e *OneHotEncoder) transformNotAtomic(t *insyra.DataTable) ([]*insyra.DataList, error) {
+	names := t.ColNames()
 	stateByIndex := map[int]*oneHotColumnState{}
 	for i := range e.columns {
-		idx, _, problem := resolveEncodingColumn(t, e.columns[i].sourceRef)
+		idx, _, problem := resolveColumn(names, e.columns[i].sourceRef)
 		if problem != "" {
 			return nil, fmt.Errorf("OneHotEncoder.Transform: fitted column: %s", problem)
 		}
 		stateByIndex[idx] = &e.columns[i]
 	}
 
-	outCols := []*DataList{}
-	for idx, col := range t.columns {
+	outCols := []*insyra.DataList{}
+	for idx := range names {
+		col := t.GetColByNumber(idx)
 		state, encoded := stateByIndex[idx]
 		if !encoded {
-			outCols = append(outCols, col.Clone())
+			outCols = append(outCols, col)
 			continue
 		}
 		if e.opts.KeepOriginal {
-			outCols = append(outCols, col.Clone())
+			outCols = append(outCols, col)
 		}
-		encodedCols, err := e.encodeOneHotColumn(state, col.data)
+		encodedCols, err := e.encodeOneHotColumn(state, col.Data())
 		if err != nil {
 			return nil, err
 		}
@@ -645,7 +668,7 @@ func (e *OneHotEncoder) transformNotAtomic(t *DataTable) ([]*DataList, error) {
 	return outCols, nil
 }
 
-func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []any) ([]*DataList, error) {
+func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []any) ([]*insyra.DataList, error) {
 	start := 0
 	if e.opts.DropFirst && len(state.categories) > 0 {
 		start = 1
@@ -687,45 +710,52 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 		}
 	}
 
-	cols := make([]*DataList, 0, len(outputColumns))
-	for _, name := range outputColumns {
-		cols = append(cols, NewDataList().SetName(name))
+	// Each indicator is built as a slice and appended once: Append takes the
+	// list's lock once per call, so one call per cell is far slower.
+	indicators := make([][]any, len(outputColumns))
+	for i := range indicators {
+		indicators[i] = make([]any, len(values))
+		for r := range indicators[i] {
+			indicators[i][r] = 0
+		}
 	}
-	for _, raw := range values {
-		row := make([]int, len(cols))
+	for r, raw := range values {
 		v, skip, err := normalizeCategoryValue(raw, e.opts.HandleNaN, "OneHotEncoder.Transform")
 		if err != nil {
 			return nil, err
 		}
 		if !skip {
 			if id, ok := keyToIndex[labelKey(v)]; ok && id >= start {
-				row[id-start] = 1
+				indicators[id-start][r] = 1
 			}
 		}
-		for i, value := range row {
-			cols[i].Append(value)
-		}
+	}
+	cols := make([]*insyra.DataList, 0, len(outputColumns))
+	for i, name := range outputColumns {
+		col := insyra.NewDataList().SetName(name)
+		col.Append(indicators[i]...)
+		cols = append(cols, col)
 	}
 	return cols, nil
 }
 
-func (e *OneHotEncoder) inverseTransformNotAtomic(t *DataTable) ([]*DataList, error) {
+func (e *OneHotEncoder) inverseTransformNotAtomic(t *insyra.DataTable) ([]*insyra.DataList, error) {
+	names := t.ColNames()
 	generated := map[string]struct{}{}
 	insertions := map[int][]*oneHotColumnState{}
 	for i := range e.columns {
 		state := &e.columns[i]
 		if e.opts.KeepOriginal {
-			if idx, _, problem := resolveEncodingColumn(t, state.sourceRef); problem == "" {
+			if _, _, problem := resolveColumn(names, state.sourceRef); problem == "" {
 				for _, name := range state.outputColumns {
 					generated[name] = struct{}{}
 				}
-				_ = idx
 				continue
 			}
 		}
 		first := -1
 		for _, name := range state.outputColumns {
-			idx, _, problem := resolveEncodingColumn(t, Name(name))
+			idx, _, problem := resolveColumn(names, insyra.Name(name))
 			if problem == "" && (first < 0 || idx < first) {
 				first = idx
 			}
@@ -740,32 +770,32 @@ func (e *OneHotEncoder) inverseTransformNotAtomic(t *DataTable) ([]*DataList, er
 			if insertAt < 0 {
 				insertAt = 0
 			}
-			if insertAt > len(t.columns) {
-				insertAt = len(t.columns)
+			if insertAt > len(names) {
+				insertAt = len(names)
 			}
 			insertions[insertAt] = append(insertions[insertAt], state)
 		}
 	}
 
-	outCols := []*DataList{}
-	for idx, col := range t.columns {
+	outCols := []*insyra.DataList{}
+	for idx, name := range names {
 		if states, ok := insertions[idx]; ok {
 			for _, state := range states {
-				decoded, err := e.decodeOneHotColumn(t, state)
+				decoded, err := e.decodeOneHotColumn(t, names, state)
 				if err != nil {
 					return nil, err
 				}
 				outCols = append(outCols, decoded)
 			}
 		}
-		if _, isGenerated := generated[col.name]; isGenerated {
+		if _, isGenerated := generated[name]; isGenerated {
 			continue
 		}
-		outCols = append(outCols, col.Clone())
+		outCols = append(outCols, t.GetColByNumber(idx))
 	}
-	if states, ok := insertions[len(t.columns)]; ok {
+	if states, ok := insertions[len(names)]; ok {
 		for _, state := range states {
-			decoded, err := e.decodeOneHotColumn(t, state)
+			decoded, err := e.decodeOneHotColumn(t, names, state)
 			if err != nil {
 				return nil, err
 			}
@@ -778,46 +808,48 @@ func (e *OneHotEncoder) inverseTransformNotAtomic(t *DataTable) ([]*DataList, er
 	return outCols, nil
 }
 
-func (e *OneHotEncoder) decodeOneHotColumn(t *DataTable, state *oneHotColumnState) (*DataList, error) {
-	nRows := t.getMaxColLength()
-	out := NewDataList()
-	out.SetName(state.sourceName)
+func (e *OneHotEncoder) decodeOneHotColumn(t *insyra.DataTable, names []string, state *oneHotColumnState) (*insyra.DataList, error) {
+	nRows := t.NumRows()
 	start := 0
 	if e.opts.DropFirst && len(state.categories) > 0 {
 		start = 1
 	}
-	indicatorCols := make([]*DataList, len(state.outputColumns))
+	indicatorCols := make([][]any, len(state.outputColumns))
 	for i, name := range state.outputColumns {
-		idx, _, problem := resolveEncodingColumn(t, Name(name))
+		idx, _, problem := resolveColumn(names, insyra.Name(name))
 		if problem != "" {
 			return nil, fmt.Errorf("OneHotEncoder.InverseTransform: indicator column %q not found", name)
 		}
-		indicatorCols[i] = t.columns[idx]
+		indicatorCols[i] = t.GetColByNumber(idx).Data()
 	}
+	decoded := make([]any, 0, nRows)
 	for row := 0; row < nRows; row++ {
 		found := -1
 		for j, col := range indicatorCols {
-			if row >= len(col.data) {
+			if row >= len(col) {
 				continue
 			}
-			if isOne(col.data[row]) {
+			if isOne(col[row]) {
 				found = j + start
 				break
 			}
 		}
 		if found >= 0 && found < len(state.categories) {
-			out.Append(state.categories[found])
+			decoded = append(decoded, state.categories[found])
 			continue
 		}
 		if e.opts.DropFirst && len(state.categories) > 0 {
-			out.Append(state.categories[0])
+			decoded = append(decoded, state.categories[0])
 			continue
 		}
 		if e.opts.HandleNaN == NaNError {
 			return nil, fmt.Errorf("OneHotEncoder.InverseTransform: all-zero row %d", row)
 		}
-		out.Append(nil)
+		decoded = append(decoded, nil)
 	}
+	out := insyra.NewDataList()
+	out.SetName(state.sourceName)
+	out.Append(decoded...)
 	return out, nil
 }
 
@@ -879,26 +911,28 @@ func (e *OrdinalEncoder) inverseOne(v any) (any, error) {
 	return e.classes[id], nil
 }
 
-func transformScalarEncoder(dt *DataTable, sourceRef any, sourceName, encodedName string, hasNewColumn, keepOriginal bool, encode func(any) (any, error)) (*DataTable, error) {
-	out := NewDataTable()
+func transformScalarEncoder(dt *insyra.DataTable, sourceRef any, sourceName, encodedName string, hasNewColumn, keepOriginal bool, encode func(any) (any, error)) (*insyra.DataTable, error) {
+	out := insyra.NewDataTable()
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		idx, _, problem := resolveEncodingColumn(t, sourceRef)
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		idx, _, problem := resolveColumn(names, sourceRef)
 		if problem != "" {
 			err = fmt.Errorf("encoder Transform: fitted column: %s", problem)
 			return
 		}
-		outCols := []*DataList{}
-		for colIdx, col := range t.columns {
+		outCols := []*insyra.DataList{}
+		for colIdx := range names {
 			if colIdx != idx {
-				outCols = append(outCols, col.Clone())
+				outCols = append(outCols, t.GetColByNumber(colIdx))
 				continue
 			}
-			encoded := NewDataList()
+			col := t.GetColByNumber(idx)
+			encoded := insyra.NewDataList()
 			if hasNewColumn {
 				encoded.SetName(encodedName)
 				if keepOriginal {
-					outCols = append(outCols, col.Clone(), encoded)
+					outCols = append(outCols, col, encoded)
 				} else {
 					outCols = append(outCols, encoded)
 				}
@@ -906,14 +940,17 @@ func transformScalarEncoder(dt *DataTable, sourceRef any, sourceName, encodedNam
 				encoded.SetName(sourceName)
 				outCols = append(outCols, encoded)
 			}
-			for _, v := range col.data {
+			values := col.Data()
+			codes := make([]any, len(values))
+			for i, v := range values {
 				got, encErr := encode(v)
 				if encErr != nil {
 					err = encErr
 					return
 				}
-				encoded.Append(got)
+				codes[i] = got
 			}
+			encoded.Append(codes...)
 		}
 		if err != nil {
 			return
@@ -923,7 +960,7 @@ func transformScalarEncoder(dt *DataTable, sourceRef any, sourceName, encodedNam
 			return
 		}
 		out.AppendCols(outCols...)
-		copyRowNamesNotAtomic(out, t)
+		copyRowNames(out, t)
 	})
 	if err != nil {
 		return nil, err
@@ -931,42 +968,46 @@ func transformScalarEncoder(dt *DataTable, sourceRef any, sourceName, encodedNam
 	return out, nil
 }
 
-func inverseScalarEncoder(dt *DataTable, sourceName, encodedName string, hasNewColumn, keepOriginal bool, decode func(any) (any, error)) (*DataTable, error) {
-	out := NewDataTable()
+func inverseScalarEncoder(dt *insyra.DataTable, sourceName, encodedName string, hasNewColumn, keepOriginal bool, decode func(any) (any, error)) (*insyra.DataTable, error) {
+	out := insyra.NewDataTable()
 	var err error
-	dt.AtomicDo(func(t *DataTable) {
-		encodedIdx, _, problem := resolveEncodingColumn(t, Name(encodedName))
+	dt.AtomicDo(func(t *insyra.DataTable) {
+		names := t.ColNames()
+		encodedIdx, _, problem := resolveColumn(names, insyra.Name(encodedName))
 		if problem != "" {
 			err = fmt.Errorf("encoder InverseTransform: column %q not found", encodedName)
 			return
 		}
-		_, sourceExists := t.getColNumberByName_notAtomic(sourceName)
-		outCols := []*DataList{}
-		for idx, col := range t.columns {
+		sourceExists := indexOfName(names, sourceName) >= 0
+		outCols := []*insyra.DataList{}
+		for idx, name := range names {
 			if hasNewColumn && keepOriginal && sourceExists {
 				if idx == encodedIdx {
 					continue
 				}
-				outCols = append(outCols, col.Clone())
+				outCols = append(outCols, t.GetColByNumber(idx))
 				continue
 			}
 			if idx != encodedIdx {
-				if hasNewColumn && col.name == sourceName {
+				if hasNewColumn && name == sourceName {
 					continue
 				}
-				outCols = append(outCols, col.Clone())
+				outCols = append(outCols, t.GetColByNumber(idx))
 				continue
 			}
-			decoded := NewDataList()
+			decoded := insyra.NewDataList()
 			decoded.SetName(sourceName)
-			for _, v := range col.data {
+			values := t.GetColByNumber(idx).Data()
+			decodedValues := make([]any, len(values))
+			for i, v := range values {
 				got, decErr := decode(v)
 				if decErr != nil {
 					err = decErr
 					return
 				}
-				decoded.Append(got)
+				decodedValues[i] = got
 			}
+			decoded.Append(decodedValues...)
 			outCols = append(outCols, decoded)
 		}
 		if err != nil {
@@ -977,7 +1018,7 @@ func inverseScalarEncoder(dt *DataTable, sourceName, encodedName string, hasNewC
 			return
 		}
 		out.AppendCols(outCols...)
-		copyRowNamesNotAtomic(out, t)
+		copyRowNames(out, t)
 	})
 	if err != nil {
 		return nil, err
@@ -993,7 +1034,7 @@ func normalizeOneHotOptions(opts OneHotOptions) OneHotOptions {
 }
 
 func normalizeCategoryValue(v any, policy NaNPolicy, method string) (any, bool, error) {
-	if !isNilOrNaN(v) {
+	if !prep.IsNilOrNaN(v) {
 		return v, false, nil
 	}
 	switch policy {
@@ -1089,7 +1130,7 @@ func (e *OneHotEncoder) refreshOutputColumns() {
 // so int(1) and the int64(1) a CSV load produces are one category, the way
 // value lookups treat them; anything else keeps its type as well.
 func labelKey(v any) string {
-	if s, u, signed, ok := integerParts(v); ok {
+	if s, u, signed, ok := prep.IntegerParts(v); ok {
 		if signed {
 			return "int:" + strconv.FormatInt(s, 10)
 		}
@@ -1098,10 +1139,10 @@ func labelKey(v any) string {
 	return fmt.Sprintf("%T:%#v", v, v)
 }
 
-func rejectDuplicateOutputNames(cols []*DataList, method string) error {
+func rejectDuplicateOutputNames(cols []*insyra.DataList, method string) error {
 	seen := map[string]struct{}{}
 	for _, col := range cols {
-		name := col.name
+		name := col.GetName()
 		if name == "" {
 			continue
 		}
@@ -1117,7 +1158,7 @@ func isOne(v any) bool {
 	if v == nil {
 		return false
 	}
-	if f, ok := ToFloat64Safe(v); ok {
+	if f, ok := insyra.ToFloat64Safe(v); ok {
 		return f == 1
 	}
 	return false

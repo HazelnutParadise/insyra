@@ -16,6 +16,7 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/reftest"
 	"github.com/HazelnutParadise/insyra/ml"
 	"github.com/HazelnutParadise/insyra/nn"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 //go:embed testdata/onnx_parity.py
@@ -508,14 +509,14 @@ func mustBoostedClassifierRoundTripModel(t *testing.T) ml.Model {
 func mustPipelineRoundTripModel(t *testing.T) ml.Model {
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := preprocess.NewStandardScaler()
 			if err := scaler.Fit(x, insyra.Name("x1")); err != nil {
 				return nil, err
 			}
 			return ml.NewColumnTransformer(scaler, "x1"), nil
 		}},
 		{Name: "encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}, DropFirst: true, SortCategories: true})
+			_, encoder, err := preprocess.OneHotEncode(x, preprocess.OneHotOptions{Columns: []any{insyra.Name("color")}, DropFirst: true, SortCategories: true})
 			if err != nil {
 				return nil, err
 			}

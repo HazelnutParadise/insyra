@@ -8,6 +8,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/ml"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func TestKFoldPartitionsRowsAndIsReproducible(t *testing.T) {
@@ -135,7 +136,7 @@ func TestCrossValidateRefitsPreprocessingAndReturnsFoldScores(t *testing.T) {
 
 	result, err := ml.CrossValidate(x, y, ml.Estimator{Name: "scaled", Fit: func(trainX *insyra.DataTable, _ *insyra.DataList) (ml.Model, error) {
 		fitCount++
-		scaler := insyra.NewStandardScaler()
+		scaler := preprocess.NewStandardScaler()
 		scaled, err := scaler.FitTransform(trainX, insyra.Name("x"))
 		if err != nil {
 			return nil, err
@@ -214,7 +215,7 @@ func (identityModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	return dt.GetColByName("x"), nil
 }
 
-type scaledModel struct{ scaler *insyra.StandardScaler }
+type scaledModel struct{ scaler *preprocess.StandardScaler }
 
 func (m *scaledModel) Features() []string { return []string{"x"} }
 func (m *scaledModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {

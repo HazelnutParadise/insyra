@@ -11,6 +11,7 @@ import (
 
 	insyra "github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -275,15 +276,15 @@ func TestOneShotKeepsFittedScaler(t *testing.T) {
 	runOneShot(t, "scale", "transform", "sc", "t", "as", "t3")
 
 	vars := restore(t)
-	if _, ok := vars["sc"].(*insyra.StandardScaler); !ok {
-		t.Fatalf("sc is %T, want *insyra.StandardScaler", vars["sc"])
+	if _, ok := vars["sc"].(*preprocess.StandardScaler); !ok {
+		t.Fatalf("sc is %T, want *preprocess.StandardScaler", vars["sc"])
 	}
 	scaled := tableVar(t, vars, "t3")
 	restoredTable := tableVar(t, vars, "t")
 
 	// Fitting here in this process, from the table the environment handed
 	// back, gives the answer the saved scaler has to reproduce.
-	want, err := insyra.NewStandardScaler().FitTransform(restoredTable, insyra.Name("zeta"))
+	want, err := preprocess.NewStandardScaler().FitTransform(restoredTable, insyra.Name("zeta"))
 	if err != nil {
 		t.Fatalf("FitTransform: %v", err)
 	}
