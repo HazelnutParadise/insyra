@@ -906,12 +906,15 @@ Rates are percent per year as the bank publishes them: `1.7` means 1.7%. A day w
 
 ```go
 rates := overnight.GetColByName("Rate").Data()
-var latest float64
+latest, found := 0.0, false
 for i := len(rates) - 1; i >= 0; i-- { // the last day with trades
     if r, ok := rates[i].(float64); ok {
-        latest = r
+        latest, found = r, true
         break
     }
+}
+if !found {
+    return errors.New("no overnight rate in the range") // a zero rate here would bias the Sharpe ratio
 }
 daily := math.Pow(1+latest/100, 1.0/252) - 1
 sharpe, err := quant.SharpeRatio(returns, daily, 252)

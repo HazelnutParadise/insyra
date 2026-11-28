@@ -138,12 +138,16 @@ func (c *TWCentralBankClient) DepositRate(from, to time.Time) (*insyra.DataTable
 // quant takes a risk-free rate per period as a fraction; for monthly returns,
 // one month's rate is Rate/100/12.
 func (c *TWCentralBankClient) DepositRateContext(ctx context.Context, from, to time.Time) (*insyra.DataTable, error) {
+	// A month is kept when its first day is in [from's month, to], so from is
+	// taken to its month before the range is checked: October 20 to October 15
+	// is October.
+	if !from.IsZero() {
+		day := normalizeDate(from)
+		from = time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, time.UTC)
+	}
 	from, to, err := c.checkRange(ctx, from, to)
 	if err != nil {
 		return nil, err
-	}
-	if !from.IsZero() {
-		from = time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC)
 	}
 	records, err := c.download(ctx, twcbFiveBankPath)
 	if err != nil {
