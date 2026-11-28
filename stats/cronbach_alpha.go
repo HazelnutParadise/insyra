@@ -7,6 +7,9 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/stats/internal/fa"
+	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // CronbachAlphaOptions are the optional settings of CronbachAlpha.
@@ -17,6 +20,8 @@ type CronbachAlphaOptions struct {
 	// item-rest correlations as reversing it on its own scale would; each
 	// item's Mean is still the mean of its values in the table.
 	ReverseScored []any
+	// ConfidenceLevel is the level of CI, in (0, 1); 0 means 0.95.
+	ConfidenceLevel float64
 }
 
 // CronbachAlphaResult is the internal consistency of a scale.
@@ -27,6 +32,16 @@ type CronbachAlphaResult struct {
 	// StandardizedAlpha is k r / (1 + (k-1) r), r being the mean inter-item
 	// correlation: the alpha of the items each scaled to variance 1.
 	StandardizedAlpha float64
+	// CI is Feldt's interval for Alpha (Feldt, Woodruff and Salih, 1987), the
+	// one psych's alpha.ci gives: 1 - (1 - Alpha) times the F quantiles with
+	// N - 1 and (N - 1)(NumItems - 1) degrees of freedom.
+	CI [2]float64
+	// ConfidenceLevel is the level of CI.
+	ConfidenceLevel float64
+	// GuttmanLambda6 is Guttman's lambda 6 from the correlation matrix,
+	// 1 - sum(1 - smc) / sum(R), smc being each item's squared multiple
+	// correlation with the others: psych's G6(smc).
+	GuttmanLambda6 float64
 	// MeanInterItemCorrelation is the mean of the correlations between pairs
 	// of items.
 	MeanInterItemCorrelation float64
@@ -67,12 +82,15 @@ func (r *CronbachAlphaResult) String() string {
 	}
 	summary := struct {
 		Alpha                    float64
+		CI                       [2]float64
+		ConfidenceLevel          float64
 		StandardizedAlpha        float64
+		GuttmanLambda6           float64
 		MeanInterItemCorrelation float64
 		NumItems                 int
 		N                        int
 		RowsDropped              int
-	}{r.Alpha, r.StandardizedAlpha, r.MeanInterItemCorrelation, r.NumItems, r.N, r.RowsDropped}
+	}{r.Alpha, r.CI, r.ConfidenceLevel, r.StandardizedAlpha, r.GuttmanLambda6, r.MeanInterItemCorrelation, r.NumItems, r.N, r.RowsDropped}
 	return formatResult("Cronbach's alpha", summary) + "\n" + formatRows("Items", r.Items)
 }
 
@@ -98,6 +116,10 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 	var opt CronbachAlphaOptions
 	if len(opts) == 1 {
 		opt = opts[0]
+	}
+	_, level, err := resolveTestSettings("", opt.ConfidenceLevel)
+	if err != nil {
+		return nil, err
 	}
 	if dt == nil {
 		return nil, errors.New("table is nil")
@@ -260,13 +282,29 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 
 	kf := float64(k)
 	sumR := 0.0
+	corr := mat.NewDense(k, k, nil)
 	for i := 0; i < k; i++ {
 		for j := 0; j < k; j++ {
-			sumR += cov[i][j] / math.Sqrt(cov[i][i]*cov[j][j])
+			r := cov[i][j] / math.Sqrt(cov[i][i]*cov[j][j])
+			corr.Set(i, j, r)
+			sumR += r
 		}
 	}
+	// psych's smc, which falls back to a pseudo-inverse for a singular
+	// matrix, as FactorAnalysis uses it.
+	smc, _ := fa.Smc(corr, nil)
+	sumSmc := 0.0
+	for i := 0; i < k; i++ {
+		sumSmc += smc.AtVec(i)
+	}
+	alpha := alphaOf(kf, trace, total)
+	tail := (1 - level) / 2
+	f := distuv.F{D1: float64(n - 1), D2: float64(n-1) * (kf - 1)}
 	result := &CronbachAlphaResult{
-		Alpha:                    alphaOf(kf, trace, total),
+		Alpha:                    alpha,
+		CI:                       [2]float64{1 - (1-alpha)*f.Quantile(1-tail), 1 - (1-alpha)*f.Quantile(tail)},
+		ConfidenceLevel:          level,
+		GuttmanLambda6:           1 - (kf-sumSmc)/sumR,
 		StandardizedAlpha:        kf / (kf - 1) * (1 - kf/sumR),
 		MeanInterItemCorrelation: (sumR - kf) / (kf * (kf - 1)),
 		NumItems:                 k,
