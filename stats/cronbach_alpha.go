@@ -117,9 +117,13 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 	if len(opts) == 1 {
 		opt = opts[0]
 	}
-	_, level, err := resolveTestSettings("", opt.ConfidenceLevel)
-	if err != nil {
-		return nil, err
+	level := opt.ConfidenceLevel
+	switch {
+	case level == 0:
+		level = defaultConfidenceLevel
+	case level > 0 && level < 1:
+	default:
+		return nil, fmt.Errorf("confidence level must be strictly between 0 and 1, got %v", level)
 	}
 	if dt == nil {
 		return nil, errors.New("table is nil")
