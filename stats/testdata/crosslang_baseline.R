@@ -1298,6 +1298,26 @@ if (method == "single_t") {
   }
 } else if (method == "pca") {
   out <- pca_stats(payload$rows, payload$n_components)
+} else if (method == "cronbach_alpha") {
+  suppressMessages(library(psych))
+  # Rows arrive complete: the Go side drops a row with a missing item before
+  # it calls, so psych's pairwise default and Insyra's listwise deletion read
+  # the same rows.
+  m <- do.call(rbind, lapply(payload$rows, function(r) as.double(unlist(r))))
+  colnames(m) <- paste0("i", seq_len(ncol(m)))
+  keys <- NULL
+  if (length(payload$reverse) > 0) keys <- colnames(m)[as.integer(unlist(payload$reverse))]
+  a <- suppressWarnings(psych::alpha(as.data.frame(m), keys = keys, warnings = FALSE, discrete = FALSE))
+  out <- list(
+    raw_alpha = a$total$raw_alpha,
+    std_alpha = a$total$std.alpha,
+    average_r = a$total$average_r,
+    n = nrow(m),
+    r_drop = as.double(a$item.stats$r.drop),
+    alpha_drop = as.double(a$alpha.drop$raw_alpha),
+    item_sd = as.double(apply(m, 2, sd)),
+    item_mean = as.double(colMeans(m))
+  )
 } else if (method == "factor_analysis") {
   out <- factor_analysis_stats(payload$rows, payload$extraction, payload$rotation, payload$scoring, payload$nfactors)
 } else if (method == "kmeans") {
