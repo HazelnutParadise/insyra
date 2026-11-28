@@ -60,7 +60,7 @@ jobs:
       if: matrix.os == 'macOS-latest'
       run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
 
-  # The SQL functions against real servers. datatable_sql_server_test.go runs
+  # The sqlio functions against real servers. sqlio/server_test.go runs
   # only where a DSN is set; SQLite cannot show MySQL's implicit commits,
   # RENAME TABLE, information_schema or PostgreSQL's $n placeholders. Service
   # containers run on Linux runners only, so this is a job of its own.
@@ -106,6 +106,6 @@ jobs:
       # A test that skips passes, so check that both servers were reached.
       run: |
         set -o pipefail
-        go test -count=1 -v -run '^TestSQLServer' . | tee sql-servers.out
+        go test -count=1 -v -run '^TestSQLServer' ./sqlio | tee sql-servers.out
         grep -q -- '--- PASS: TestSQLServerRoundTrip/mysql' sql-servers.out
         grep -q -- '--- PASS: TestSQLServerRoundTrip/postgres' sql-servers.out
