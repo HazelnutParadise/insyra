@@ -1077,6 +1077,8 @@ long, err := dt.Unpivot(insyra.UnpivotConfig{
 
 ### Categorical Encoding
 
+> **Deprecated:** the encoding methods, their options and encoders move to the [`preprocess`](preprocess.md#categorical-encoding) package, which reads a bare string column as an Excel-style index and a column name as `insyra.Name("price")`. They are removed in 0.4. See [Replacing the core methods](preprocess.md#replacing-the-core-methods).
+
 ```go
 func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
 func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
@@ -1235,6 +1237,8 @@ func main() {
 
 ### Feature Scaling
 
+> **Deprecated:** the scaling methods and the scaler types move to the [`preprocess`](preprocess.md#feature-scaling) package, which reads a bare string column as an Excel-style index and a column name as `insyra.Name("price")`. They are removed in 0.4. See [Replacing the core methods](preprocess.md#replacing-the-core-methods).
+
 ```go
 func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
 func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
@@ -1351,6 +1355,8 @@ func main() {
 ```
 
 ### Fitted Missing-Value Imputation
+
+> **Deprecated:** `SimpleImputer` and its options move to the [`preprocess`](preprocess.md#fitted-missing-value-imputation) package, which reads a bare string column as an Excel-style index and a column name as `insyra.Name("price")`. They are removed in 0.4. See [Replacing the core methods](preprocess.md#replacing-the-core-methods).
 
 ```go
 type ImputationStrategy string

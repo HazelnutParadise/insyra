@@ -44,7 +44,7 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 		typed.ShowRangeTo(ctx.Output, rangeArgs...)
 	case *insyra.DataList:
 		typed.ShowRangeTo(ctx.Output, rangeArgs...)
-	case insyra.Scaler:
+	case insyra.Scaler: //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		return showScaler(ctx, args[0], typed)
 	default:
 		if number, ok := numberValue(value); ok && len(args) == 1 {
@@ -57,7 +57,7 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func showScaler(ctx *ExecContext, name string, scaler insyra.Scaler) error {
+func showScaler(ctx *ExecContext, name string, scaler insyra.Scaler) error { //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	params := scaler.Params()
 	cols := make([]string, 0, len(params))
 	for col := range params {

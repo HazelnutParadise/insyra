@@ -457,11 +457,11 @@ projected, err := transformer.Transform(features)
 
 ## Existing scalers and encoders
 
-The root package's four scalers and three encoders already satisfy `ml.Transformer` and `ml.InverseTransformer`; no adapter is needed.
+The four scalers and three encoders of the [preprocess](/Docs/preprocess.md) package already satisfy `ml.Transformer` and `ml.InverseTransformer`; no adapter is needed. The deprecated root-package scalers and encoders, removed in 0.4, satisfy them too, and every `ml` API below takes either kind.
 
 ```go
-scaler := insyra.NewStandardScaler()
-if _, err := scaler.FitTransform(features, "age"); err != nil {
+scaler := preprocess.NewStandardScaler()
+if _, err := scaler.FitTransform(features, insyra.Name("age")); err != nil {
     log.Fatal(err)
 }
 
@@ -480,8 +480,8 @@ pipeline := ml.NewPipeline([]ml.Step{
     {
         Name: "scale numeric",
         Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-            scaler := insyra.NewStandardScaler()
-            if err := scaler.Fit(x, "age", "income"); err != nil {
+            scaler := preprocess.NewStandardScaler()
+            if err := scaler.Fit(x, insyra.Name("age"), insyra.Name("income")); err != nil {
                 return nil, err
             }
             return scaler, nil
@@ -512,7 +512,7 @@ earlier fit.
 `NewColumnTransformer` scopes a fitted transformer to named columns. The
 remaining columns pass through unchanged by their original positions,
 including unnamed columns. The selected columns must have names. Columns with
-the same output count retain their original positions. Root scalers and
+the same output count retain their original positions. The `preprocess` scalers and
 encoders already support column selection during fitting, so they need no
 adapter.
 
@@ -572,7 +572,7 @@ and is removed in 0.4.
 `LogisticModel`, `DecisionTreeClassifier`, `DecisionTreeRegressor`,
 `RandomForestClassifier`, `RandomForestRegressor`,
 `GradientBoostingRegressor`, `GradientBoostingClassifier`, and fitted
-pipelines containing supported root scalers or encoders implement
+pipelines containing supported `preprocess` or root scalers or encoders implement
 `ml.Exporter`. Ensembles export as one multi-tree `TreeEnsemble`: a forest's
 leaf contributions are scaled by 1/T so the runtime's sum is the forest's
 average, and boosting bakes the learning rate into the leaf weights with the

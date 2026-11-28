@@ -360,14 +360,23 @@ type IDataTable interface {
 	FillByInterpolation(...string) *DataTable
 
 	// Encoding
+
+	// Deprecated: use preprocess.OneHotEncode. Removed in 0.4.
 	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
+	// Deprecated: use preprocess.LabelEncode. Removed in 0.4.
 	LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
+	// Deprecated: use preprocess.OrdinalEncode. Removed in 0.4.
 	OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
 
 	// Scaling
+
+	// Deprecated: use preprocess.StandardScale. Removed in 0.4.
 	StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
+	// Deprecated: use preprocess.MinMaxScale. Removed in 0.4.
 	MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
+	// Deprecated: use preprocess.RobustScale. Removed in 0.4.
 	RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
+	// Deprecated: use preprocess.MaxAbsScale. Removed in 0.4.
 	MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
 
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable

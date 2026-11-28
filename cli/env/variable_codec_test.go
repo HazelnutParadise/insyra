@@ -477,12 +477,12 @@ func TestVariableCodec_RoundTripsAFittedScaler(t *testing.T) {
 	)
 	cases := []struct {
 		kind string
-		new  func() insyra.Scaler
+		new  func() insyra.Scaler //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	}{
-		{"standard", func() insyra.Scaler { return insyra.NewStandardScaler() }},
-		{"minmax", func() insyra.Scaler { return insyra.NewMinMaxScaler(-1, 1) }},
-		{"robust", func() insyra.Scaler { return insyra.NewRobustScaler() }},
-		{"maxabs", func() insyra.Scaler { return insyra.NewMaxAbsScaler() }},
+		{"standard", func() insyra.Scaler { return insyra.NewStandardScaler() }},  //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
+		{"minmax", func() insyra.Scaler { return insyra.NewMinMaxScaler(-1, 1) }}, //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
+		{"robust", func() insyra.Scaler { return insyra.NewRobustScaler() }},      //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
+		{"maxabs", func() insyra.Scaler { return insyra.NewMaxAbsScaler() }},      //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	}
 	for _, c := range cases {
 		t.Run(c.kind, func(t *testing.T) {
@@ -496,7 +496,7 @@ func TestVariableCodec_RoundTripsAFittedScaler(t *testing.T) {
 			if sv.Type != "scaler" {
 				t.Errorf("stored type = %q, want %q", sv.Type, "scaler")
 			}
-			restored, isScaler := got.(insyra.Scaler)
+			restored, isScaler := got.(insyra.Scaler) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 			if !isScaler {
 				t.Fatalf("restored value is %T, want a %T", got, orig)
 			}
@@ -560,7 +560,7 @@ func TestVariableCodec_RoundTripsAHierarchicalTree(t *testing.T) {
 // A nil scaler or tree is not a fitted one with no columns: storing it as a
 // scaler would hand back an empty scaler where the caller had nothing at all.
 func TestVariableCodec_TypedNilScalerAndTreeAreStoredAsScalars(t *testing.T) {
-	for _, v := range []any{(*insyra.StandardScaler)(nil), (*stats.HierarchicalResult)(nil)} {
+	for _, v := range []any{(*insyra.StandardScaler)(nil), (*stats.HierarchicalResult)(nil)} { //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 		sv, got := roundTripVariable(t, v)
 		if sv.Type != "scalar" {
 			t.Errorf("stored type of %T = %q, want %q", v, sv.Type, "scalar")

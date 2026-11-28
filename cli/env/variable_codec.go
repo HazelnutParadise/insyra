@@ -106,7 +106,7 @@ func encodeVariable(value any) (SerializedVariable, error) {
 			return SerializedVariable{}, err
 		}
 		return SerializedVariable{Type: kindList, Name: typed.GetName(), Data: column}, nil
-	case *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler:
+	case *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler: //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 		// A scaler marshals itself, kind tag and all, so the file can be read
 		// back into the same concrete type it was fitted on.
 		if reflect.ValueOf(typed).IsNil() {
@@ -367,13 +367,13 @@ func decodeStoredScaler(sv SerializedVariable) (any, error) {
 	var scaler any
 	switch kind {
 	case "standard":
-		scaler = new(insyra.StandardScaler)
+		scaler = new(insyra.StandardScaler) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "minmax":
-		scaler = new(insyra.MinMaxScaler)
+		scaler = new(insyra.MinMaxScaler) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "robust":
-		scaler = new(insyra.RobustScaler)
+		scaler = new(insyra.RobustScaler) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	case "maxabs":
-		scaler = new(insyra.MaxAbsScaler)
+		scaler = new(insyra.MaxAbsScaler) //nolint:staticcheck // the CLI passes column names as bare strings, which only the core encoders read as names; it moves in 0.4
 	default:
 		return nil, fmt.Errorf("unknown scaler kind %q", kind)
 	}

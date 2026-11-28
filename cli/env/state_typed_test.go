@@ -214,7 +214,7 @@ func TestSaveStateIgnoresUnsavedVariables(t *testing.T) {
 func TestSaveStateStoresScaler(t *testing.T) {
 	mgr := newStateTestManager(t)
 	dt := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 6.0).SetName("a"))
-	scaler := insyra.NewStandardScaler()
+	scaler := insyra.NewStandardScaler() //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if err := scaler.Fit(dt, "a"); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestSaveStateStoresScaler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreVariables: %v", err)
 	}
-	restored, ok := vars["sc"].(*insyra.StandardScaler)
+	restored, ok := vars["sc"].(*insyra.StandardScaler) //nolint:staticcheck // covers the deprecated core type, which stays until 0.4
 	if !ok {
 		t.Fatalf("sc restored as %T want *insyra.StandardScaler", vars["sc"])
 	}

@@ -8,8 +8,12 @@ import (
 )
 
 // ImputationStrategy selects how a SimpleImputer derives replacements.
+//
+// Deprecated: use preprocess.ImputationStrategy. Removed in 0.4.
 type ImputationStrategy string
 
+// Deprecated: use the ImputationStrategy constants in preprocess, which have
+// the same names. Removed in 0.4.
 const (
 	ImputeMean     ImputationStrategy = "mean"
 	ImputeMedian   ImputationStrategy = "median"
@@ -22,6 +26,10 @@ const (
 // Fit derives one replacement per selected column. Transform always reuses
 // those replacements, so applying it to validation or production data cannot
 // leak statistics from that data back into the transformation.
+//
+// Deprecated: use preprocess.SimpleImputer. preprocess reads a bare string
+// column as an Excel-style index, so write insyra.Name("price") for a column
+// name. Removed in 0.4.
 type SimpleImputer struct {
 	strategy     ImputationStrategy
 	constant     any
@@ -41,6 +49,11 @@ type simpleImputerColumn struct {
 // for ImputeConstant and must be omitted for every other strategy. Invalid
 // constructor arguments are reported by Fit, matching the error-returning
 // lifecycle of the existing Scaler interface.
+//
+// Deprecated: use
+// preprocess.NewSimpleImputer(preprocess.SimpleImputerOptions{...}).
+// preprocess reads a bare string column as an Excel-style index, so write
+// insyra.Name("price") for a column name. Removed in 0.4.
 func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer {
 	var value any
 	if len(constant) == 1 {
