@@ -162,6 +162,24 @@ func TestTWCentralBankDepositRateToMidMonth(t *testing.T) {
 	}
 }
 
+// Codex measured a range inside one month whose to falls on an earlier day
+// than from (October 20 to October 15) refused, although a month is kept when
+// its first day is in the range of from's month to to.
+func TestTWCentralBankDepositRateWithinOneMonth(t *testing.T) {
+	client, _ := newFixtureTWCentralBank(t, twcbFiveBankPath, twcbFiveBankCSV(
+		"臺灣銀行,11409,,1.0,1.0", "臺灣銀行,11410,,1.0,1.0"))
+	dt, err := client.DepositRate(dateUTC(2025, time.October, 20), dateUTC(2025, time.October, 15))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dt.NumRows() != 1 {
+		t.Errorf("rows = %d, want October 2025", dt.NumRows())
+	}
+	if _, err := client.DepositRate(dateUTC(2025, time.November, 1), dateUTC(2025, time.October, 15)); err == nil {
+		t.Error("a from month after to gave no error")
+	}
+}
+
 func TestTWCentralBankFileFailures(t *testing.T) {
 	short, _ := newFixtureTWCentralBank(t, twcbFiveBankPath, twcbFiveBankHeader+"臺灣銀行,11409\n")
 	if _, err := short.DepositRate(time.Time{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "fields") {
