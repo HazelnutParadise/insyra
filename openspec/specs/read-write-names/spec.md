@@ -7,7 +7,7 @@ How the file readers and writers are named and what their options mean by defaul
 
 ### Requirement: A reader or writer with no options handles the common file
 
-`ReadCSVFile`, `ReadCSVString`, `ReadCSV`, `StreamCSV`, `ToCSV`, `WriteCSV` and `ToExcel` SHALL treat the zero value of their options as a file whose first row names the columns and that has no row-name column. `NoHeaderRow` SHALL say the file has no header row and `HasRowNames` that its first column holds row names, in every options struct that reads or writes a table.
+`ReadCSVFile`, `ReadCSVString`, `ReadCSV`, `StreamCSV`, `ToCSV`, `WriteCSV`, `excel.Read`, `excel.ReadFrom`, `excel.Write` and `excel.WriteTo` SHALL treat the zero value of their options as a file whose first row names the columns and that has no row-name column. `NoHeaderRow` SHALL say the file has no header row and `HasRowNames` that its first column holds row names, in every options struct that reads or writes a table.
 
 #### Scenario: Reading a file with a header
 

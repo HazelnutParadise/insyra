@@ -60,11 +60,3 @@ When two sheets would be written to the same file, compared without regard to ca
 #### Scenario: Two workbooks in one directory
 - **WHEN** `a.xlsx` has the sheet `b_c` and `a_b.xlsx` has the sheet `c`
 - **THEN** `ExcelDirToCSV` returns an error naming `a_b_c.csv`, and no CSV is written
-
-### Requirement: The sheets of a workbook can be listed
-
-`SheetNames(excelFile)` SHALL return the workbook's sheet names in workbook order, or an error naming the file when it cannot be opened.
-
-#### Scenario: Listing
-- **WHEN** a workbook holds `Q1`, `Q2` and `Q3`
-- **THEN** `SheetNames` returns `[Q1 Q2 Q3]`

@@ -2,7 +2,9 @@
 
 ## Purpose
 What each command of the insyra command language does, from loading, inspecting and reshaping data to statistics, time series, CCL, charts, fetching and variable management, as run from the REPL, a `.isr` script, a one-shot command or `engine/dsl`.
+
 ## Requirements
+
 ### Requirement: Load data from file
 系統 SHALL 提供 `load` 命令從檔案載入資料為 DataTable。
 
@@ -12,7 +14,7 @@ What each command of the insyra command language does, from loading, inspecting 
 
 #### Scenario: Load Excel with sheet
 - **WHEN** 使用者執行 `load "data.xlsx" sheet Sales as t1`
-- **THEN** 系統呼叫 `ReadExcelSheet()` 載入指定工作表
+- **THEN** 系統呼叫 `excel.Read()` 載入指定工作表
 
 #### Scenario: Load JSON
 - **WHEN** 使用者執行 `load "data.json" as t1`
@@ -499,4 +501,3 @@ The system SHALL store the result of `sum`, `mean`, `median`, `mode`, `stdev`, `
 #### Scenario: Mean stored and shown
 - **WHEN** `mean x as m` then `show m` run
 - **THEN** `m` holds the mean and `show m` prints it
-
