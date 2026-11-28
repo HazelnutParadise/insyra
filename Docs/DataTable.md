@@ -911,6 +911,8 @@ func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode Merg
 - `*DataTable`: A new DataTable containing the merged data.
 - `error`: An error if the key is not found or the mode/direction is invalid.
 
+**Row order of a horizontal merge:** the matched rows come grouped by key, in the order each key first appears in the left table (the right table for `MergeModeRight`). Within a key, each row of that table is paired with every matching row of the other table, both in their own order. The unmatched rows of that table follow, in their order, and an outer merge then adds the other table's unmatched rows. This differs from pandas, which keeps the left table's row order: left keys `a, b, a` with every key matched come back as `a, a, b`, not `a, b, a`.
+
 **Example (Horizontal Merge):**
 
 ```go
@@ -4089,7 +4091,7 @@ dt.Summary() // Displays summary to console
 func (dt *DataTable) Size() (numRows int, numCols int)
 ```
 
-**Description:** Returns the dimensions of the DataTable.
+**Description:** Returns the dimensions of the DataTable. The row count is the length of the longest column; a shorter column reads as `nil` past its end. A table with no columns therefore has no rows: removing its last column also removes its row names.
 
 **Parameters:**
 

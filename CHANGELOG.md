@@ -353,6 +353,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `Compression` prints its constant's name, and an unknown one is reported as `Compression(n)`.
 - `ExplainFilterWithCCL` and `ExplainApplyCCL` say how `FilterWithCCL` and each statement of `ApplyCCL` would run, from the file's metadata and the expression alone: whether the rows are evaluated batch by batch or whole columns are loaded and why, which columns are read and held, how many times the file's data is read, and an estimate of the held columns' size. `CCLPlan` has `String()` and `Show()` ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).
 - `FilterWithCCL` takes an optional `FilterWithCCLOptions`. `MaxRows` stops the read at the first kept row past the limit and returns `nil` with an error matching `ErrCCLRowLimit`; `RefuseWholeColumns` makes an expression that would load whole columns an error matching `ErrCCLWholeColumnsRefused`, before any data is read when the plan already says so. `FilterWithCCL` and `ApplyCCL` return an error for a nil context, where they panicked ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).
+- `Read` gives a file with columns and no rows as a table with those columns and no rows. `Read` gave one row of `nil`s, because an empty column became a list holding one `nil` ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).
 
 ### `mkt`
 - **BREAKING**: `CAI` is now a function instead of a variable holding `CustomerActivityIndex`. Calls are unchanged; assigning to it no longer compiles.
