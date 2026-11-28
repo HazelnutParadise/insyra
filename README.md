@@ -18,6 +18,8 @@
 
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
+**Insyra With Me (community blog): <https://insyra.me>**
+
 > [!NOTE]
 > This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
 
