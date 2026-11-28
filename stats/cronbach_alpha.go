@@ -309,29 +309,34 @@ func rawAlpha(cov [][]float64, in []bool) float64 {
 	return kf / (kf - 1) * (1 - trace/total)
 }
 
-// columnPosition returns the position in dt of the column sel selects, with
-// the error the table gives when it selects none. dt is a copy the caller
-// owns, so the failure recorded on it reaches no one else.
+// columnPosition returns the position in dt of the column sel selects: a
+// string is an Excel-style index, Name a column name, an int a 0-based
+// position counted from the end when negative.
 func columnPosition(dt *insyra.DataTable, sel any) (int, error) {
-	if dt.GetCol(sel) == nil {
-		msg := "not found"
-		if info := dt.PopErr(); info != nil {
-			msg = info.Message
-		}
-		return -1, errors.New(msg)
-	}
 	_, numCols := dt.Size()
 	switch v := sel.(type) {
 	case int:
-		if v < 0 {
-			return numCols + v, nil
+		pos := v
+		if pos < 0 {
+			pos += numCols
 		}
-		return v, nil
+		if pos < 0 || pos >= numCols {
+			return -1, fmt.Errorf("column position %d is out of range for %d columns", v, numCols)
+		}
+		return pos, nil
 	case insyra.NameSelector:
-		return dt.GetColNumberByName(v.Value()), nil
+		for i, name := range dt.ColNames() {
+			if name == v.Value() {
+				return i, nil
+			}
+		}
+		return -1, fmt.Errorf("column %s does not exist, the table has %d column(s)", v.Value(), numCols)
 	case string:
-		pos, _ := insyra.ColIndexToNumber(v)
+		pos, ok := insyra.ColIndexToNumber(v)
+		if !ok || pos < 0 || pos >= numCols {
+			return -1, fmt.Errorf("column %s does not exist, the table has %d column(s); use insyra.Name(%q) for a column name", v, numCols, v)
+		}
 		return pos, nil
 	}
-	return -1, fmt.Errorf("column selector of type %T", sel)
+	return -1, fmt.Errorf("column selector of type %T; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", sel)
 }
