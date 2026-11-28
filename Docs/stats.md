@@ -23,6 +23,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
 - **Regression Analysis**: Linear, Weighted (WLS), Ridge, Lasso, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression (confidence intervals on the unpenalized families)
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
+- **Reliability**: Cronbach's alpha with item-rest correlations and alpha if an item is deleted
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
 - **Clustering Analysis**: K-means, hierarchical agglomerative clustering, DBSCAN, silhouette analysis
@@ -90,6 +91,7 @@ depends on the family, and each family states which:
 | Clustering, and the features KNN reads | refused |
 | PCA, and the targets `KNNRegress` reads | refused with an error: a blank or text cell, `NaN` and `±Inf` all stop the call |
 | Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
+| Cronbach's alpha | a `NaN` or `±Inf` removes the whole row (listwise deletion), counted in `RowsDropped`; a blank or text cell is refused, with an error naming its row and column from 0 |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
 
 The functions below word a refusal the same way. A blank or text cell gives
@@ -374,6 +376,47 @@ fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValu
 ```
 
 ---
+
+## Reliability
+
+### Cronbach's Alpha
+
+```go
+func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptions) (*CronbachAlphaResult, error)
+
+type CronbachAlphaOptions struct {
+    ReverseScored []any // items scored in the opposite direction, as column selectors of dt
+}
+```
+
+**Description:** The internal consistency of a scale, the usual first check of a Likert questionnaire before its items are summed or factor-analysed. Each column in `items` is an item and each row a respondent. `items` are [column selectors](/Docs/DataTable.md#column-selectors) of `dt`; `nil` or empty means every column.
+
+**Returns** a `*CronbachAlphaResult`:
+
+- `Alpha`: raw alpha, `k/(k-1) × (1 − Σ item variances / variance of the total)` (Cronbach, 1951), from the item covariances.
+- `StandardizedAlpha`: `k r̄ / (1 + (k−1) r̄)`, `r̄` being `MeanInterItemCorrelation`; the alpha of the items each scaled to variance 1.
+- `NumItems`, `N` (rows used), `RowsDropped` (rows left out because an item was `NaN` or `±Inf`).
+- `Items`, one per item in the order given: `Name`, `Reversed`, `Mean` and `SD` (with n − 1), `ItemRestCorrelation` (the item against the sum of the other items, SPSS's Corrected Item-Total Correlation and psych's `r.drop`) and `AlphaIfDeleted` (raw alpha of the other items).
+
+**Notes:**
+
+- Missing values are removed listwise, as SPSS RELIABILITY does. A blank numeric cell of a CSV is read as `NaN`, so a skipped question leaves its row out. R's `psych::alpha` uses pairwise correlations by default, so on data with gaps it gives a different answer; on complete data the two agree, which the tests check against psych 2.6.5.
+- A reverse-scored item is negated before the statistics are computed. Alpha, the SDs and the item-rest correlations are what reversing it on its own scale gives; its `Mean` is the mean of its values in the table. Nothing is reversed automatically.
+- With two items, `AlphaIfDeleted` is `NaN`: the alpha of one item is not defined.
+- A negative alpha is returned as it is, usually the sign of an item scored in the other direction.
+- Errors: a nil table; fewer than two items; an item, or a reverse-scored item, given twice or naming no column; a reverse-scored item that is not among the items; an item with no variance over the rows used, which would leave the standardized alpha undefined; items whose total never varies, such as `x` and `6 − x` or ipsative items, which leave alpha undefined; values too large or too small for the statistics to be finite in `float64`; fewer than two rows used; more than one options value. A `nil` cell, or a string, even one holding a number, is refused like a text cell; the error quotes a string.
+
+**Example:**
+
+```go
+res, err := stats.CronbachAlpha(survey,
+    []any{insyra.Name("q1"), insyra.Name("q3"), insyra.Name("q4"), insyra.Name("q7")},
+    stats.CronbachAlphaOptions{ReverseScored: []any{insyra.Name("q4")}})
+if err != nil {
+    return err
+}
+res.Show()
+```
 
 ## T-Tests
 
