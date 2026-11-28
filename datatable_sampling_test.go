@@ -244,3 +244,28 @@ func equalStringSlices(a, b []string) bool {
 	}
 	return true
 }
+
+func TestDataTableShuffledLeavesTheTableAlone(t *testing.T) {
+	opts := SamplingOptions{UseSeed: true, Seed: 42}
+	dt := NewDataTable(NewDataList(1, 2, 3, 4, 5, 6).SetName("a"), NewDataList("a", "b", "c", "d", "e", "f").SetName("b"))
+	dt.SetRowNames([]string{"r1", "r2", "r3", "r4", "r5", "r6"})
+	before := dt.Clone()
+
+	got := dt.Shuffled(opts)
+	if !dt.IsTheSameAs(before) {
+		t.Fatal("Shuffled changed the table")
+	}
+	if got.NumRows() != 6 || got.NumCols() != 2 {
+		t.Fatalf("got %d rows and %d columns", got.NumRows(), got.NumCols())
+	}
+	if !got.IsEqualTo(dt.Shuffle(opts)) {
+		t.Fatal("Shuffled and Shuffle gave different tables for one seed")
+	}
+	// Rows move whole: each number still sits beside its letter.
+	for r := 0; r < got.NumRows(); r++ {
+		n := got.GetElementByNumberIndex(r, 0).(int)
+		if want := string(rune('a' + n - 1)); got.GetElementByNumberIndex(r, 1) != want {
+			t.Fatalf("row %d holds %v beside %v", r, n, got.GetElementByNumberIndex(r, 1))
+		}
+	}
+}
