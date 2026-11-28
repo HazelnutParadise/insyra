@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func init() {
@@ -49,7 +50,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 				return err
 			}
 		}
-		result, _, err = table.OneHotEncode(opts)
+		result, _, err = preprocess.OneHotEncode(table, opts)
 		if err != nil {
 			return err
 		}
@@ -61,7 +62,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if opts.Column, err = colSelector("encode", table, fmt.Sprint(opts.Column)); err != nil {
 			return err
 		}
-		result, _, err = table.LabelEncode(opts)
+		result, _, err = preprocess.LabelEncode(table, opts)
 		if err != nil {
 			return err
 		}
@@ -73,7 +74,7 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 		if opts.Column, err = colSelector("encode", table, fmt.Sprint(opts.Column)); err != nil {
 			return err
 		}
-		result, _, err = table.OrdinalEncode(opts)
+		result, _, err = preprocess.OrdinalEncode(table, opts)
 		if err != nil {
 			return err
 		}
@@ -85,8 +86,8 @@ func runEncodeCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) {
-	var opts insyra.OneHotOptions
+func parseOneHotEncodeOptions(args []string) (preprocess.OneHotOptions, error) {
+	var opts preprocess.OneHotOptions
 	if len(args) == 0 {
 		return opts, fmt.Errorf("encode onehot: columns are required")
 	}
@@ -183,8 +184,8 @@ func parseOneHotEncodeOptions(args []string) (insyra.OneHotOptions, error) {
 	return opts, nil
 }
 
-func parseLabelEncodeOptions(args []string) (insyra.LabelEncodeOptions, error) {
-	var opts insyra.LabelEncodeOptions
+func parseLabelEncodeOptions(args []string) (preprocess.LabelOptions, error) {
+	var opts preprocess.LabelOptions
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return opts, fmt.Errorf("encode label: column is required")
 	}
@@ -256,8 +257,8 @@ func parseLabelEncodeOptions(args []string) (insyra.LabelEncodeOptions, error) {
 	return opts, nil
 }
 
-func parseOrdinalEncodeOptions(args []string) (insyra.OrdinalEncodeOptions, error) {
-	var opts insyra.OrdinalEncodeOptions
+func parseOrdinalEncodeOptions(args []string) (preprocess.OrdinalOptions, error) {
+	var opts preprocess.OrdinalOptions
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return opts, fmt.Errorf("encode ordinal: column is required")
 	}
@@ -335,44 +336,44 @@ func parseOrdinalEncodeOptions(args []string) (insyra.OrdinalEncodeOptions, erro
 	return opts, nil
 }
 
-func parseEncodeNaNPolicy(raw, context string) (insyra.NaNPolicy, error) {
+func parseEncodeNaNPolicy(raw, context string) (preprocess.NaNPolicy, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "category":
-		return insyra.NaNAsCategory, nil
+		return preprocess.NaNAsCategory, nil
 	case "error":
-		return insyra.NaNError, nil
+		return preprocess.NaNError, nil
 	case "skip":
-		return insyra.NaNSkip, nil
+		return preprocess.NaNSkip, nil
 	}
-	return insyra.NaNAsCategory, fmt.Errorf("%s: invalid value for nan %q (supported: category, error, skip)", context, raw)
+	return preprocess.NaNAsCategory, fmt.Errorf("%s: invalid value for nan %q (supported: category, error, skip)", context, raw)
 }
 
-func parseEncodeUnknownPolicy(raw, context string, allowNew bool) (insyra.UnknownPolicy, error) {
+func parseEncodeUnknownPolicy(raw, context string, allowNew bool) (preprocess.UnknownPolicy, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "ignore":
-		return insyra.UnknownIgnore, nil
+		return preprocess.UnknownIgnore, nil
 	case "error":
-		return insyra.UnknownError, nil
+		return preprocess.UnknownError, nil
 	case "new":
 		if allowNew {
-			return insyra.UnknownAsNew, nil
+			return preprocess.UnknownAsNew, nil
 		}
 	}
 	supported := "ignore, error"
 	if allowNew {
 		supported = "ignore, error, new"
 	}
-	return insyra.UnknownIgnore, fmt.Errorf("%s: invalid value for unknown %q (supported: %s)", context, raw, supported)
+	return preprocess.UnknownIgnore, fmt.Errorf("%s: invalid value for unknown %q (supported: %s)", context, raw, supported)
 }
 
-func parseEncodeLabelSort(raw string) (insyra.LabelSort, error) {
+func parseEncodeLabelSort(raw string) (preprocess.LabelSort, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "firstseen":
-		return insyra.LabelSortFirstSeen, nil
+		return preprocess.LabelSortFirstSeen, nil
 	case "lex":
-		return insyra.LabelSortLexicographic, nil
+		return preprocess.LabelSortLexicographic, nil
 	case "freq":
-		return insyra.LabelSortByFrequency, nil
+		return preprocess.LabelSortByFrequency, nil
 	}
-	return insyra.LabelSortFirstSeen, fmt.Errorf("encode label: invalid value for sortby %q (supported: firstseen, lex, freq)", raw)
+	return preprocess.LabelSortFirstSeen, fmt.Errorf("encode label: invalid value for sortby %q (supported: firstseen, lex, freq)", raw)
 }

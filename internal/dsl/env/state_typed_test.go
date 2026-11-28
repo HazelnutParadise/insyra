@@ -12,6 +12,7 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -214,7 +215,7 @@ func TestSaveStateIgnoresUnsavedVariables(t *testing.T) {
 func TestSaveStateStoresScaler(t *testing.T) {
 	mgr := newStateTestManager(t)
 	dt := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 6.0).SetName("a"))
-	scaler := insyra.NewStandardScaler()
+	scaler := preprocess.NewStandardScaler()
 	if err := scaler.Fit(dt, "a"); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
@@ -226,9 +227,9 @@ func TestSaveStateStoresScaler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreVariables: %v", err)
 	}
-	restored, ok := vars["sc"].(*insyra.StandardScaler)
+	restored, ok := vars["sc"].(*preprocess.StandardScaler)
 	if !ok {
-		t.Fatalf("sc restored as %T want *insyra.StandardScaler", vars["sc"])
+		t.Fatalf("sc restored as %T want *preprocess.StandardScaler", vars["sc"])
 	}
 	if got, want := restored.Params(), scaler.Params(); !reflect.DeepEqual(got, want) {
 		t.Errorf("restored params = %s, want %s", fmt.Sprint(got), fmt.Sprint(want))

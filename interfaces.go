@@ -351,17 +351,6 @@ type IDataTable interface {
 	FillWithMode(...any) *DataTable
 	FillByInterpolation(extrapolate bool, cols ...any) *DataTable
 
-	// Encoding
-	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
-	LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
-	OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
-
-	// Scaling
-	StandardScale(cols ...any) (*DataTable, *StandardScaler, error)
-	MinMaxScale(featureMin, featureMax float64, cols ...any) (*DataTable, *MinMaxScaler, error)
-	RobustScale(cols ...any) (*DataTable, *RobustScaler, error)
-	MaxAbsScale(cols ...any) (*DataTable, *MaxAbsScaler, error)
-
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable

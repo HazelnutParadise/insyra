@@ -8,6 +8,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/ml"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func TestPipelineMatchesManualOrder(t *testing.T) {
@@ -225,14 +226,14 @@ func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 	)
 	pipeline := ml.NewPipeline([]ml.Step{
 		{Name: "numeric scale", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			scaler := insyra.NewStandardScaler()
+			scaler := preprocess.NewStandardScaler()
 			if err := scaler.Fit(x, insyra.Name("number")); err != nil {
 				return nil, err
 			}
 			return scaler, nil
 		}},
 		{Name: "categorical encode", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
-			_, encoder, err := x.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}, SortCategories: true})
+			_, encoder, err := preprocess.OneHotEncode(x, preprocess.OneHotOptions{Columns: []any{insyra.Name("color")}, SortCategories: true})
 			return encoder, err
 		}},
 	}, ml.Estimator{

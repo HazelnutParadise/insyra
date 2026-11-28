@@ -1,4 +1,4 @@
-package insyra
+package preprocess
 
 import (
 	"bytes"
@@ -8,19 +8,21 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
-func scaleJSONFitTable() *DataTable {
-	return NewDataTable(
-		NewDataList(1.5, nil, 3.0, 10.0).SetName("a"),
-		NewDataList(4, 8, 15, 16).SetName("b"),
+func scaleJSONFitTable() *insyra.DataTable {
+	return insyra.NewDataTable(
+		insyra.NewDataList(1.5, nil, 3.0, 10.0).SetName("a"),
+		insyra.NewDataList(4, 8, 15, 16).SetName("b"),
 	)
 }
 
-func scaleJSONOtherTable() *DataTable {
-	return NewDataTable(
-		NewDataList(2.0, 7.25, nil).SetName("a"),
-		NewDataList(0, 3, 99).SetName("b"),
+func scaleJSONOtherTable() *insyra.DataTable {
+	return insyra.NewDataTable(
+		insyra.NewDataList(2.0, 7.25, nil).SetName("a"),
+		insyra.NewDataList(0, 3, 99).SetName("b"),
 	)
 }
 
@@ -55,11 +57,11 @@ func assertScaleJSONSameCells(t *testing.T, where string, want, got []any) {
 			}
 			continue
 		}
-		wf, ok := ToFloat64Safe(want[i])
+		wf, ok := insyra.ToFloat64Safe(want[i])
 		if !ok {
 			t.Fatalf("%s cell %d: want %v is not numeric", where, i, want[i])
 		}
-		gf, ok := ToFloat64Safe(got[i])
+		gf, ok := insyra.ToFloat64Safe(got[i])
 		if !ok {
 			t.Fatalf("%s cell %d: got %v is not numeric", where, i, got[i])
 		}
@@ -70,7 +72,7 @@ func assertScaleJSONSameCells(t *testing.T, where string, want, got []any) {
 	}
 }
 
-func assertScaleJSONSameTable(t *testing.T, want, got *DataTable) {
+func assertScaleJSONSameTable(t *testing.T, want, got *insyra.DataTable) {
 	t.Helper()
 	if want == nil || got == nil {
 		t.Fatalf("table is nil (want nil=%v, got nil=%v)", want == nil, got == nil)
@@ -85,7 +87,7 @@ func assertScaleJSONSameTable(t *testing.T, want, got *DataTable) {
 	}
 }
 
-func assertScaleJSONSameList(t *testing.T, want, got *DataList) {
+func assertScaleJSONSameList(t *testing.T, want, got *insyra.DataList) {
 	t.Helper()
 	if want == nil || got == nil {
 		t.Fatalf("list is nil (want nil=%v, got nil=%v)", want == nil, got == nil)
@@ -100,7 +102,7 @@ func TestScalerJSONRoundTrip(t *testing.T) {
 	for _, p := range scaleJSONPairs() {
 		t.Run(p.name, func(t *testing.T) {
 			orig := p.orig()
-			if err := orig.Fit(scaleJSONFitTable(), Name("a"), "B"); err != nil {
+			if err := orig.Fit(scaleJSONFitTable(), insyra.Name("a"), "B"); err != nil {
 				t.Fatalf("Fit: %v", err)
 			}
 
@@ -145,7 +147,7 @@ func TestScalerJSONRoundTrip(t *testing.T) {
 }
 
 func TestScalerJSONDataList(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 4.0).SetName("x")
+	dl := insyra.NewDataList(1.0, 2.0, 4.0).SetName("x")
 	orig := NewStandardScaler()
 	if err := orig.FitDataList(dl); err != nil {
 		t.Fatalf("FitDataList: %v", err)
@@ -170,9 +172,9 @@ func TestScalerJSONDataList(t *testing.T) {
 }
 
 func TestScalerJSONKeepsNaNParams(t *testing.T) {
-	dt := NewDataTable(NewDataList(nil, nil).SetName("x"))
+	dt := insyra.NewDataTable(insyra.NewDataList(nil, nil).SetName("x"))
 	orig := NewStandardScaler()
-	if err := orig.Fit(dt, Name("x")); err != nil {
+	if err := orig.Fit(dt, insyra.Name("x")); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
 	if !math.IsNaN(orig.Params()["x"].Mean) {
@@ -193,21 +195,21 @@ func TestScalerJSONKeepsNaNParams(t *testing.T) {
 }
 
 func TestScalerJSONRefusesOtherKind(t *testing.T) {
-	fit := NewDataTable(NewDataList(1.0, 2.0, 3.0).SetName("x"))
+	fit := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 3.0).SetName("x"))
 
 	target := NewRobustScaler()
-	if err := target.Fit(fit, Name("x")); err != nil {
+	if err := target.Fit(fit, insyra.Name("x")); err != nil {
 		t.Fatalf("Fit robust: %v", err)
 	}
 	before := target.Params()
-	probe := NewDataTable(NewDataList(2.0, 4.0).SetName("x"))
+	probe := insyra.NewDataTable(insyra.NewDataList(2.0, 4.0).SetName("x"))
 	beforeOut, err := target.Transform(probe)
 	if err != nil {
 		t.Fatalf("orig Transform: %v", err)
 	}
 
 	src := NewStandardScaler()
-	if err := src.Fit(fit, Name("x")); err != nil {
+	if err := src.Fit(fit, insyra.Name("x")); err != nil {
 		t.Fatalf("Fit standard: %v", err)
 	}
 	data, err := json.Marshal(src)
@@ -253,13 +255,13 @@ func TestScalerJSONUnfitted(t *testing.T) {
 }
 
 func TestScalerJSONKeepsTheFittedColumnReference(t *testing.T) {
-	dt := NewDataTable(
-		NewDataList(1.0, 2.0, 3.0),
-		NewDataList(4.0, 5.0, 6.0).SetName("b"),
-		NewDataList(7.0, 8.0, 9.0).SetName("q"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1.0, 2.0, 3.0),
+		insyra.NewDataList(4.0, 5.0, 6.0).SetName("b"),
+		insyra.NewDataList(7.0, 8.0, 9.0).SetName("q"),
 	)
 	orig := NewStandardScaler()
-	if err := orig.Fit(dt, "A", Name("b"), 2); err != nil {
+	if err := orig.Fit(dt, "A", insyra.Name("b"), 2); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
 
@@ -296,7 +298,7 @@ func TestScalerJSONKeepsTheFittedColumnReference(t *testing.T) {
 }
 
 func TestScalerRefRoundTrips(t *testing.T) {
-	for _, v := range []any{"A", Name("b"), 2} {
+	for _, v := range []any{"A", insyra.Name("b"), 2} {
 		r, err := encodeScalerRef(v)
 		if err != nil {
 			t.Fatalf("encodeScalerRef(%v): %v", v, err)
@@ -319,9 +321,9 @@ func TestScalerRefRoundTrips(t *testing.T) {
 }
 
 func TestScalerJSONRefusesAnEmptyReference(t *testing.T) {
-	dt := NewDataTable(NewDataList(1.0, 2.0, 3.0).SetName("x"))
+	dt := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 3.0).SetName("x"))
 	orig := NewStandardScaler()
-	if err := orig.Fit(dt, Name("x")); err != nil {
+	if err := orig.Fit(dt, insyra.Name("x")); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
 
@@ -358,12 +360,12 @@ func TestScalerJSONRefusesAnEmptyReference(t *testing.T) {
 // Fit refuses a column selected twice, so JSON naming one column twice was not
 // written by Fit; reading it would keep only the last set of parameters.
 func TestScalerJSONRefusesAColumnListedTwice(t *testing.T) {
-	dt := NewDataTable(
-		NewDataList(1.0, 2.0, 3.0).SetName("a"),
-		NewDataList(4.0, 5.0, 6.0).SetName("b"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1.0, 2.0, 3.0).SetName("a"),
+		insyra.NewDataList(4.0, 5.0, 6.0).SetName("b"),
 	)
 	sc := NewStandardScaler()
-	if err := sc.Fit(dt, Name("a"), Name("b")); err != nil {
+	if err := sc.Fit(dt, insyra.Name("a"), insyra.Name("b")); err != nil {
 		t.Fatalf("Fit: %v", err)
 	}
 	data, err := json.Marshal(sc)
@@ -377,5 +379,33 @@ func TestScalerJSONRefusesAColumnListedTwice(t *testing.T) {
 	restored := NewStandardScaler()
 	if err := json.Unmarshal([]byte(twice), restored); err == nil {
 		t.Fatal("JSON naming one column twice was accepted")
+	}
+}
+
+// JSON the root package's StandardScaler wrote before the scalers moved here,
+// captured from that code. It must still decode, transform the same way and
+// encode back to the same bytes.
+const scalerJSONBeforeTheMove = `{"kind":"standard","featureMin":0,"featureMax":0,"fitted":true,"columns":[{"ref":{"name":"price"},"name":"price","mean":2,"std":1,"min":0,"max":0,"median":0,"q1":0,"q3":0,"iqr":0,"maxAbs":0,"outputMin":0,"outputMax":0},{"ref":{"name":"qty"},"name":"qty","mean":23.333333333333332,"std":15.275252316519467,"min":0,"max":0,"median":0,"q1":0,"q3":0,"iqr":0,"maxAbs":0,"outputMin":0,"outputMax":0}]}`
+
+func TestScalerJSONWrittenBeforeTheMoveStillLoads(t *testing.T) {
+	var s StandardScaler
+	if err := json.Unmarshal([]byte(scalerJSONBeforeTheMove), &s); err != nil {
+		t.Fatal(err)
+	}
+	again, err := json.Marshal(&s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != scalerJSONBeforeTheMove {
+		t.Errorf("re-encoded JSON differs:\n got %s\nwant %s", again, scalerJSONBeforeTheMove)
+	}
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2, 3).SetName("price"), insyra.NewDataList(10, 20, 40).SetName("qty"))
+	out, err := s.Transform(dt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]any{{-1.0, -0.8728715609439694}, {0.0, -0.2182178902359923}, {1.0, 1.091089451179962}}
+	if !reflect.DeepEqual(out.To2DSlice(), want) {
+		t.Errorf("Transform = %v, want %v", out.To2DSlice(), want)
 	}
 }

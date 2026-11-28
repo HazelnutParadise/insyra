@@ -11,6 +11,7 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -479,12 +480,12 @@ func TestVariableCodec_RoundTripsAFittedScaler(t *testing.T) {
 	)
 	cases := []struct {
 		kind string
-		new  func() insyra.Scaler
+		new  func() preprocess.Scaler
 	}{
-		{"standard", func() insyra.Scaler { return insyra.NewStandardScaler() }},
-		{"minmax", func() insyra.Scaler { return insyra.NewMinMaxScaler(-1, 1) }},
-		{"robust", func() insyra.Scaler { return insyra.NewRobustScaler() }},
-		{"maxabs", func() insyra.Scaler { return insyra.NewMaxAbsScaler() }},
+		{"standard", func() preprocess.Scaler { return preprocess.NewStandardScaler() }},
+		{"minmax", func() preprocess.Scaler { return preprocess.NewMinMaxScaler(-1, 1) }},
+		{"robust", func() preprocess.Scaler { return preprocess.NewRobustScaler() }},
+		{"maxabs", func() preprocess.Scaler { return preprocess.NewMaxAbsScaler() }},
 	}
 	for _, c := range cases {
 		t.Run(c.kind, func(t *testing.T) {
@@ -498,7 +499,7 @@ func TestVariableCodec_RoundTripsAFittedScaler(t *testing.T) {
 			if sv.Type != "scaler" {
 				t.Errorf("stored type = %q, want %q", sv.Type, "scaler")
 			}
-			restored, isScaler := got.(insyra.Scaler)
+			restored, isScaler := got.(preprocess.Scaler)
 			if !isScaler {
 				t.Fatalf("restored value is %T, want a %T", got, orig)
 			}
@@ -562,7 +563,7 @@ func TestVariableCodec_RoundTripsAHierarchicalTree(t *testing.T) {
 // A nil scaler or tree is not a fitted one with no columns: storing it as a
 // scaler would hand back an empty scaler where the caller had nothing at all.
 func TestVariableCodec_TypedNilScalerAndTreeAreStoredAsScalars(t *testing.T) {
-	for _, v := range []any{(*insyra.StandardScaler)(nil), (*stats.HierarchicalResult)(nil)} {
+	for _, v := range []any{(*preprocess.StandardScaler)(nil), (*stats.HierarchicalResult)(nil)} {
 		sv, got := roundTripVariable(t, v)
 		if sv.Type != "scalar" {
 			t.Errorf("stored type of %T = %q, want %q", v, sv.Type, "scalar")

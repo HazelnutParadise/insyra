@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func init() {
@@ -45,7 +46,7 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 		typed.ShowRangeTo(ctx.Output, rangeArgs...)
 	case *insyra.DataList:
 		typed.ShowRangeTo(ctx.Output, rangeArgs...)
-	case insyra.Scaler:
+	case preprocess.Scaler:
 		return showScaler(ctx, args[0], typed)
 	default:
 		if number, ok := numberValue(value); ok && len(args) == 1 {
@@ -58,7 +59,7 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 	return nil
 }
 
-func showScaler(ctx *ExecContext, name string, scaler insyra.Scaler) error {
+func showScaler(ctx *ExecContext, name string, scaler preprocess.Scaler) error {
 	params := scaler.Params()
 	cols := make([]string, 0, len(params))
 	for col := range params {

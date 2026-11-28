@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 )
 
 func init() {
@@ -71,19 +72,19 @@ func runScaleFit(ctx *ExecContext, args []string) error {
 		return err
 	}
 
-	var scaler insyra.Scaler
+	var scaler preprocess.Scaler
 	switch method {
 	case "std", "standard":
-		scaler = insyra.NewStandardScaler()
+		scaler = preprocess.NewStandardScaler()
 	case "minmax":
 		if !hasRange {
 			featureMin, featureMax = 0, 1
 		}
-		scaler = insyra.NewMinMaxScaler(featureMin, featureMax)
+		scaler = preprocess.NewMinMaxScaler(featureMin, featureMax)
 	case "robust":
-		scaler = insyra.NewRobustScaler()
+		scaler = preprocess.NewRobustScaler()
 	case "maxabs":
-		scaler = insyra.NewMaxAbsScaler()
+		scaler = preprocess.NewMaxAbsScaler()
 	default:
 		return fmt.Errorf("scale fit: unknown method %q (supported: std, minmax, robust, maxabs)", method)
 	}
@@ -170,19 +171,19 @@ func parseScaleFitOptions(ctx *ExecContext, args []string) (cols []string, featu
 	return cols, featureMin, featureMax, hasRange, nil
 }
 
-func getScalerVar(ctx *ExecContext, name string) (insyra.Scaler, error) {
+func getScalerVar(ctx *ExecContext, name string) (preprocess.Scaler, error) {
 	value, exists := ctx.Vars[name]
 	if !exists {
 		return nil, fmt.Errorf("variable not found: %s", name)
 	}
-	scaler, ok := value.(insyra.Scaler)
+	scaler, ok := value.(preprocess.Scaler)
 	if !ok {
 		return nil, fmt.Errorf("variable %s is not a scaler (fit one with 'scale fit ...')", name)
 	}
 	return scaler, nil
 }
 
-func scaledColumnNames(scaler insyra.Scaler) []string {
+func scaledColumnNames(scaler preprocess.Scaler) []string {
 	params := scaler.Params()
 	names := make([]string, 0, len(params))
 	for name := range params {

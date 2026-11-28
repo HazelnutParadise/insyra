@@ -106,41 +106,6 @@ func TestDataTableValueLookupsMatchIntegersAcrossTypes(t *testing.T) {
 	}
 }
 
-func TestEncoderCategoriesMatchIntegersAcrossTypes(t *testing.T) {
-	src := NewDataTable(NewDataList(int64(1), int64(2), int64(3), int64(2)).SetName("v"))
-	out, _, err := src.OrdinalEncode(OrdinalEncodeOptions{Column: Name("v"), Order: []any{1, 2, 3}, Unknown: UnknownError})
-	if err != nil {
-		t.Fatalf("OrdinalEncode with Order written as int literals: %v", err)
-	}
-	if got := fmt.Sprint(out.GetColByNumber(0).Data()); got != "[0 1 2 1]" {
-		t.Errorf("OrdinalEncode gave %s, want [0 1 2 1]", got)
-	}
-
-	fitted := NewDataTable(NewDataList(1, 2, 3).SetName("v"))
-	_, enc, err := fitted.LabelEncode(LabelEncodeOptions{Column: Name("v"), Unknown: UnknownError})
-	if err != nil {
-		t.Fatalf("LabelEncode: %v", err)
-	}
-	moved, err := enc.Transform(NewDataTable(NewDataList(int64(3), int64(1)).SetName("v")))
-	if err != nil {
-		t.Fatalf("an encoder fitted on int data rejected int64 data: %v", err)
-	}
-	if got := fmt.Sprint(moved.GetColByNumber(0).Data()); got != "[2 0]" {
-		t.Errorf("Transform gave %s, want [2 0]", got)
-	}
-
-	// int(1) and int64(1) in one column are one category, not two that
-	// render as the same column name.
-	mixed := NewDataTable(NewDataList(1, int64(1), 2).SetName("v"))
-	_, oh, err := mixed.OneHotEncode(OneHotOptions{Columns: []any{Name("v")}})
-	if err != nil {
-		t.Fatalf("OneHotEncode on a column mixing int and int64: %v", err)
-	}
-	if cats := oh.Categories()["v"]; len(cats) != 2 {
-		t.Errorf("categories %v, want two (1 and 2)", cats)
-	}
-}
-
 // IsEqualTo asks whether two lists hold identical data, not whether a value
 // occurs, so it keeps telling int(1) from int64(1).
 func TestIsEqualToStaysTypeStrict(t *testing.T) {

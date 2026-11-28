@@ -8,6 +8,7 @@ import (
 	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 	"github.com/TimLai666/go-decimal/decimal"
 )
@@ -106,7 +107,7 @@ func encodeVariable(value any) (SerializedVariable, error) {
 			return SerializedVariable{}, err
 		}
 		return SerializedVariable{Type: kindList, Name: typed.GetName(), Data: column}, nil
-	case *insyra.StandardScaler, *insyra.MinMaxScaler, *insyra.RobustScaler, *insyra.MaxAbsScaler:
+	case *preprocess.StandardScaler, *preprocess.MinMaxScaler, *preprocess.RobustScaler, *preprocess.MaxAbsScaler:
 		// A scaler marshals itself, kind tag and all, so the file can be read
 		// back into the same concrete type it was fitted on.
 		if reflect.ValueOf(typed).IsNil() {
@@ -367,13 +368,13 @@ func decodeStoredScaler(sv SerializedVariable) (any, error) {
 	var scaler any
 	switch kind {
 	case "standard":
-		scaler = new(insyra.StandardScaler)
+		scaler = new(preprocess.StandardScaler)
 	case "minmax":
-		scaler = new(insyra.MinMaxScaler)
+		scaler = new(preprocess.MinMaxScaler)
 	case "robust":
-		scaler = new(insyra.RobustScaler)
+		scaler = new(preprocess.RobustScaler)
 	case "maxabs":
-		scaler = new(insyra.MaxAbsScaler)
+		scaler = new(preprocess.MaxAbsScaler)
 	default:
 		return nil, fmt.Errorf("unknown scaler kind %q", kind)
 	}

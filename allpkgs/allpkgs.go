@@ -20,6 +20,7 @@ import (
 	_ "github.com/HazelnutParadise/insyra/nn"
 	_ "github.com/HazelnutParadise/insyra/parallel"
 	_ "github.com/HazelnutParadise/insyra/plot"
+	_ "github.com/HazelnutParadise/insyra/preprocess"
 	_ "github.com/HazelnutParadise/insyra/py"
 	_ "github.com/HazelnutParadise/insyra/quant"
 	_ "github.com/HazelnutParadise/insyra/quant/ta"

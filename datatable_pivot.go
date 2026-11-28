@@ -2,8 +2,8 @@ package insyra
 
 import (
 	"fmt"
+	"github.com/HazelnutParadise/insyra/internal/prep"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"math"
 	"sort"
 
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
@@ -552,29 +552,8 @@ func pivotColLabelForIndex(i int) string {
 	return fmt.Sprintf("col_%d", i)
 }
 
-// alphaColIndex computes the Excel-style label for a numeric column index.
-func alphaColIndex(i int) (string, bool) {
-	if i < 0 {
-		return "", false
-	}
-	name := ""
-	for i >= 0 {
-		name = string(rune('A'+(i%26))) + name
-		i = i/26 - 1
-	}
-	return name, true
-}
+// alphaColIndex is prep.AlphaColIndex.
+func alphaColIndex(i int) (string, bool) { return prep.AlphaColIndex(i) }
 
-// isNilOrNaN reports whether v is nil or a NaN float.
-func isNilOrNaN(v any) bool {
-	if v == nil {
-		return true
-	}
-	switch f := v.(type) {
-	case float32:
-		return math.IsNaN(float64(f))
-	case float64:
-		return math.IsNaN(f)
-	}
-	return false
-}
+// isNilOrNaN is prep.IsNilOrNaN.
+func isNilOrNaN(v any) bool { return prep.IsNilOrNaN(v) }

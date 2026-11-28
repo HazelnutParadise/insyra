@@ -1,20 +1,22 @@
-package insyra
+package preprocess
 
 import (
 	"math"
 	"reflect"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
-func scaleTestTable() *DataTable {
-	return NewDataTable(
-		NewDataList(1.0, 2.0, 3.0, 4.0).SetName("age"),
-		NewDataList(10.0, 20.0, 30.0, 40.0).SetName("income"),
-		NewDataList("a", "b", "c", "d").SetName("label"),
+func scaleTestTable() *insyra.DataTable {
+	return insyra.NewDataTable(
+		insyra.NewDataList(1.0, 2.0, 3.0, 4.0).SetName("age"),
+		insyra.NewDataList(10.0, 20.0, 30.0, 40.0).SetName("income"),
+		insyra.NewDataList("a", "b", "c", "d").SetName("label"),
 	)
 }
 
-func floatsOf(t *testing.T, dl *DataList) []float64 {
+func floatsOf(t *testing.T, dl *insyra.DataList) []float64 {
 	t.Helper()
 	if dl == nil {
 		t.Fatalf("got nil DataList")
@@ -23,7 +25,7 @@ func floatsOf(t *testing.T, dl *DataList) []float64 {
 	raw := dl.Data()
 	out := make([]float64, len(raw))
 	for i, v := range raw {
-		f, ok := ToFloat64Safe(v)
+		f, ok := insyra.ToFloat64Safe(v)
 		if !ok {
 			t.Fatalf("value %v at %d is not numeric", v, i)
 		}
@@ -50,7 +52,7 @@ func assertApproxSlice(t *testing.T, got []float64, want []float64) {
 
 func TestStandardScalerFitParamsAndRoundTrip(t *testing.T) {
 	dt := scaleTestTable()
-	out, sc, err := dt.StandardScale(Name("age"))
+	out, sc, err := StandardScale(dt, insyra.Name("age"))
 	if err != nil {
 		t.Fatalf("StandardScale: %v", err)
 	}
@@ -84,8 +86,8 @@ func TestStandardScalerFitParamsAndRoundTrip(t *testing.T) {
 }
 
 func TestStandardScalerConstantColumnNoPanic(t *testing.T) {
-	dt := NewDataTable(NewDataList(5.0, 5.0, 5.0).SetName("c"))
-	out, sc, err := dt.StandardScale(Name("c"))
+	dt := insyra.NewDataTable(insyra.NewDataList(5.0, 5.0, 5.0).SetName("c"))
+	out, sc, err := StandardScale(dt, insyra.Name("c"))
 	if err != nil {
 		t.Fatalf("StandardScale constant: %v", err)
 	}
@@ -99,7 +101,7 @@ func TestStandardScalerConstantColumnNoPanic(t *testing.T) {
 
 func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 	dt := scaleTestTable()
-	out, sc, err := dt.MinMaxScale(0, 1, Name("age"))
+	out, sc, err := MinMaxScale(dt, 0, 1, insyra.Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}
@@ -113,7 +115,7 @@ func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 	}
 	assertApproxSlice(t, floatsOf(t, back.GetColByName("age")), []float64{1, 2, 3, 4})
 
-	out2, _, err := dt.MinMaxScale(-1, 1, Name("age"))
+	out2, _, err := MinMaxScale(dt, -1, 1, insyra.Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale custom: %v", err)
 	}
@@ -121,14 +123,14 @@ func TestMinMaxScalerDefaultAndCustomRange(t *testing.T) {
 }
 
 func TestMinMaxScalerConstantColumnOutputsFeatureMin(t *testing.T) {
-	dt := NewDataTable(NewDataList(7.0, 7.0, 7.0).SetName("c"))
-	out, _, err := dt.MinMaxScale(0, 1, Name("c"))
+	dt := insyra.NewDataTable(insyra.NewDataList(7.0, 7.0, 7.0).SetName("c"))
+	out, _, err := MinMaxScale(dt, 0, 1, insyra.Name("c"))
 	if err != nil {
 		t.Fatalf("MinMaxScale constant: %v", err)
 	}
 	assertApproxSlice(t, floatsOf(t, out.GetColByName("c")), []float64{0, 0, 0})
 
-	out2, _, err := NewDataTable(NewDataList(7.0, 7.0).SetName("c")).MinMaxScale(2, 5, Name("c"))
+	out2, _, err := MinMaxScale(insyra.NewDataTable(insyra.NewDataList(7.0, 7.0).SetName("c")), 2, 5, insyra.Name("c"))
 	if err != nil {
 		t.Fatalf("MinMaxScale constant range: %v", err)
 	}
@@ -139,8 +141,8 @@ func TestMinMaxScalerConstantColumnOutputsFeatureMin(t *testing.T) {
 
 func TestRobustScalerParamsAndRoundTrip(t *testing.T) {
 	// 1..5, type-7: median 3, Q1 (h=0.25*(5-1)=1.0 -> idx1) = 2, Q3 (h=3.0 -> idx3) = 4, IQR = 2
-	dt := NewDataTable(NewDataList(1.0, 2.0, 3.0, 4.0, 5.0).SetName("x"))
-	out, sc, err := dt.RobustScale(Name("x"))
+	dt := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0).SetName("x"))
+	out, sc, err := RobustScale(dt, insyra.Name("x"))
 	if err != nil {
 		t.Fatalf("RobustScale: %v", err)
 	}
@@ -161,11 +163,11 @@ func TestRobustScalerOutlierStabilityAndConstant(t *testing.T) {
 	base := []any{1.0, 2.0, 3.0, 4.0, 5.0}
 	withOutlier := append(append([]any{}, base...), 1000.0)
 	pBase := NewRobustScaler()
-	if err := pBase.FitDataList(NewDataList(base...)); err != nil {
+	if err := pBase.FitDataList(insyra.NewDataList(base...)); err != nil {
 		t.Fatalf("fit base: %v", err)
 	}
 	pOut := NewRobustScaler()
-	if err := pOut.FitDataList(NewDataList(withOutlier...)); err != nil {
+	if err := pOut.FitDataList(insyra.NewDataList(withOutlier...)); err != nil {
 		t.Fatalf("fit outlier: %v", err)
 	}
 	// median should remain stable (3 vs 3.5), unlike a mean which would blow up
@@ -173,8 +175,8 @@ func TestRobustScalerOutlierStabilityAndConstant(t *testing.T) {
 		t.Fatalf("median moved too far with outlier: %v", m)
 	}
 
-	dt := NewDataTable(NewDataList(2.0, 2.0, 2.0).SetName("c"))
-	out, _, err := dt.RobustScale(Name("c"))
+	dt := insyra.NewDataTable(insyra.NewDataList(2.0, 2.0, 2.0).SetName("c"))
+	out, _, err := RobustScale(dt, insyra.Name("c"))
 	if err != nil {
 		t.Fatalf("RobustScale constant: %v", err)
 	}
@@ -184,8 +186,8 @@ func TestRobustScalerOutlierStabilityAndConstant(t *testing.T) {
 // --- MaxAbsScaler ---
 
 func TestMaxAbsScalerSignAndRoundTrip(t *testing.T) {
-	dt := NewDataTable(NewDataList(-4.0, -2.0, 0.0, 2.0).SetName("x"))
-	out, sc, err := dt.MaxAbsScale(Name("x"))
+	dt := insyra.NewDataTable(insyra.NewDataList(-4.0, -2.0, 0.0, 2.0).SetName("x"))
+	out, sc, err := MaxAbsScale(dt, insyra.Name("x"))
 	if err != nil {
 		t.Fatalf("MaxAbsScale: %v", err)
 	}
@@ -201,8 +203,8 @@ func TestMaxAbsScalerSignAndRoundTrip(t *testing.T) {
 }
 
 func TestMaxAbsScalerAllZeroNoPanic(t *testing.T) {
-	dt := NewDataTable(NewDataList(0.0, 0.0, 0.0).SetName("c"))
-	out, _, err := dt.MaxAbsScale(Name("c"))
+	dt := insyra.NewDataTable(insyra.NewDataList(0.0, 0.0, 0.0).SetName("c"))
+	out, _, err := MaxAbsScale(dt, insyra.Name("c"))
 	if err != nil {
 		t.Fatalf("MaxAbsScale zero: %v", err)
 	}
@@ -217,7 +219,7 @@ func TestScalerTransformOnlyFittedColsAndPreservesShape(t *testing.T) {
 	dt.SetRowNameByIndex(0, "r0")
 	dt.SetRowNameByIndex(3, "r3")
 
-	out, _, err := dt.MinMaxScale(0, 1, Name("age"))
+	out, _, err := MinMaxScale(dt, 0, 1, insyra.Name("age"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}
@@ -241,11 +243,11 @@ func TestScalerTransformOnlyFittedColsAndPreservesShape(t *testing.T) {
 }
 
 func TestScalerTrainTestUsesTrainParams(t *testing.T) {
-	train := NewDataTable(NewDataList(0.0, 10.0).SetName("x")) // min 0, max 10
-	test := NewDataTable(NewDataList(5.0, 20.0).SetName("x"))
+	train := insyra.NewDataTable(insyra.NewDataList(0.0, 10.0).SetName("x")) // min 0, max 10
+	test := insyra.NewDataTable(insyra.NewDataList(5.0, 20.0).SetName("x"))
 
 	sc := NewMinMaxScaler(0, 1)
-	if _, err := sc.FitTransform(train, Name("x")); err != nil {
+	if _, err := sc.FitTransform(train, insyra.Name("x")); err != nil {
 		t.Fatalf("fit train: %v", err)
 	}
 	out, err := sc.Transform(test)
@@ -259,10 +261,10 @@ func TestScalerTrainTestUsesTrainParams(t *testing.T) {
 func TestScalerTransformMissingFittedColumnErrors(t *testing.T) {
 	dt := scaleTestTable()
 	sc := NewStandardScaler()
-	if err := sc.Fit(dt, Name("age")); err != nil {
+	if err := sc.Fit(dt, insyra.Name("age")); err != nil {
 		t.Fatalf("fit: %v", err)
 	}
-	other := NewDataTable(NewDataList(1.0, 2.0).SetName("income"))
+	other := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0).SetName("income"))
 	if _, err := sc.Transform(other); err == nil {
 		t.Fatalf("expected error for missing fitted column")
 	}
@@ -271,14 +273,14 @@ func TestScalerTransformMissingFittedColumnErrors(t *testing.T) {
 func TestScalerNonNumericColumnErrors(t *testing.T) {
 	dt := scaleTestTable()
 	sc := NewStandardScaler()
-	if err := sc.Fit(dt, Name("label")); err == nil {
+	if err := sc.Fit(dt, insyra.Name("label")); err == nil {
 		t.Fatalf("expected error fitting non-numeric column")
 	}
 }
 
 func TestScalerNaNAndNilPreserved(t *testing.T) {
-	dt := NewDataTable(NewDataList(1.0, math.NaN(), nil, 3.0).SetName("x"))
-	out, sc, err := dt.MinMaxScale(0, 1, Name("x"))
+	dt := insyra.NewDataTable(insyra.NewDataList(1.0, math.NaN(), nil, 3.0).SetName("x"))
+	out, sc, err := MinMaxScale(dt, 0, 1, insyra.Name("x"))
 	if err != nil {
 		t.Fatalf("MinMaxScale: %v", err)
 	}
@@ -287,7 +289,7 @@ func TestScalerNaNAndNilPreserved(t *testing.T) {
 		t.Fatalf("params = %+v", p)
 	}
 	data := out.GetColByName("x").Data()
-	if f, _ := ToFloat64Safe(data[0]); !approx(f, 0) {
+	if f, _ := insyra.ToFloat64Safe(data[0]); !approx(f, 0) {
 		t.Fatalf("data[0] = %v, want 0", data[0])
 	}
 	if f, ok := data[1].(float64); !ok || !math.IsNaN(f) {
@@ -296,7 +298,7 @@ func TestScalerNaNAndNilPreserved(t *testing.T) {
 	if data[2] != nil {
 		t.Fatalf("data[2] = %v, want nil preserved", data[2])
 	}
-	if f, _ := ToFloat64Safe(data[3]); !approx(f, 1) {
+	if f, _ := insyra.ToFloat64Safe(data[3]); !approx(f, 1) {
 		t.Fatalf("data[3] = %v, want 1", data[3])
 	}
 }
@@ -304,7 +306,7 @@ func TestScalerNaNAndNilPreserved(t *testing.T) {
 func TestScalerExcelStyleColumnRef(t *testing.T) {
 	dt := scaleTestTable()
 	// "B" -> second column = income
-	out, sc, err := dt.MinMaxScale(0, 1, "B")
+	out, sc, err := MinMaxScale(dt, 0, 1, "B")
 	if err != nil {
 		t.Fatalf("MinMaxScale by index: %v", err)
 	}
@@ -335,7 +337,7 @@ func TestScalerTransformBeforeFitErrors(t *testing.T) {
 // --- DataList API ---
 
 func TestDataListScalerFitTransformReturnsNewList(t *testing.T) {
-	dl := NewDataList(1.0, 2.0, 3.0, 4.0).SetName("x")
+	dl := insyra.NewDataList(1.0, 2.0, 3.0, 4.0).SetName("x")
 	sc := NewStandardScaler()
 	out, err := sc.FitTransformDataList(dl)
 	if err != nil {

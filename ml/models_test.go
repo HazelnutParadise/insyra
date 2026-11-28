@@ -9,6 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/ml"
 	"github.com/HazelnutParadise/insyra/ml/mltest"
+	"github.com/HazelnutParadise/insyra/preprocess"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -363,7 +364,7 @@ func TestMLModelsRejectUnsupportedFeatureSchemasAndOffsets(t *testing.T) {
 
 func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	train := testFeatures().table
-	scaler := insyra.NewStandardScaler()
+	scaler := preprocess.NewStandardScaler()
 	if _, err := scaler.FitTransform(train, insyra.Name("x1")); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +374,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	categories := insyra.NewDataTable(dataList([]any{"red", "blue", "red"}, "color"))
-	_, encoder, err := categories.OneHotEncode(insyra.OneHotOptions{Columns: []any{insyra.Name("color")}})
+	_, encoder, err := preprocess.OneHotEncode(categories, preprocess.OneHotOptions{Columns: []any{insyra.Name("color")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +384,7 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	}
 
 	imputationInput := insyra.NewDataTable(dataList([]any{1.0, nil, 3.0}, "value"))
-	imputer := insyra.NewSimpleImputer()
+	imputer := preprocess.NewSimpleImputer()
 	if err := imputer.Fit(imputationInput, insyra.Name("value")); err != nil {
 		t.Fatal(err)
 	}
