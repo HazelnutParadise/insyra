@@ -14,8 +14,12 @@ The scalers, the categorical encoders and the fitted imputer SHALL be provided b
 
 ### Requirement: A scaler saved before the move still loads
 
-A scaler's JSON SHALL carry its kind and fitted state and no package name, so JSON written by the root package's scalers SHALL decode into the matching `preprocess` scaler, and a CLI environment saved before the move SHALL restore its scaler variables.
+A scaler's JSON SHALL carry its kind and fitted state and no package name, so JSON written by the root package's scalers SHALL decode into the matching `preprocess` scaler, and a CLI environment saved before the move SHALL restore its scaler variables. A column `"ref"` written as a plain string, as 0.3.x wrote it, SHALL resolve as a column name first and as an Excel-style index second, and SHALL be written back as the same string.
 
 #### Scenario: Decoding old JSON
 - **WHEN** JSON a `StandardScaler` wrote before the move is decoded into a `preprocess.StandardScaler`
 - **THEN** it decodes without error and transforms a table the way the original did
+
+#### Scenario: Decoding 0.3.x JSON
+- **WHEN** JSON a 0.3.x `StandardScaler` fitted on columns `a` and `B` wrote, with each `"ref"` a plain string, is decoded into a `preprocess.StandardScaler`
+- **THEN** it decodes without error, transforms as the 0.3.x scaler did, and writes `"ref":"a"` and `"ref":"B"` back

@@ -396,4 +396,4 @@ These names used to live in the root `insyra` package and no longer exist there:
 | `insyra.NaNPolicy`, `UnknownPolicy`, `LabelSort` and their constants | the same names in `preprocess` |
 | `insyra.NewSimpleImputer`, `SimpleImputer`, `SimpleImputerOptions`, `ImputationStrategy`, `ImputeMean`, `ImputeMedian`, `ImputeMode`, `ImputeConstant` | the same names in `preprocess` |
 
-Behaviour, results, error text and the scaler JSON format are unchanged. The JSON carries only the scaler's kind, so JSON and CLI environment files saved before still load. The CLI commands `scale` and `encode` are unchanged.
+Behaviour, results, error text and the scaler JSON format are unchanged. The JSON carries only the scaler's kind, so JSON and CLI environment files saved before still load. A scaler JSON written by 0.3.4 to 0.3.6, whose column `"ref"` is a plain string, loads as well: the reference is looked up as a column name first and as an Excel-style index second, the rule 0.3.x used, and is written back as the same string. The CLI commands `scale` and `encode` are unchanged.

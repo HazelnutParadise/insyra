@@ -14,6 +14,7 @@
 
 - [x] 3.1 Move the root tests to `preprocess/`.
 - [x] 3.2 Benchmarks on 100,000 rows for `StandardScale`, `MinMaxScale`, `OneHotEncode`, `LabelEncode` and `SimpleImputer`.
+- [x] 3.3 `preprocess/scale_legacy_json_test.go`: scaler JSON from 0.3.x, whose `"ref"` is a plain string, loads, resolves name first, is written back unchanged; an empty one is refused.
 
 ## 4. Docs
 

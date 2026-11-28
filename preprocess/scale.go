@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -462,6 +463,14 @@ func tableOf(dt insyra.IDataTable) *insyra.DataTable {
 // output uses for the column (its name, or the Excel-style index when unnamed)
 // and the problem to report when nothing resolved.
 func resolveColumn(names []string, ref any) (idx int, label string, problem string) {
+	if legacy, ok := ref.(legacyRef); ok {
+		// The 0.3.x core rule: a name first, then an Excel-style index.
+		if at := indexOfName(names, string(legacy)); at >= 0 {
+			ref = insyra.Name(string(legacy))
+		} else {
+			ref = string(legacy)
+		}
+	}
 	idx, _, problem = prep.LookupColumn(names, identityName, selectorName, ref)
 	if problem != "" {
 		return -1, "", problem
@@ -656,6 +665,41 @@ type scalerRefJSON struct {
 	Index    *string `json:"index,omitempty"`
 	Name     *string `json:"name,omitempty"`
 	Position *int    `json:"position,omitempty"`
+	// legacy is a reference written as a plain string, the form the core
+	// scalers of 0.3.4 and 0.3.5 wrote. It is read back as a legacyRef.
+	legacy *string
+}
+
+// legacyRef is a column reference read from scaler JSON that the 0.3.x core
+// scalers wrote, where "ref" is a plain string. Those scalers looked it up as a
+// column name first and as an Excel-style index second, so it is resolved the
+// same way and written back as the same plain string. Only JSON produces one.
+type legacyRef string
+
+func (r scalerRefJSON) MarshalJSON() ([]byte, error) {
+	if r.legacy != nil {
+		return json.Marshal(*r.legacy)
+	}
+	type fields scalerRefJSON
+	return json.Marshal(fields(r))
+}
+
+func (r *scalerRefJSON) UnmarshalJSON(b []byte) error {
+	if trimmed := bytes.TrimSpace(b); len(trimmed) > 0 && trimmed[0] == '"' {
+		var legacy string
+		if err := json.Unmarshal(trimmed, &legacy); err != nil {
+			return err
+		}
+		*r = scalerRefJSON{legacy: &legacy}
+		return nil
+	}
+	type fields scalerRefJSON
+	var f fields
+	if err := json.Unmarshal(b, &f); err != nil {
+		return err
+	}
+	*r = scalerRefJSON(f)
+	return nil
 }
 
 func encodeScalerRef(ref any) (scalerRefJSON, error) {
@@ -667,12 +711,21 @@ func encodeScalerRef(ref any) (scalerRefJSON, error) {
 		return scalerRefJSON{Name: &val}, nil
 	case int:
 		return scalerRefJSON{Position: &v}, nil
+	case legacyRef:
+		text := string(v)
+		return scalerRefJSON{legacy: &text}, nil
 	default:
 		return scalerRefJSON{}, fmt.Errorf("insyra: scaler JSON: cannot write a column selector of type %T", ref)
 	}
 }
 
 func decodeScalerRef(r scalerRefJSON) (any, error) {
+	if r.legacy != nil {
+		if *r.legacy == "" {
+			return nil, fmt.Errorf("insyra: scaler JSON: a column reference is empty")
+		}
+		return legacyRef(*r.legacy), nil
+	}
 	count := 0
 	if r.Index != nil {
 		count++

@@ -337,7 +337,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - 新增 `excel` 套件，可把活頁簿的工作表讀成 `DataTable`，也可把 `DataTable` 寫成工作表。`excel.Read(path, opts...)` 與 `excel.ReadFrom(r, opts...)` 接受一個選用的 `ReadOptions`（`Sheet`，留空代表第一個工作表、`NoHeaderRow`、`HasRowNames`、`RawStrings`）；`excel.Write(dt, path, opts...)` 與 `excel.WriteTo(dt, w, opts...)` 接受一個選用的 `WriteOptions`（`Sheet`、`NoHeaderRow`、`HasRowNames`、`IfSheetExists`）；`excel.SheetNames(path)` 列出活頁簿的工作表。給超過一個選項值會回傳錯誤，所有函式都不接受 context，因為 excelize 無法中途中斷。讀寫規則與被取代的函式相同。
 
 ### `preprocess`
-- 新增 `preprocess` 套件，收納準備模型輸入用的可擬合前處理步驟：四種縮放器（`StandardScale`、`MinMaxScale`、`RobustScale`、`MaxAbsScale` 與各自的 `New…Scaler` 建構函式）、one-hot、標籤與序位編碼器（`OneHotEncode`、`LabelEncode`、`OrdinalEncode`），以及 `SimpleImputer`。每個步驟從一張表學到參數，再用 `Transform` 套用到另一張表，所以測試資料是用訓練資料的統計量處理。函式接受 `insyra.IDataTable`，`isr` 的表不必轉換即可使用。詳見 [Docs/preprocess.md](Docs/preprocess.md)。
+- 新增 `preprocess` 套件，收納準備模型輸入用的可擬合前處理步驟：四種縮放器（`StandardScale`、`MinMaxScale`、`RobustScale`、`MaxAbsScale` 與各自的 `New…Scaler` 建構函式）、one-hot、標籤與序位編碼器（`OneHotEncode`、`LabelEncode`、`OrdinalEncode`），以及 `SimpleImputer`。每個步驟從一張表學到參數，再用 `Transform` 套用到另一張表，所以測試資料是用訓練資料的統計量處理。函式接受 `insyra.IDataTable`，`isr` 的表不必轉換即可使用。詳見 [Docs/preprocess.md](Docs/preprocess.md)。0.3.4 到 0.3.6 存成 JSON、欄位 `"ref"` 是單純字串的縮放器也能載入：照 0.3.x 的規則先當欄名找、找不到再當 Excel 式欄位索引，再存回去時維持原字串。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。
