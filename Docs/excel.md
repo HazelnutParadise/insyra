@@ -228,6 +228,6 @@ These names used to live in the root `insyra` package and no longer exist there:
 | `insyra.ReadExcel(r, sheet, rowNames, headerRow, rawStrings...)` | `excel.ReadFrom(r, excel.ReadOptions{...})` |
 | `dt.ToExcel(path, insyra.ExcelWriteOptions{...})` | `excel.Write(dt, path, excel.WriteOptions{...})` |
 | `dt.WriteExcel(w, opts)` | `excel.WriteTo(dt, w, opts)` |
-| `insyra.ExcelWriteOptions`, `SheetExistsPolicy`, `SheetExistsFail`, `SheetExistsReplace`, `ErrSheetExists` | the same names in `excel` |
-| `insyra.ExcelReadOptions()` | removed (internal) |
+| `insyra.ExcelWriteOptions{SetColNamesToFirstRow: h, SetRowNamesToFirstCol: r}` | `excel.WriteOptions{NoHeaderRow: !h, HasRowNames: r}` |
+| `insyra.SheetExistsPolicy`, `SheetExistsFail`, `SheetExistsReplace`, `ErrSheetExists` | the same names in `excel` |
 | `csvxl.SheetNames` | `excel.SheetNames` |
