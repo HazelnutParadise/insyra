@@ -1298,8 +1298,12 @@ if (method == "single_t") {
     r_drop = as.double(a$item.stats$r.drop),
     alpha_drop = as.double(a$alpha.drop$raw_alpha),
     item_sd = as.double(apply(m, 2, sd)),
-    item_mean = as.double(colMeans(m))
+    item_mean = as.double(colMeans(m)),
+    g6 = a$total[["G6(smc)"]]
   )
+  level <- if (is.null(payload$level)) 0.95 else as.double(payload$level)
+  ci <- psych::alpha.ci(a$total$raw_alpha, nrow(m), ncol(m), p.val = 1 - level)
+  out$ci <- c(ci$lower.ci, ci$upper.ci)
 } else if (method == "factor_analysis") {
   out <- factor_analysis_stats(payload$rows, payload$extraction, payload$rotation, payload$scoring, payload$nfactors)
 } else if (method == "kmeans") {

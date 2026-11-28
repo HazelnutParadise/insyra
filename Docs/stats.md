@@ -385,7 +385,8 @@ fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValu
 func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptions) (*CronbachAlphaResult, error)
 
 type CronbachAlphaOptions struct {
-    ReverseScored []any // items scored in the opposite direction, as column selectors of dt
+    ReverseScored   []any   // items scored in the opposite direction, as column selectors of dt
+    ConfidenceLevel float64 // level of CI, in (0, 1); 0 means 0.95
 }
 ```
 
@@ -394,7 +395,9 @@ type CronbachAlphaOptions struct {
 **Returns** a `*CronbachAlphaResult`:
 
 - `Alpha`: raw alpha, `k/(k-1) × (1 − Σ item variances / variance of the total)` (Cronbach, 1951), from the item covariances.
+- `CI` and `ConfidenceLevel`: Feldt's interval for `Alpha` (Feldt, Woodruff and Salih, 1987), `1 − (1 − Alpha) × F` quantiles with `N − 1` and `(N − 1)(k − 1)` degrees of freedom, as psych's `alpha.ci` computes it. It assumes normal theory; with few rows, read it as approximate.
 - `StandardizedAlpha`: `k r̄ / (1 + (k−1) r̄)`, `r̄` being `MeanInterItemCorrelation`; the alpha of the items each scaled to variance 1.
+- `GuttmanLambda6`: Guttman's lambda 6 from the correlation matrix, `1 − Σ(1 − smc) / ΣR`, each item's squared multiple correlation with the others standing for its reliable variance: psych's `G6(smc)`. Above alpha when the scale has more than one factor.
 - `NumItems`, `N` (rows used), `RowsDropped` (rows left out because an item was `NaN` or `±Inf`).
 - `Items`, one per item in the order given: `Name`, `Reversed`, `Mean` and `SD` (with n − 1), `ItemRestCorrelation` (the item against the sum of the other items, SPSS's Corrected Item-Total Correlation and psych's `r.drop`) and `AlphaIfDeleted` (raw alpha of the other items).
 
@@ -404,7 +407,7 @@ type CronbachAlphaOptions struct {
 - A reverse-scored item is negated before the statistics are computed. Alpha, the SDs and the item-rest correlations are what reversing it on its own scale gives; its `Mean` is the mean of its values in the table. Nothing is reversed automatically.
 - With two items, `AlphaIfDeleted` is `NaN`: the alpha of one item is not defined.
 - A negative alpha is returned as it is, usually the sign of an item scored in the other direction.
-- Errors: a nil table; fewer than two items; an item, or a reverse-scored item, given twice or naming no column; a reverse-scored item that is not among the items; an item with no variance over the rows used, which would leave the standardized alpha undefined; items whose total never varies, such as `x` and `6 − x` or ipsative items, which leave alpha undefined; values too large or too small for the statistics to be finite in `float64`; fewer than two rows used; more than one options value. A `nil` cell, or a string, even one holding a number, is refused like a text cell; the error quotes a string.
+- Errors: a nil table; fewer than two items; an item, or a reverse-scored item, given twice or naming no column; a reverse-scored item that is not among the items; an item with no variance over the rows used, which would leave the standardized alpha undefined; items whose total never varies, such as `x` and `6 − x` or ipsative items, which leave alpha undefined; values too large or too small for the statistics to be finite in `float64`; fewer than two rows used; a `ConfidenceLevel` outside (0, 1); more than one options value. A `nil` cell, or a string, even one holding a number, is refused like a text cell; the error quotes a string.
 
 **Example:**
 
