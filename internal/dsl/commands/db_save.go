@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/sqlio"
 )
 
 // runSaveSQL implements the `save <var> sql ...` subcommand.
@@ -28,7 +29,7 @@ func runSaveSQL(ctx *ExecContext, varName string, table *insyra.DataTable, args 
 	if err != nil {
 		return err
 	}
-	if err := table.ToSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), tableName, opts); err != nil {
+	if err := sqlio.Write(context.Background(), table, conn.DB, sqlio.Dialect(conn.Dialect), tableName, opts); err != nil {
 		return err
 	}
 	rows, _ := table.Size()
@@ -36,8 +37,8 @@ func runSaveSQL(ctx *ExecContext, varName string, table *insyra.DataTable, args 
 	return nil
 }
 
-func parseSaveSQLOptions(args []string) (insyra.ToSQLOptions, error) {
-	var opts insyra.ToSQLOptions
+func parseSaveSQLOptions(args []string) (sqlio.WriteOptions, error) {
+	var opts sqlio.WriteOptions
 	for i := 0; i < len(args); {
 		key := strings.ToLower(args[i])
 		next := func() (string, error) {
@@ -54,11 +55,11 @@ func parseSaveSQLOptions(args []string) (insyra.ToSQLOptions, error) {
 			}
 			switch strings.ToLower(v) {
 			case "fail":
-				opts.IfExists = insyra.SQLActionIfTableExistsFail
+				opts.IfTableExists = sqlio.TableExistsFail
 			case "replace":
-				opts.IfExists = insyra.SQLActionIfTableExistsReplace
+				opts.IfTableExists = sqlio.TableExistsReplace
 			case "append":
-				opts.IfExists = insyra.SQLActionIfTableExistsAppend
+				opts.IfTableExists = sqlio.TableExistsAppend
 			default:
 				return opts, fmt.Errorf("save sql: invalid if-exists %q (expected fail|replace|append)", v)
 			}

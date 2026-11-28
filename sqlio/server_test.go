@@ -1,8 +1,9 @@
-package insyra
+package sqlio
 
 import (
 	"context"
 	"database/sql"
+	"github.com/HazelnutParadise/insyra"
 	"os"
 	"strings"
 	"testing"
@@ -24,12 +25,12 @@ import (
 // commits and RENAME TABLE, and the drivers' type mapping.
 type sqlServer struct {
 	name, driver, env, schema, placeholder string
-	dialect                                SQLDialect
+	dialect                                Dialect
 }
 
 var sqlServers = []sqlServer{
-	{"mysql", "mysql", "INSYRA_TEST_MYSQL_DSN", "shop", "?", SQLDialectMySQL},
-	{"postgres", "pgx", "INSYRA_TEST_POSTGRES_DSN", "public", "$1", SQLDialectPostgres},
+	{"mysql", "mysql", "INSYRA_TEST_MYSQL_DSN", "shop", "?", MySQL},
+	{"postgres", "pgx", "INSYRA_TEST_POSTGRES_DSN", "public", "$1", Postgres},
 }
 
 func eachSQLServer(t *testing.T, run func(t *testing.T, s sqlServer, db *sql.DB)) {
@@ -76,14 +77,14 @@ func TestSQLServerRoundTrip(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra it round"
 		serverTable(t, s, db, table)
-		dt := NewDataTable(
-			NewDataList(1, 2, 3).SetName("id"),
-			NewDataList(1.5, 2.5, 3.5).SetName("amount"),
-			NewDataList("a", `b"q`, "c`d").SetName("label"),
+		dt := insyra.NewDataTable(
+			insyra.NewDataList(1, 2, 3).SetName("id"),
+			insyra.NewDataList(1.5, 2.5, 3.5).SetName("amount"),
+			insyra.NewDataList("a", `b"q`, "c`d").SetName("label"),
 		)
-		require.NoError(t, dt.ToSQL(db, s.dialect, table, ToSQLOptions{Schema: s.schema}))
+		require.NoError(t, Write(context.Background(), dt, db, s.dialect, table, WriteOptions{Schema: s.schema}))
 
-		got, err := ReadSQL(db, s.dialect, table, ReadSQLOptions{Schema: s.schema, OrderBy: "id"})
+		got, err := Read(context.Background(), db, s.dialect, table, ReadOptions{Schema: s.schema, OrderBy: "id"})
 		require.NoError(t, err)
 		require.Equal(t, 3, got.NumRows())
 		require.EqualValues(t, 2, got.GetColByName("id").Get(1))
@@ -91,8 +92,7 @@ func TestSQLServerRoundTrip(t *testing.T) {
 		require.Equal(t, `b"q`, got.GetColByName("label").Get(1))
 
 		// A custom query uses the driver's own placeholder.
-		q, err := ReadSQL(db, s.dialect, "", ReadSQLOptions{
-			Query:  "SELECT label FROM " + quoteSQLIdent(string(s.dialect), table) + " WHERE id = " + s.placeholder,
+		q, err := Query(context.Background(), db, s.dialect, "SELECT label FROM "+quoteSQLIdent(string(s.dialect), table)+" WHERE id = "+s.placeholder, QueryOptions{
 			Params: []any{3},
 		})
 		require.NoError(t, err)
@@ -100,14 +100,14 @@ func TestSQLServerRoundTrip(t *testing.T) {
 		require.Equal(t, "c`d", q.GetColByNumber(0).Get(0))
 
 		chunks := 0
-		for c, err := range ReadSQLStream(context.Background(), db, s.dialect, table, ReadSQLOptions{ChunkSize: 2}) {
+		for c, err := range Stream(context.Background(), db, s.dialect, table, 2) {
 			require.NoError(t, err)
 			require.NotNil(t, c)
 			chunks++
 		}
 		require.Equal(t, 2, chunks)
 
-		err = dt.ToSQL(db, s.dialect, table)
+		err = Write(context.Background(), dt, db, s.dialect, table)
 		require.ErrorContains(t, err, "already exists")
 	})
 }
@@ -116,10 +116,10 @@ func TestSQLServerAppendAddsAColumn(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra_it_append"
 		serverTable(t, s, db, table)
-		require.NoError(t, NewDataTable(NewDataList(1).SetName("a")).ToSQL(db, s.dialect, table))
-		more := NewDataTable(NewDataList(2).SetName("a"), NewDataList("x").SetName("b"))
-		require.NoError(t, more.ToSQL(db, s.dialect, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}))
-		got, err := ReadSQL(db, s.dialect, table, ReadSQLOptions{OrderBy: "a"})
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(1).SetName("a")), db, s.dialect, table))
+		more := insyra.NewDataTable(insyra.NewDataList(2).SetName("a"), insyra.NewDataList("x").SetName("b"))
+		require.NoError(t, Write(context.Background(), more, db, s.dialect, table, WriteOptions{IfTableExists: TableExistsAppend}))
+		got, err := Read(context.Background(), db, s.dialect, table, ReadOptions{OrderBy: "a"})
 		require.NoError(t, err)
 		require.Equal(t, 2, got.NumRows())
 		require.Nil(t, got.GetColByName("b").Get(0))
@@ -131,9 +131,9 @@ func TestSQLServerReplace(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra_it_replace"
 		serverTable(t, s, db, table)
-		require.NoError(t, NewDataTable(NewDataList(1, 2, 3).SetName("id")).ToSQL(db, s.dialect, table))
-		require.NoError(t, NewDataTable(NewDataList(7).SetName("id")).ToSQL(db, s.dialect, table,
-			ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, Schema: s.schema}))
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(1, 2, 3).SetName("id")), db, s.dialect, table))
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(7).SetName("id")), db, s.dialect, table,
+			WriteOptions{IfTableExists: TableExistsReplace, Schema: s.schema}))
 		require.Equal(t, 1, serverCount(t, s, db, table))
 		requireNoLeftoverTables(t, s, db)
 	})
@@ -145,16 +145,16 @@ func TestSQLServerReplaceKeepsOldTableWhenWriteFails(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra_it_keep"
 		serverTable(t, s, db, table)
-		require.NoError(t, NewDataTable(NewDataList(1, 2, 3).SetName("id")).ToSQL(db, s.dialect, table))
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(1, 2, 3).SetName("id")), db, s.dialect, table))
 
 		n := 70000
 		vals := make([]any, n)
 		for i := range vals {
 			vals[i] = i
 		}
-		big := NewDataTable(NewDataList(vals...).SetName("id"))
+		big := insyra.NewDataTable(insyra.NewDataList(vals...).SetName("id"))
 		// The first batch fits, the second passes 65,535 placeholders.
-		err := big.ToSQL(db, s.dialect, table, ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, BatchSize: 66000})
+		err := Write(context.Background(), big, db, s.dialect, table, WriteOptions{IfTableExists: TableExistsReplace, BatchSize: 66000})
 		require.Error(t, err)
 		require.Equal(t, 3, serverCount(t, s, db, table))
 		requireNoLeftoverTables(t, s, db)
@@ -163,7 +163,7 @@ func TestSQLServerReplaceKeepsOldTableWhenWriteFails(t *testing.T) {
 
 func TestSQLServerReplaceRefusesAReferencedTableOnMySQL(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
-		if s.dialect != SQLDialectMySQL {
+		if s.dialect != MySQL {
 			t.Skip("the staged replace runs on MySQL only")
 		}
 		serverTable(t, s, db, "insyra_it_child", "insyra_it_parent")
@@ -173,8 +173,8 @@ func TestSQLServerReplaceRefusesAReferencedTableOnMySQL(t *testing.T) {
 		require.NoError(t, err)
 		_, err = db.Exec("CREATE TABLE insyra_it_child (pid INT, FOREIGN KEY (pid) REFERENCES insyra_it_parent(id))")
 		require.NoError(t, err)
-		err = NewDataTable(NewDataList(5).SetName("id")).ToSQL(db, s.dialect, "insyra_it_parent",
-			ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
+		err = Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(5).SetName("id")), db, s.dialect, "insyra_it_parent",
+			WriteOptions{IfTableExists: TableExistsReplace})
 		require.ErrorContains(t, err, "referenced by a foreign key from insyra_it_child")
 		require.Equal(t, 1, serverCount(t, s, db, "insyra_it_parent"))
 	})
@@ -196,13 +196,13 @@ func requireNoLeftoverTables(t *testing.T, s sqlServer, db *sql.DB) {
 
 // More placeholders than the protocol allows: the first batch fits and the
 // second fails on the server.
-func tooManyPlaceholders() (*DataTable, ToSQLOptions) {
+func tooManyPlaceholders() (*insyra.DataTable, WriteOptions) {
 	vals := make([]any, 70000)
 	for i := range vals {
 		vals[i] = i
 	}
-	return NewDataTable(NewDataList(vals...).SetName("id"), NewDataList(vals...).SetName("extra")),
-		ToSQLOptions{BatchSize: 33000}
+	return insyra.NewDataTable(insyra.NewDataList(vals...).SetName("id"), insyra.NewDataList(vals...).SetName("extra")),
+		WriteOptions{BatchSize: 33000}
 }
 
 // A write to a missing table that fails leaves no table behind, on MySQL as
@@ -212,7 +212,7 @@ func TestSQLServerFailedCreateLeavesNoTable(t *testing.T) {
 		const table = "insyra_it_create"
 		serverTable(t, s, db, table)
 		big, opts := tooManyPlaceholders()
-		require.Error(t, big.ToSQL(db, s.dialect, table, opts))
+		require.Error(t, Write(context.Background(), big, db, s.dialect, table, opts))
 		exists, err := tableExists(context.Background(), db, string(s.dialect), "", table)
 		require.NoError(t, err)
 		require.False(t, exists, "the failed write left the table behind")
@@ -227,10 +227,10 @@ func TestSQLServerFailedAppendLeavesTheTableAsItWas(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra_it_append_fail"
 		serverTable(t, s, db, table)
-		require.NoError(t, NewDataTable(NewDataList(1, 2).SetName("id")).ToSQL(db, s.dialect, table))
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("id")), db, s.dialect, table))
 		big, opts := tooManyPlaceholders()
-		opts.IfExists = SQLActionIfTableExistsAppend
-		require.Error(t, big.ToSQL(db, s.dialect, table, opts))
+		opts.IfTableExists = TableExistsAppend
+		require.Error(t, Write(context.Background(), big, db, s.dialect, table, opts))
 		require.Equal(t, 2, serverCount(t, s, db, table))
 		cols, err := fetchTableColumns(context.Background(), db, string(s.dialect), "", table)
 		require.NoError(t, err)
@@ -242,8 +242,8 @@ func TestSQLServerWritesAnUnnamedColumn(t *testing.T) {
 	eachSQLServer(t, func(t *testing.T, s sqlServer, db *sql.DB) {
 		const table = "insyra_it_unnamed"
 		serverTable(t, s, db, table)
-		require.NoError(t, NewDataTable(NewDataList(1, 2, 3)).ToSQL(db, s.dialect, table))
-		got, err := ReadSQL(db, s.dialect, table)
+		require.NoError(t, Write(context.Background(), insyra.NewDataTable(insyra.NewDataList(1, 2, 3)), db, s.dialect, table))
+		got, err := Read(context.Background(), db, s.dialect, table)
 		require.NoError(t, err)
 		require.Equal(t, []string{"A"}, got.ColNames())
 	})

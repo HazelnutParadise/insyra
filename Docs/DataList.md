@@ -2376,7 +2376,7 @@ func (dl *DataList) ParseDates(layouts ...string) *DataList
 
 **Parameters:**
 
-- `layouts` (optional): Go reference layouts (for example `"2006-01-02"`). With none given, the same ISO-style defaults `ReadSQLOptions.ParseDates` uses are tried: RFC 3339 (with and without nanoseconds), `"2006-01-02 15:04:05.999999999"`, `"2006-01-02 15:04:05"`, `"2006-01-02T15:04:05"`, `"2006-01-02"`. Passing layouts replaces that list entirely.
+- `layouts` (optional): Go reference layouts (for example `"2006-01-02"`). With none given, the same ISO-style defaults `sqlio.ReadOptions.ParseDates` uses are tried: RFC 3339 (with and without nanoseconds), `"2006-01-02 15:04:05.999999999"`, `"2006-01-02 15:04:05"`, `"2006-01-02T15:04:05"`, `"2006-01-02"`. Passing layouts replaces that list entirely.
 
 **Returns:**
 

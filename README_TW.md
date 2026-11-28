@@ -450,6 +450,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[csvxl](/Docs/csvxl.md)** | 處理 Excel 與 CSV 檔案（例如 CSV 轉 Excel）。 |
 | **[excel](/Docs/excel.md)** | 把 Excel 工作表讀成 `DataTable`，或把 `DataTable` 寫成工作表；獨立於核心之外，不需要 Excel 的程式不會把它編進去。 |
 | **[preprocess](/Docs/preprocess.md)** | 對數值欄位做縮放、對類別欄位做編碼、用訓練資料學到的參數補缺漏值，再套用到測試資料。 |
+| **[sqlio](/Docs/sqlio.md)** | 透過任何 `database/sql` 驅動程式，把資料庫的表或查詢結果讀成 `DataTable`（需要時分批讀），或把 `DataTable` 寫進資料表。 |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
 | **[arrowipc](/Docs/arrowipc.md)** | 唯讀 Arrow IPC file／Feather V2 結構檢查，支援可取消的 DataTable 分批讀取。 |
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |

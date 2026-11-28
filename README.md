@@ -469,6 +469,7 @@ How a cell treats a decimal, and why this package rather than another, compared 
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
 | **[excel](/Docs/excel.md)** | Read an Excel sheet into a `DataTable` and write a `DataTable` as a sheet; kept out of the core so programs that do not need Excel do not compile it. |
 | **[preprocess](/Docs/preprocess.md)** | Scale numeric columns, encode categorical columns and fill missing values with parameters fitted on training data, then apply them to a test set. |
+| **[sqlio](/Docs/sqlio.md)** | Read database tables and query results into a `DataTable`, a batch at a time if needed, and write a `DataTable` to a table, through any `database/sql` driver. |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[arrowipc](/Docs/arrowipc.md)** | Read-only Arrow IPC file / Feather V2 schema inspection and cancellable DataTable batch reading. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |

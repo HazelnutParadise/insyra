@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
@@ -216,4 +217,26 @@ func AlphaColIndex(i int) (string, bool) {
 		i = i/26 - 1
 	}
 	return name, true
+}
+
+// DateParseLayouts are the layouts DataList.ParseDates, DataTable.ParseDatesCols
+// and sqlio's ParseDates try in order when the caller names none.
+var DateParseLayouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+	"2006-01-02",
+}
+
+// ParseTimeWithLayouts parses s with the first layout that matches and returns
+// the instant in UTC.
+func ParseTimeWithLayouts(s string, layouts []string) (time.Time, bool) {
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }

@@ -1,10 +1,11 @@
-package insyra
+package sqlio
 
 import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"github.com/HazelnutParadise/insyra"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,10 +115,10 @@ func seedSales(t *testing.T, db *sql.DB) {
 	execSQL(t, db, `INSERT INTO sales VALUES (1, 10), (2, 20), (3, 30)`)
 }
 
-func newSalesTable() *DataTable {
-	return NewDataTable(
-		NewDataList(101, 102, 103, 104, 105).SetName("id"),
-		NewDataList(1.5, 2.5, 3.5, 4.5, 5.5).SetName("amount"),
+func newSalesTable() *insyra.DataTable {
+	return insyra.NewDataTable(
+		insyra.NewDataList(101, 102, 103, 104, 105).SetName("id"),
+		insyra.NewDataList(1.5, 2.5, 3.5, 4.5, 5.5).SetName("amount"),
 	)
 }
 
@@ -177,7 +178,7 @@ func TestToSQLReplaceKeepsOldTableWhenWriteFails(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "INSERT INTO", 2) // BatchSize 2: five rows are three INSERTs
-	err := newSalesTable().ToSQL(db, SQLDialectSQLite, "sales", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, BatchSize: 2})
+	err := Write(context.Background(), newSalesTable(), db, SQLite, "sales", WriteOptions{IfTableExists: TableExistsReplace, BatchSize: 2})
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -191,8 +192,8 @@ func TestToSQLReplaceByRenameKeepsOldTableWhenWriteFails(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "INSERT INTO", 2)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace, BatchSize: 2}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -201,8 +202,8 @@ func TestToSQLReplaceByRenameKeepsOldTableWhenWriteFails(t *testing.T) {
 func TestToSQLReplaceByRenameSwapsInTheNewTable(t *testing.T) {
 	db, _ := newFileSQLite(t)
 	seedSales(t, db)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace, BatchSize: 2}, true)
 	require.NoError(t, err)
 	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -211,8 +212,8 @@ func TestToSQLReplaceByRenameSwapsInTheNewTable(t *testing.T) {
 // A table that does not exist yet is created the ordinary way.
 func TestToSQLReplaceByRenameCreatesAMissingTable(t *testing.T) {
 	db, _ := newFileSQLite(t)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.NoError(t, err)
 	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -230,8 +231,8 @@ func TestToSQLReplaceByRenameCleansUpAfterCancel(t *testing.T) {
 			cancel()
 		}
 	}
-	err := newSalesTable().toSQL(ctx, db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace, BatchSize: 2}, true)
+	err := write(ctx, newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace, BatchSize: 2}, true)
 	require.Error(t, err)
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -241,8 +242,8 @@ func TestToSQLReplaceByRenameReportsAFailedSwap(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "RENAME", 1)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -254,8 +255,8 @@ func TestToSQLReplaceByRenameUndoesAHalfDoneSwap(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "RENAME", 2)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -268,8 +269,8 @@ func TestToSQLReplaceByRenameReportsAStagingTableItCannotCreate(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "CREATE TABLE", 1)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.ErrorContains(t, err, "CREATE, INSERT, ALTER and DROP privileges")
 	require.NotContains(t, err.Error(), "could not drop")
@@ -284,8 +285,8 @@ func TestToSQLReplaceByRenameRefusesAReferencedTable(t *testing.T) {
 	db, _ := newFileSQLite(t)
 	seedSales(t, db)
 	execSQL(t, db, `CREATE TABLE refunds (sale_id INTEGER REFERENCES sales(id))`)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "referenced by a foreign key from refunds")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"refunds", "sales"}, tableNamesIn(t, db))
@@ -297,8 +298,8 @@ func TestToSQLReplaceByRenameAllowsASelfReference(t *testing.T) {
 	db, _ := newFileSQLite(t)
 	execSQL(t, db, `CREATE TABLE sales (id INTEGER PRIMARY KEY, parent INTEGER REFERENCES sales(id))`)
 	execSQL(t, db, `INSERT INTO sales VALUES (1, NULL)`)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.NoError(t, err)
 	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 }
@@ -316,8 +317,8 @@ func TestToSQLReplaceByRenameRefusesATableThatAppearsMeanwhile(t *testing.T) {
 			execSQL(t, db, `INSERT INTO sales VALUES (7, 70)`)
 		}
 	}
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "already exists")
 	require.Equal(t, []int64{7}, salesIDs(t, db, "sales"))
 }
@@ -342,8 +343,8 @@ func TestToSQLReplaceByRenameReportsTheLeftoverOldTable(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	seedSales(t, db)
 	failStatement(hooks, "DROP TABLE", 1)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsReplace}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsReplace}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 	names := tableNamesIn(t, db)
@@ -379,16 +380,16 @@ func TestRenameSwapStatementsForMySQL(t *testing.T) {
 func TestToSQLCreateByRenameLeavesNothingWhenWriteFails(t *testing.T) {
 	db, hooks := newFileSQLite(t)
 	failStatement(hooks, "INSERT INTO", 2)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{BatchSize: 2}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Empty(t, tableNamesIn(t, db))
 }
 
 func TestToSQLCreateByRenameWritesTheTable(t *testing.T) {
 	db, _ := newFileSQLite(t)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{BatchSize: 2}, true)
 	require.NoError(t, err)
 	require.Equal(t, []int64{101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))
@@ -402,8 +403,8 @@ func TestToSQLAppendByCommittedDDLUndoesAddedColumnsWhenWriteFails(t *testing.T)
 	execSQL(t, db, `CREATE TABLE sales (id INTEGER)`)
 	execSQL(t, db, `INSERT INTO sales VALUES (1), (2), (3)`)
 	failStatement(hooks, "INSERT INTO", 2)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsAppend, BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsAppend, BatchSize: 2}, true)
 	require.ErrorContains(t, err, "forced failure")
 	require.Equal(t, []int64{1, 2, 3}, salesIDs(t, db, "sales"))
 	cols, err := fetchTableColumns(context.Background(), db, "sqlite", "", "sales")
@@ -415,8 +416,8 @@ func TestToSQLAppendByCommittedDDLAddsColumnsAndRows(t *testing.T) {
 	db, _ := newFileSQLite(t)
 	execSQL(t, db, `CREATE TABLE sales (id INTEGER)`)
 	execSQL(t, db, `INSERT INTO sales VALUES (1)`)
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales",
-		ToSQLOptions{IfExists: SQLActionIfTableExistsAppend, BatchSize: 2}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales",
+		WriteOptions{IfTableExists: TableExistsAppend, BatchSize: 2}, true)
 	require.NoError(t, err)
 	require.Equal(t, []int64{1, 101, 102, 103, 104, 105}, salesIDs(t, db, "sales"))
 	cols, err := fetchTableColumns(context.Background(), db, "sqlite", "", "sales")
@@ -437,7 +438,7 @@ func TestToSQLCreateByRenameRefusesATableCreatedDuringTheWrite(t *testing.T) {
 		}
 		return nil
 	}
-	err := newSalesTable().toSQL(context.Background(), db, SQLDialectSQLite, "sales", ToSQLOptions{}, true)
+	err := write(context.Background(), newSalesTable(), db, SQLite, "sales", WriteOptions{}, true)
 	require.ErrorContains(t, err, "already exists")
 	require.Equal(t, []int64{7}, salesIDs(t, db, "sales"))
 	require.Equal(t, []string{"sales"}, tableNamesIn(t, db))

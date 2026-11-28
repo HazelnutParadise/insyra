@@ -1,36 +1,39 @@
-package insyra
+package sqlio
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra/internal/prep"
 )
 
-// SQLDialect names the database behind a *sql.DB passed to ToSQL, ReadSQL and
-// ReadSQLStream. It decides how identifiers are quoted, how column types are
+// Dialect names the database behind the *sql.DB passed to Read, Query,
+// Stream, StreamQuery and Write. It decides how identifiers are quoted, how column types are
 // inferred, how insyra's own statements bind their values, and how Replace
 // swaps a table. A *sql.DB does not say which database it talks to, so the
 // caller names it; there is no default.
-type SQLDialect string
+type Dialect string
 
 const (
-	// SQLDialectSQLite is SQLite, through any database/sql driver for it.
-	SQLDialectSQLite SQLDialect = "sqlite"
-	// SQLDialectMySQL is MySQL, and servers that speak its dialect.
-	SQLDialectMySQL SQLDialect = "mysql"
-	// SQLDialectPostgres is PostgreSQL.
-	SQLDialectPostgres SQLDialect = "postgres"
+	// SQLite is SQLite, through any database/sql driver for it.
+	SQLite Dialect = "sqlite"
+	// MySQL is MySQL, and servers that speak its dialect.
+	MySQL Dialect = "mysql"
+	// Postgres is PostgreSQL.
+	Postgres Dialect = "postgres"
 )
 
-// checkSQLDialect refuses a dialect the SQL functions do not know.
-func checkSQLDialect(d SQLDialect) error {
+// checkDialect refuses a dialect this package does not know.
+func checkDialect(d Dialect) error {
 	switch d {
-	case SQLDialectSQLite, SQLDialectMySQL, SQLDialectPostgres:
+	case SQLite, MySQL, Postgres:
 		return nil
 	}
-	return fmt.Errorf("unknown SQL dialect %q: use SQLDialectSQLite, SQLDialectMySQL or SQLDialectPostgres", string(d))
+	return fmt.Errorf("unknown SQL dialect %q: use sqlio.SQLite, sqlio.MySQL or sqlio.Postgres", string(d))
 }
 
 // sqlConn is what both *sql.DB and *sql.Tx offer, so a statement can run
@@ -44,9 +47,9 @@ type sqlConn interface {
 // bindVars writes the ? placeholders of one of insyra's own statements the
 // way the dialect expects: $1, $2, … on PostgreSQL, unchanged elsewhere. It
 // is for insyra's statements only, which hold no ? inside a literal; a
-// caller's ReadSQLOptions.Query goes to the driver as written.
+// caller's query goes to the driver as written.
 func bindVars(dialect, query string) string {
-	if dialect != string(SQLDialectPostgres) || !strings.Contains(query, "?") {
+	if dialect != string(Postgres) || !strings.Contains(query, "?") {
 		return query
 	}
 	var b strings.Builder
@@ -75,4 +78,17 @@ func inSQLTx(ctx context.Context, db *sql.DB, run func(tx *sql.Tx) error) error 
 		return err
 	}
 	return tx.Commit()
+}
+
+// oneOption returns the single options value given, the zero value when none
+// is, and an error naming the type when there are more.
+func oneOption[T any](typeName string, opts []T) (T, error) {
+	var zero T
+	if msg := prep.ExtraOptional(typeName, len(opts)); msg != "" {
+		return zero, errors.New(msg)
+	}
+	if len(opts) == 1 {
+		return opts[0], nil
+	}
+	return zero, nil
 }

@@ -56,6 +56,7 @@ dt.Show()
 | [preprocess](preprocess.md) | Scalers, categorical encoders and a fitted imputer for model inputs |
 | [parquet](parquet.md) | Apache Parquet file support with streaming                 |
 | [arrowipc](arrowipc.md) | Arrow IPC file / Feather V2 schema inspection and batch reading |
+| [sqlio](sqlio.md) | Database tables and queries to and from DataTables through database/sql |
 
 #### Data Acquisition
 

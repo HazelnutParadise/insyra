@@ -1,8 +1,6 @@
 package insyra
 
 import (
-	"context"
-	"database/sql"
 	"io"
 	"time"
 )
@@ -330,8 +328,6 @@ type IDataTable interface {
 	// ToJSONString converts the DataTable to JSON and returns it as a string.
 	ToJSONString(useColNames bool) string
 
-	ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
-
 	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
 	EWMCol(any, EWMOptions) *EWMDataList
 	Resample(any, ResampleFreq, ...ResampleAgg) (*DataTable, error)
@@ -392,7 +388,6 @@ type IDataTable interface {
 
 	GetColNameByIndex(index string) string
 	ToCSVWithOptions(filePath string, opts CSVWriteOptions) error
-	ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
 
 	// Output to any writer
 	ShowTo(w io.Writer)

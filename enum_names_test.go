@@ -32,10 +32,6 @@ func TestEnumsPrintTheirNames(t *testing.T) {
 		{ResampleQuarterly, "ResampleQuarterly"},
 		{ResampleYearly, "ResampleYearly"},
 		{ResampleFreq(99), "ResampleFreq(99)"},
-		{SQLActionIfTableExistsFail, "SQLActionIfTableExistsFail"},
-		{SQLActionIfTableExistsReplace, "SQLActionIfTableExistsReplace"},
-		{SQLActionIfTableExistsAppend, "SQLActionIfTableExistsAppend"},
-		{SQLActionIfTableExists(99), "SQLActionIfTableExists(99)"},
 	}
 	for _, c := range cases {
 		if got := fmt.Sprint(c.got); got != c.want {

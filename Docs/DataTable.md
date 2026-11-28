@@ -471,97 +471,9 @@ if err != nil {
 }
 ```
 
-### ReadSQL
+### SQL
 
-```go
-func ReadSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error)
-func ReadSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) (*DataTable, error)
-func ReadSQLStream(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ReadSQLOptions) iter.Seq2[*DataTable, error]
-```
-
-**Description:** Loads data from a database table or custom SQL query into a DataTable.
-
-- `ReadSQL` is the simple form. It is equivalent to `ReadSQLContext(context.Background(), ...)`.
-- `ReadSQLContext` is the context-aware variant. The query and row scanning run under `ctx`, so callers can cancel long-running reads.
-- `ReadSQLStream` reads a (potentially huge) result set in chunks. Range over it with `for dt, err := range insyra.ReadSQLStream(ctx, db, insyra.SQLDialectPostgres, "orders")`: each chunk arrives as a `*DataTable` with a nil error, and a failure arrives once, as a nil table with the error, and ends the loop. The query runs when the loop starts and chunks are read in your own goroutine, so breaking out early closes the rows and returns the connection to the pool at once, with nothing to cancel. Use this when the result set does not fit in memory.
-
-**Parameters:**
-
-- `ctx`: Context that controls cancellation of the database calls (Context variants only)
-- `db`: A `database/sql` connection, opened with any driver. With gorm, pass the connection `gormDB.DB()` returns.
-- `dialect`: The database behind `db`: `insyra.SQLDialectSQLite`, `insyra.SQLDialectMySQL` or `insyra.SQLDialectPostgres`. It has no default, and any other value is an error. A `*sql.DB` does not say which database it talks to, and the dialect decides how names are quoted, which column types are inferred and how a table is replaced.
-- `tableName`: Name of the database table to read from. Ignored when `ReadSQLOptions.Query` is set.
-- `options`: Optional configuration (`ReadSQLOptions` struct, see below)
-
-**Returns:**
-
-- `*DataTable`: DataTable loaded with data (single-result functions)
-- `iter.Seq2[*DataTable, error]`: The chunks, ready to range over (`ReadSQLStream`)
-- `error`: Error information, returns nil if successful
-
-**ReadSQLOptions:**
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `RowNameColumn` | `string` | Column whose values become DataTable row names. Defaults to `"row_name"` when neither this nor `IndexCol` is set. |
-| `IndexCol` | `string` | Alias for `RowNameColumn`; mirrors pandas' `read_sql(index_col=...)`. When non-empty, takes precedence. |
-| `Query` | `string` | Custom SQL query. When set, all other query-shape options are ignored. |
-| `Params` | `[]any` | Positional bind parameters for `Query`. Equivalent to pandas' `read_sql(params=...)`. |
-| `Columns` | `[]string` | Restricts the auto-built `SELECT` to these columns. Ignored when `Query` is set. |
-| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. |
-| `Limit` | `int` | Maximum number of rows to read (0 means no limit). |
-| `Offset` | `int` | Starting row offset. |
-| `WhereClause` | `string` | `WHERE` clause body (without the `WHERE` keyword). |
-| `OrderBy` | `string` | `ORDER BY` clause body (without the `ORDER BY` keyword). |
-| `ParseDates` | `[]string` | Columns whose `string`/`[]byte` values should be parsed as `time.Time`. Several common ISO-style layouts are tried in order (RFC3339, `2006-01-02 15:04:05`, etc.). |
-| `DType` | `map[string]reflect.Type` | Forces the resulting Go type for the named columns. Recognized targets: `int*`/`uint*`/`float*`/`bool`/`string`/`time.Time`/`[]byte`. |
-| `ChunkSize` | `int` | Per-chunk row count for `ReadSQLStream`. Defaults to 1000. Ignored by `ReadSQL`/`ReadSQLContext`. |
-
-**Type handling:** When the driver returns numeric or boolean columns as `[]byte` (common with the MySQL driver), `ReadSQL` consults `rows.ColumnTypes()` and converts to the appropriate Go primitive. Binary columns (`BLOB`/`BYTEA`) are kept as `[]byte`. `DType` overrides take precedence over the default mapping.
-
-**Examples:**
-
-```go
-// Simple read with options. Any database/sql driver works; this one is
-// github.com/go-sql-driver/mysql.
-db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/shop")
-dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "users", insyra.ReadSQLOptions{
-    Limit:   100,
-    OrderBy: "id DESC",
-})
-
-// Parameterized custom query. Query and Params go to the driver as written,
-// so use the driver's own placeholders: ? on MySQL and SQLite, $1 on PostgreSQL.
-dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "", insyra.ReadSQLOptions{
-    Query:  "SELECT * FROM users WHERE active = ? AND age > ?",
-    Params: []any{true, 18},
-})
-
-// Already using gorm: pass the connection underneath it.
-sqlDB, _ := gormDB.DB()
-dt, err := insyra.ReadSQL(sqlDB, insyra.SQLDialectPostgres, "users")
-
-// Cancelable read.
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-dt, err := insyra.ReadSQLContext(ctx, db, insyra.SQLDialectMySQL, "users")
-
-// Streaming a huge table in chunks of 5000 rows.
-for chunk, err := range insyra.ReadSQLStream(ctx, db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOptions{ChunkSize: 5000}) {
-    if err != nil {
-        log.Fatal(err)
-    }
-    process(chunk)
-}
-
-// Force types and parse a date column.
-dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOptions{
-    ParseDates: []string{"created_at"},
-    DType: map[string]reflect.Type{
-        "score": reflect.TypeFor[float64](),
-    },
-})
-```
+Reading a database table or a query result into a table lives in the [`sqlio` package](sqlio.md) (`sqlio.Read`, `sqlio.Query`, `sqlio.Stream`, `sqlio.StreamQuery`), through any `database/sql` connection.
 
 ### Excel
 
@@ -727,84 +639,9 @@ for k, col := range m {
 }
 ```
 
-### ToSQL
+### SQL tables
 
-```go
-func (dt *DataTable) ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
-func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error
-```
-
-**Description:** Writes the DataTable to a SQL database.
-
-- `ToSQL` is the simple form. It is equivalent to `ToSQLContext(context.Background(), ...)`.
-- `ToSQLContext` runs every database call under `ctx`, so callers can cancel long writes.
-
-**Behavior:**
-
-- On SQLite and PostgreSQL every statement (CREATE TABLE, DROP TABLE, ALTER TABLE, INSERT) runs in one transaction. If any step fails, the transaction is rolled back and the database is left as it was.
-- MySQL commits every CREATE, ALTER, DROP and RENAME statement on its own, ending any transaction it is in (MySQL Reference Manual, [Statements That Cause an Implicit Commit](https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html)), so a transaction cannot undo them there:
-  - `SQLActionIfTableExistsReplace` writes the rows into a new staging table named `insyra_new_<random>`, then puts it in place with one `RENAME TABLE` statement, which MySQL runs atomically, and drops the old table. A write that fails, or is cancelled, drops the staging table and leaves the old table as it was. The staging table and the renamed old table have names of their own, so the account needs the CREATE, INSERT, ALTER and DROP privileges on the database, not only on the table being replaced; without them the call fails before anything changes. A table that another table references by foreign key is refused, also before anything changes, because the rename would move that reference to the old copy. If the old copy cannot be dropped after the swap, the call returns an error naming `insyra_old_<random>`, which still holds the old rows, while the target already holds the new ones. When the table does not exist, Replace creates it; if another session creates it meanwhile, the call fails with `already exists` instead of dropping that table.
-  - A missing table is written under a staging name `insyra_new_<random>` in one transaction and renamed in once every row is written, so a write that fails leaves no table behind. If another session creates the table meanwhile, the rename fails, that table is kept, and the call fails with `already exists`. This needs the same CREATE, INSERT, ALTER and DROP privileges on the database as Replace.
-  - In append mode the missing columns are added first, which commits them, and the rows are then written in one transaction. If the rows fail, the added columns are dropped again; a column that cannot be dropped is named in the error.
-- Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
-- When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
-- Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
-- You can provide `ColumnTypes` to override the inferred SQL types.
-- A column with no name is written under its letter (`A`, `B`, …), because MySQL and PostgreSQL refuse an empty column name. If another column is already named that letter, compared without case, the call fails before anything is written.
-
-**Parameters:**
-
-- `ctx`: Context that controls cancellation of the database calls (`ToSQLContext` only)
-- `db`: A `database/sql` connection, opened with any driver. With gorm, pass the connection `gormDB.DB()` returns.
-- `dialect`: The database behind `db`, as for `ReadSQL`. It also decides which Replace behaviour below applies, so name MySQL as `insyra.SQLDialectMySQL` even when the server is a MySQL-compatible one.
-- `tableName`: Target table name
-- `options`: Optional SQL options (`ToSQLOptions` struct, see below)
-
-**ToSQLOptions:**
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `IfExists` | `SQLActionIfTableExists` | Behavior when the target table already exists. See enum values below. Default: `SQLActionIfTableExistsFail`. |
-| `HasRowNames` | `bool` | If true, include row names as a `row_name` column (default type `TEXT`). |
-| `ColumnTypes` | `map[string]string` | Explicit SQL column types per column, used instead of type inference. |
-| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. The caller is responsible for any required quoting. |
-| `BatchSize` | `int` | Rows per multi-value `INSERT`. Zero means use the package default (500). |
-
-**SQLActionIfTableExists values:**
-
-- `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-- `SQLActionIfTableExistsReplace` — replace the table with one holding only the new rows. SQLite and PostgreSQL drop and recreate it inside the transaction; MySQL writes a staging table and renames it in (see Behavior)
-- `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
-
-**Returns:**
-
-- `error`: Error information, returns nil if successful. What a failure leaves behind depends on the database; see Behavior.
-
-**Examples:**
-
-```go
-db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/shop")
-
-// Replace existing table if present.
-err := dt.ToSQL(db, insyra.SQLDialectMySQL, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
-if err != nil {
-    log.Fatal(err)
-}
-
-// Append into an existing table; missing columns are added once.
-err = dt.ToSQL(db, insyra.SQLDialectMySQL, "events", ToSQLOptions{
-    IfExists:  SQLActionIfTableExistsAppend,
-    BatchSize: 1000,
-})
-
-// Cancelable write with a deadline.
-ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer cancel()
-err = dt.ToSQLContext(ctx, db, insyra.SQLDialectMySQL, "events_archive", ToSQLOptions{
-    IfExists: SQLActionIfTableExistsReplace,
-    Schema:   "analytics",
-})
-```
+Writing a table to a database table lives in the [`sqlio` package](sqlio.md) as `sqlio.Write`.
 
 ## Data Operations
 
@@ -1146,13 +983,13 @@ the table, so the call chains. Each column is converted by the rules of
 [`DataList.ParseDates`](DataList.md#parsedates): a string matching a layout
 becomes that instant in UTC, a value already `time.Time` is kept unchanged, and
 anything else becomes `nil`. With no `layouts`, the same ISO-style defaults
-`ReadSQLOptions.ParseDates` uses are tried; passing layouts replaces that list.
+`sqlio.ReadOptions.ParseDates` uses are tried; passing layouts replaces that list.
 
 Columns are column selectors (see [Column selectors](#column-selectors)). A column that does not
 exist is skipped and recorded as an error on `dt.Err()`; the other named
 columns are still converted.
 
-This is the conversion `ReadSQL`'s `ParseDates` option performs, available for
+This is the conversion `sqlio`'s `ParseDates` option performs, available for
 tables loaded from anywhere else. CSV inference produces `int64`/`float64` and
 leaves everything else a string, so a CSV date column needs this step before
 `Resample` will accept it:
@@ -4245,7 +4082,7 @@ long chain reports the root cause rather than whatever broke downstream.
 
 `Err()` is safe on a nil table: it reports `nil DataTable` instead of crashing. Every other method on a nil table still crashes, on purpose, so a nil cannot travel on unnoticed.
 
-A trailing optional parameter takes **at most one value**. Passing two options structs to `Sample`, `SampleFrac`, `Shuffle`, `TrainTestSplit`, `Describe` or `GroupBy(...).Describe`, or two fill values to `ShiftCol`, records an error instead of silently using the first; `ReadSQL`, `ReadSQLContext`, `ReadSQLStream`, `ToSQL` and `ToSQLContext` return an error for two options structs.
+A trailing optional parameter takes **at most one value**. Passing two options structs to `Sample`, `SampleFrac`, `Shuffle`, `TrainTestSplit`, `Describe` or `GroupBy(...).Describe`, or two fill values to `ShiftCol`, records an error instead of silently using the first. The functions of `excel` and `sqlio` return an error for two options values.
 
 Asking whether a value is present and getting "no" is an answer, not a
 failure: `FindFirst`, `FindLast`, `Count` and statistics over an empty list

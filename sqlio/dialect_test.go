@@ -1,7 +1,8 @@
-package insyra
+package sqlio
 
 import (
 	"context"
+	"github.com/HazelnutParadise/insyra"
 	"os/exec"
 	"strings"
 	"testing"
@@ -16,16 +17,16 @@ func TestSQLRefusesAnUnknownDialect(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (n INTEGER)")
 	execSQL(t, db, "INSERT INTO t VALUES (1)")
 
-	dt := NewDataTable(NewDataList(9).SetName("n"))
-	err := dt.ToSQL(db, SQLDialect("oracle"), "t", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
+	dt := insyra.NewDataTable(insyra.NewDataList(9).SetName("n"))
+	err := Write(context.Background(), dt, db, Dialect("oracle"), "t", WriteOptions{IfTableExists: TableExistsReplace})
 	require.ErrorContains(t, err, `"oracle"`)
 	require.Equal(t, []int64{1}, queryInt64s(t, db, "SELECT n FROM t"))
 
-	_, err = ReadSQL(db, SQLDialect("oracle"), "t")
+	_, err = Read(context.Background(), db, Dialect("oracle"), "t")
 	require.ErrorContains(t, err, `"oracle"`)
 
 	yields := 0
-	for table, err := range ReadSQLStream(context.Background(), db, SQLDialect(""), "t") {
+	for table, err := range Stream(context.Background(), db, Dialect(""), "t", 1000) {
 		yields++
 		require.Nil(t, table)
 		require.ErrorContains(t, err, "dialect")
@@ -35,13 +36,12 @@ func TestSQLRefusesAnUnknownDialect(t *testing.T) {
 
 func TestSQLRoundTripThroughDatabaseSQL(t *testing.T) {
 	db := newTestSQLite(t)
-	dt := NewDataTable(
-		NewDataList(1, 2, 3).SetName("id"),
-		NewDataList("a", "b", "c").SetName("label"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1, 2, 3).SetName("id"),
+		insyra.NewDataList("a", "b", "c").SetName("label"),
 	)
-	require.NoError(t, dt.ToSQL(db, SQLDialectSQLite, "t"))
-	got, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{
-		Query:  "SELECT id, label FROM t WHERE id = ?",
+	require.NoError(t, Write(context.Background(), dt, db, SQLite, "t"))
+	got, err := Query(context.Background(), db, SQLite, "SELECT id, label FROM t WHERE id = ?", QueryOptions{
 		Params: []any{2},
 	})
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestSQLRoundTripThroughDatabaseSQL(t *testing.T) {
 	require.Equal(t, "b", got.GetColByName("label").Get(0))
 }
 
-// The point of taking *sql.DB: a program that uses DataTable does not link
+// The point of taking *sql.DB: a program that uses insyra.DataTable does not link
 // gorm or the query builder the gorm version needed.
 func TestRootPackageDoesNotLinkGorm(t *testing.T) {
 	goBin, err := exec.LookPath("go")
@@ -69,9 +69,9 @@ func TestRootPackageDoesNotLinkGorm(t *testing.T) {
 // identifier.
 func TestToSQLWritesAnUnnamedColumnUnderItsLetter(t *testing.T) {
 	db := newTestSQLite(t)
-	dt := NewDataTable(NewDataList(1, 2), NewDataList("x", "y").SetName("label"), NewDataList(3.5, 4.5))
-	require.NoError(t, dt.ToSQL(db, SQLDialectSQLite, "t"))
-	got, err := ReadSQL(db, SQLDialectSQLite, "t")
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2), insyra.NewDataList("x", "y").SetName("label"), insyra.NewDataList(3.5, 4.5))
+	require.NoError(t, Write(context.Background(), dt, db, SQLite, "t"))
+	got, err := Read(context.Background(), db, SQLite, "t")
 	require.NoError(t, err)
 	require.Equal(t, []string{"A", "label", "C"}, got.ColNames())
 	require.EqualValues(t, 2, got.GetColByName("A").Get(1))
@@ -82,8 +82,8 @@ func TestToSQLWritesAnUnnamedColumnUnderItsLetter(t *testing.T) {
 // before anything is created.
 func TestToSQLRefusesAnUnnamedColumnWhoseLetterIsTaken(t *testing.T) {
 	db := newTestSQLite(t)
-	dt := NewDataTable(NewDataList(1), NewDataList(2).SetName("a"))
-	err := dt.ToSQL(db, SQLDialectSQLite, "t")
+	dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2).SetName("a"))
+	err := Write(context.Background(), dt, db, SQLite, "t")
 	require.ErrorContains(t, err, "column A has no name")
 	var n int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name = 't'").Scan(&n))
