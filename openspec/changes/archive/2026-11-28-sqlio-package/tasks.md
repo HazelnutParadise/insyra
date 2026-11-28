@@ -19,4 +19,4 @@
 ## 4. Verify
 
 - [x] 4.1 `go build ./...`, `go vet ./...`, `go test ./...`, `golangci-lint run`, `openspec validate sqlio-package --strict`.
-- [ ] 4.2 At archive, rewrite the Purpose of `sql-table-replace`, `sql-identifier-quoting` and `sql-streaming-read`, which name the old functions.
+- [x] 4.2 At archive, rewrite the Purpose of `sql-table-replace`, `sql-identifier-quoting` and `sql-streaming-read`, which name the old functions.

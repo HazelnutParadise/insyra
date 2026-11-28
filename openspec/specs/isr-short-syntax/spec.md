@@ -29,7 +29,7 @@ The isr table and list types SHALL be exported as `isr.DataTable` and `isr.DataL
 
 #### Scenario: an existing Excel sheet
 - **WHEN** the named sheet already exists and `OutputOpts.IfSheetExists` is the zero value
-- **THEN** `To` returns an error and leaves the file unchanged; with `insyra.SheetExistsReplace` it replaces the sheet
+- **THEN** `To` returns an error and leaves the file unchanged; with `excel.SheetExistsReplace` it replaces the sheet
 
 #### Scenario: an unwritable target
 - **WHEN** the target is another type, nil, a value `CSV` or `JSON` with no `FilePath`, an `Excel` with no `FilePath`, or the table is nil

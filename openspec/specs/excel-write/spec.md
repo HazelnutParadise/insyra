@@ -7,7 +7,7 @@ How a DataTable is written into an Excel workbook, from the library and from the
 
 ### Requirement: A save touches only its own sheet
 
-`ToExcel` SHALL write the table as the sheet named in its options, `Sheet1` when none is given. It SHALL create the workbook when the path does not exist, add the sheet when the workbook lacks it, and leave every other sheet as it was.
+`excel.Write` SHALL write the table as the sheet named in its options, `Sheet1` when none is given. It SHALL create the workbook when the path does not exist, add the sheet when the workbook lacks it, and leave every other sheet as it was.
 
 #### Scenario: A new workbook
 - **WHEN** the path does not exist
@@ -19,7 +19,7 @@ How a DataTable is written into an Excel workbook, from the library and from the
 
 ### Requirement: An existing sheet is replaced only when asked
 
-When the sheet already exists, `ToExcel` SHALL refuse with an error matching `ErrSheetExists` and leave the file unchanged, unless `IfSheetExists` is `SheetExistsReplace`, in which case it SHALL replace that sheet's contents in the sheet's original position. A replaced sheet SHALL stay hidden when it was hidden, and every defined name and formula elsewhere in the workbook SHALL keep the sheet it belonged to.
+When the sheet already exists, `excel.Write` SHALL refuse with an error matching `excel.ErrSheetExists` and leave the file unchanged, unless `IfSheetExists` is `excel.SheetExistsReplace`, in which case it SHALL replace that sheet's contents in the sheet's original position. A replaced sheet SHALL stay hidden when it was hidden, and every defined name and formula elsewhere in the workbook SHALL keep the sheet it belonged to.
 
 #### Scenario: Saving over a sheet by default
 - **WHEN** the sheet exists and `IfSheetExists` is left at its zero value

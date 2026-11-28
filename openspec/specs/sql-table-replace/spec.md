@@ -1,11 +1,13 @@
 # sql-table-replace Specification
 
 ## Purpose
-Says what `ToSQL` with `SQLActionIfTableExistsReplace` leaves behind when the write fails: the old table, untouched. Databases whose DDL is transactional get that from one transaction; MySQL, whose DDL commits on its own, gets it from a staging table renamed into place.
+Says what `sqlio.Write` with `TableExistsReplace` leaves behind when the write fails: the old table, untouched. Databases whose DDL is transactional get that from one transaction; MySQL, whose DDL commits on its own, gets it from a staging table renamed into place.
+
 ## Requirements
+
 ### Requirement: A failed Replace leaves the old table as it was
 
-When `ToSQL` replaces an existing table and the write fails or is cancelled, the old table SHALL keep its name and its rows, and no table created for the write SHALL remain.
+When `sqlio.Write` with `TableExistsReplace` replaces an existing table and the write fails or is cancelled, the old table SHALL keep its name and its rows, and no table created for the write SHALL remain.
 
 #### Scenario: A transactional database
 
@@ -51,10 +53,10 @@ When the target did not exist, a table created by another session before the wri
 
 ### Requirement: A failed create or append leaves the database as it was
 
-On a database whose DDL commits on its own, a `ToSQL` that fails while creating a missing table SHALL leave no table under the target's name and no staging table. A failed append SHALL drop the columns it added, or name the ones it could not drop, and SHALL write none of its rows.
+On a database whose DDL commits on its own, a `sqlio.Write` that fails while creating a missing table SHALL leave no table under the target's name and no staging table. A failed append SHALL drop the columns it added, or name the ones it could not drop, and SHALL write none of its rows.
 
 #### Scenario: Create fails on the server
-- **WHEN** `ToSQL` to a missing MySQL table fails on its second batch
+- **WHEN** `sqlio.Write` to a missing MySQL table fails on its second batch
 - **THEN** it returns the error, and neither the table nor a staging table exists
 
 #### Scenario: Append fails on the server
@@ -64,4 +66,3 @@ On a database whose DDL commits on its own, a `ToSQL` that fails while creating 
 #### Scenario: Table created meanwhile
 - **WHEN** another session creates the target table just before the rename
 - **THEN** the call returns `already exists`, keeps that table, and drops the staging table
-
