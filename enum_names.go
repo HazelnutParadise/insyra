@@ -100,18 +100,6 @@ func (s SQLActionIfTableExists) String() string {
 	return fmt.Sprintf("SQLActionIfTableExists(%d)", int(s))
 }
 
-// String returns the constant name of v, or SheetExistsPolicy(n) for a value that
-// is not one of the constants.
-func (s SheetExistsPolicy) String() string {
-	switch s {
-	case SheetExistsFail:
-		return "SheetExistsFail"
-	case SheetExistsReplace:
-		return "SheetExistsReplace"
-	}
-	return fmt.Sprintf("SheetExistsPolicy(%d)", int(s))
-}
-
 // String returns the constant name of v, or UnknownPolicy(n) for a value that
 // is not one of the constants.
 func (u UnknownPolicy) String() string {

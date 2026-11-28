@@ -132,13 +132,3 @@ func TestDeprecatedReadWriteNamesKeepTheirMeaning(t *testing.T) {
 	}
 
 }
-
-func TestExcelWriteOptionsWriteTheHeaderByDefault(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "out.xlsx")
-	if err := NewDataTable(NewDataList(1).SetName("a")).ToExcel(path, ExcelWriteOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if got := sheetCells(t, path, "Sheet1"); !reflect.DeepEqual(got, [][]string{{"a"}, {"1"}}) {
-		t.Fatalf("cells %v, want the header then the value", got)
-	}
-}

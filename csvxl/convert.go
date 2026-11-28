@@ -160,7 +160,7 @@ func AppendCSVToExcel(sheets []SheetFromCSV, existingFile string, csvEncoding ..
 		return err
 	}
 
-	f, err := excelize.OpenFile(existingFile, insyra.ExcelReadOptions())
+	f, err := excelize.OpenFile(existingFile, excelsheet.Options())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", existingFile, err)
 	}
@@ -251,20 +251,9 @@ func ExcelToCSV(excelFile string, outputDir string, options ...ExcelToCSVOptions
 	return excelToCSV(excelFile, outputDir, opts)
 }
 
-// SheetNames returns the names of the sheets of the workbook at excelFile, in
-// workbook order.
-func SheetNames(excelFile string) ([]string, error) {
-	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
-	if err != nil {
-		return nil, fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
-	}
-	defer func() { _ = f.Close() }()
-	return f.GetSheetList(), nil
-}
-
 // excelToCSV is ExcelToCSV.
 func excelToCSV(excelFile, outputDir string, opts ExcelToCSVOptions) error {
-	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
+	f, err := excelize.OpenFile(excelFile, excelsheet.Options())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}

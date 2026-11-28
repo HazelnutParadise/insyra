@@ -563,47 +563,9 @@ dt, err := insyra.ReadSQL(db, insyra.SQLDialectMySQL, "events", insyra.ReadSQLOp
 })
 ```
 
-### ReadExcelSheet
+### Excel
 
-```go
-func ReadExcelSheet(filePath string, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error)
-```
-
-**Description:** Reads a specific sheet from an Excel file and loads the data into a new DataTable.
-
-**Parameters:**
-
-- `filePath`: The path to the Excel file.
-- `sheetName`: The name of the sheet to read.
-- `rowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
-- `headerRow`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
-- `rawStrings` (optional): If `true`, every cell stays text as Excel displays it. Passing more than one value is an error.
-
-A column is read the way a CSV column is: all whole numbers become `int64`, all numbers become `float64`, and any other value keeps the whole column as text. An empty cell in a numeric column becomes `NaN`, so a column of whole numbers with a gap is `float64`.
-
-The reader sees each cell as Excel displays it, so `1,234`, `50%`, `$12` and dates stay text, and one `#N/A` keeps its whole column as text. A code such as `007` becomes `7`; pass `rawStrings` as `true` to keep it.
-
-**Returns:**
-
-- `*DataTable`: A new DataTable containing the data from the Excel sheet.
-- `error`: An error if the file cannot be opened, the sheet doesn't exist, or the data cannot be processed.
-
-**Example:**
-
-```go
-dt, err := insyra.ReadExcelSheet("data.xlsx", "Sheet1", true, true)
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-### ReadExcel — from any source
-
-```go
-func ReadExcel(r io.Reader, sheetName string, rowNames bool, headerRow bool, rawStrings ...bool) (*DataTable, error)
-```
-
-**Description:** Reads one sheet of a workbook that is not a file on disk — an upload, an HTTP response, a zip entry — the same way `ReadExcelSheet` reads a path, with the same limit on how far the workbook may expand while it is read.
+Reading a sheet of an Excel workbook into a table, and writing a table as a sheet, live in the [`excel` package](excel.md) (`excel.Read`, `excel.ReadFrom`, `excel.Write`, `excel.WriteTo`), so a program that only uses the core does not compile the Excel library.
 
 ## Data Saving
 
@@ -736,44 +698,9 @@ jsonStr := dt.ToJSONString(true)
 fmt.Println(jsonStr)
 ```
 
-### ToExcel
+### Excel
 
-```go
-func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
-
-type ExcelWriteOptions struct {
-    Sheet         string            // sheet to write; "" means "Sheet1"
-    NoHeaderRow   bool              // leave out the row of column names, which is written by default
-    HasRowNames   bool              // write the row names as the first column
-    IfSheetExists SheetExistsPolicy // SheetExistsFail (default) or SheetExistsReplace
-}
-```
-
-**Description:** Writes the table as one sheet of the workbook at `filePath` and leaves every other sheet as it was. With no other fields set, the column names are written as the first row and there are no row names. If the file does not exist, a new workbook is created. If the workbook lacks the sheet, the sheet is added after the existing ones.
-
-If the sheet already exists, the default is to refuse: the call returns an error matching `ErrSheetExists` and the file is not touched. With `IfSheetExists: SheetExistsReplace`, the old sheet is thrown away, comments, tables, drawings, hidden rows and columns and merged ranges included, the widths of its visible columns and its view (zoom, frozen panes) carry over, and the table is written in its place, in the same position among the other sheets and hidden again if it was hidden. Formulas on other sheets that point at it by name then read the new values, and the names other sheets define stay with them; names defined for the replaced sheet alone go with it. Sheet names are matched the way Excel matches them, without regard to case, so `data` and `Data` are the same sheet, and the replaced sheet takes the name as given.
-
-Numbers, booleans and `time.Time` values are written as Excel values, not text, so they sort and sum in a spreadsheet. A time keeps its wall-clock reading but not its time zone, because Excel does not store one. Anything else is written as the same text `ToCSV` would write. The workbook is written to a temporary file and renamed into place, so a failure never leaves a damaged workbook behind. The path must end in an extension Excel's current format uses (`.xlsx`, `.xlsm`, …); the legacy `.xls` format cannot be written.
-
-**Example:** keep one sheet per year in a single report.
-
-```go
-opts := insyra.ExcelWriteOptions{Sheet: "2025"}
-err := sales2025.ToExcel("report.xlsx", opts)
-if errors.Is(err, insyra.ErrSheetExists) {
-    // 2025 is already there. Overwrite it on purpose; 2023 and 2024 stay.
-    opts.IfSheetExists = insyra.SheetExistsReplace
-    err = sales2025.ToExcel("report.xlsx", opts)
-}
-```
-
-### WriteExcel — to any destination
-
-```go
-func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error
-```
-
-**Description:** Writes the table as a new one-sheet workbook to any destination, such as an HTTP response, a zip entry or a buffer. The cells are written the same way `ToExcel` writes them. `IfSheetExists` is ignored, because the workbook is always new.
+Writing a table as an Excel sheet is `excel.Write(dt, path, opts...)` and `excel.WriteTo(dt, w, opts...)` in the [`excel` package](excel.md).
 
 ### ToMap
 

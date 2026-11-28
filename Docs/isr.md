@@ -118,7 +118,7 @@ type JSON_outOpts struct {
 // Excel struct for specifying Excel file and sheet
 type Excel struct {
     FilePath  string
-    SheetName string // Sheet to read or write; writing defaults to "Sheet1"
+    SheetName string // Sheet to read or write; reading defaults to the first sheet, writing to "Sheet1"
     InputOpts Excel_inOpts
     OutputOpts Excel_outOpts
 }
@@ -133,7 +133,7 @@ type Excel_inOpts struct {
 type Excel_outOpts struct {
     NoHeaderRow   bool                     // Leave out the row of column names
     HasRowNames   bool                     // Write the row names as the first column
-    IfSheetExists insyra.SheetExistsPolicy // Zero value refuses to overwrite an existing sheet; insyra.SheetExistsReplace replaces it
+    IfSheetExists excel.SheetExistsPolicy // Zero value refuses to overwrite an existing sheet; excel.SheetExistsReplace replaces it
 }
 
 // Example:
@@ -726,7 +726,7 @@ To(target any) error
 
 - `error`: nil on success. An unsupported target, a value target with no `FilePath`, a nil table, or a failed write returns an error; the table is not changed.
 
-JSON keys each value by its column name unless `JSON.OutputOpts.UseColIndex` is set. Excel refuses to overwrite a sheet that already exists unless `OutputOpts.IfSheetExists` is `insyra.SheetExistsReplace`.
+JSON keys each value by its column name unless `JSON.OutputOpts.UseColIndex` is set. Excel refuses to overwrite a sheet that already exists unless `OutputOpts.IfSheetExists` is `excel.SheetExistsReplace`.
 
 ```go
 t := isr.DT.From(isr.CSV{FilePath: "in.csv"})

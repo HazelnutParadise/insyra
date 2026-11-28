@@ -5,6 +5,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 )
 
 // Use `DT.From` to create a new DataTable from a DataList, DL, Row, Col, []Row, []Col, CSV, JSON, map[string]any, or map[int]any.
@@ -108,7 +109,12 @@ func (d DataTable) From(item any) *DataTable {
 		if val.FilePath == "" {
 			return failDT(&t, "DT.From", "Excel FilePath cannot be empty")
 		}
-		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.HasRowNames, !val.InputOpts.NoHeaderRow, val.InputOpts.RawStrings)
+		read, err := excel.Read(val.FilePath, excel.ReadOptions{
+			Sheet:       val.SheetName,
+			NoHeaderRow: val.InputOpts.NoHeaderRow,
+			HasRowNames: val.InputOpts.HasRowNames,
+			RawStrings:  val.InputOpts.RawStrings,
+		})
 		if err != nil {
 			return failDT(&t, "DT.From", "%v", err)
 		}

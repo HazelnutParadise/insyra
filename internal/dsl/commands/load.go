@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 	"github.com/HazelnutParadise/insyra/parquet"
 )
 
@@ -111,7 +112,12 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 			if !opts.SheetSet || opts.Sheet == "" {
 				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
 			}
-			table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers, !opts.Infer)
+			table, err = excel.Read(path, excel.ReadOptions{
+				Sheet:       opts.Sheet,
+				NoHeaderRow: !opts.Headers,
+				HasRowNames: opts.RowNames,
+				RawStrings:  !opts.Infer,
+			})
 		default:
 			return fmt.Errorf("unsupported file type: %s", path)
 		}
