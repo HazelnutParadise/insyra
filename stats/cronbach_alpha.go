@@ -171,8 +171,15 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 				cell = cols[i][row]
 			}
 			v, ok := insyra.ToFloat64Safe(cell)
+			if _, isText := cell.(string); isText {
+				ok = false
+			}
 			if !ok {
-				return nil, fmt.Errorf("non-numeric value at row index %d column index %d (%s): %s", row, positions[i], names[i], utils.SprintBounded(cell))
+				shown := utils.SprintBounded(cell)
+				if text, isText := cell.(string); isText {
+					shown = fmt.Sprintf("%q", text)
+				}
+				return nil, fmt.Errorf("non-numeric value at row index %d column index %d (%s): %s", row, positions[i], names[i], shown)
 			}
 			if math.IsNaN(v) || math.IsInf(v, 0) {
 				complete = false
@@ -232,50 +239,47 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 		}
 	}
 
-	result := &CronbachAlphaResult{
-		NumItems:    k,
-		N:           n,
-		RowsDropped: dropped,
-		Items:       make([]CronbachAlphaItem, k),
+	// The rest score of item i is the sum of the other items; its covariance
+	// with item i and its variance come from the row sums of the covariance
+	// matrix, so the whole loop is O(k²).
+	rowSum := make([]float64, k)
+	trace, total := 0.0, 0.0
+	for i := 0; i < k; i++ {
+		trace += cov[i][i]
+		for j := 0; j < k; j++ {
+			rowSum[i] += cov[i][j]
+		}
+		total += rowSum[i]
 	}
-	all := make([]bool, k)
-	for i := range all {
-		all[i] = true
+	// Items that always add up to the same total, such as x and 6 - x or
+	// ipsative items, leave alpha undefined: its formula divides by the
+	// total's variance.
+	if total <= 1e-10*trace {
+		return nil, fmt.Errorf("the total score of the %d items has no variance over the %d rows used, so alpha is not defined", k, n)
 	}
-	result.Alpha = rawAlpha(cov, all)
 
+	kf := float64(k)
 	sumR := 0.0
 	for i := 0; i < k; i++ {
 		for j := 0; j < k; j++ {
 			sumR += cov[i][j] / math.Sqrt(cov[i][i]*cov[j][j])
 		}
 	}
-	kf := float64(k)
-	result.MeanInterItemCorrelation = (sumR - kf) / (kf * (kf - 1))
-	result.StandardizedAlpha = kf / (kf - 1) * (1 - kf/sumR)
-
+	result := &CronbachAlphaResult{
+		Alpha:                    alphaOf(kf, trace, total),
+		StandardizedAlpha:        kf / (kf - 1) * (1 - kf/sumR),
+		MeanInterItemCorrelation: (sumR - kf) / (kf * (kf - 1)),
+		NumItems:                 k,
+		N:                        n,
+		RowsDropped:              dropped,
+		Items:                    make([]CronbachAlphaItem, k),
+	}
 	for i := 0; i < k; i++ {
-		// The rest score is the sum of the other items: its covariance with
-		// item i and its variance come from the covariance matrix.
-		covRest, varRest := 0.0, 0.0
-		for j := 0; j < k; j++ {
-			if j == i {
-				continue
-			}
-			covRest += cov[i][j]
-			for l := 0; l < k; l++ {
-				if l != i {
-					varRest += cov[j][l]
-				}
-			}
-		}
+		covRest := rowSum[i] - cov[i][i]
+		varRest := total - 2*rowSum[i] + cov[i][i]
 		alphaIfDeleted := math.NaN()
 		if k > 2 {
-			rest := make([]bool, k)
-			for j := range rest {
-				rest[j] = j != i
-			}
-			alphaIfDeleted = rawAlpha(cov, rest)
+			alphaIfDeleted = alphaOf(kf-1, trace-cov[i][i], varRest)
 		}
 		result.Items[i] = CronbachAlphaItem{
 			Name:                names[i],
@@ -286,52 +290,54 @@ func CronbachAlpha(dt insyra.IDataTable, items []any, opts ...CronbachAlphaOptio
 			AlphaIfDeleted:      alphaIfDeleted,
 		}
 	}
+	// Values whose squares overflow a float64 give an infinite or NaN
+	// statistic; that is not an answer.
+	finite := !math.IsNaN(result.Alpha) && !math.IsInf(result.Alpha, 0) && !math.IsNaN(result.StandardizedAlpha) && !math.IsInf(result.StandardizedAlpha, 0)
+	for _, it := range result.Items {
+		if math.IsNaN(it.SD) || math.IsInf(it.SD, 0) || math.IsNaN(it.ItemRestCorrelation) {
+			finite = false
+		}
+	}
+	if !finite {
+		return nil, errors.New("the items' values are too large or too small to compute alpha in float64; rescale them first")
+	}
 	return result, nil
 }
 
-// rawAlpha is k/(k-1) * (1 - trace / total) over the items in, from their
-// covariance matrix.
-func rawAlpha(cov [][]float64, in []bool) float64 {
-	k, trace, total := 0, 0.0, 0.0
-	for i := range cov {
-		if !in[i] {
-			continue
-		}
-		k++
-		trace += cov[i][i]
-		for j := range cov {
-			if in[j] {
-				total += cov[i][j]
-			}
-		}
-	}
-	kf := float64(k)
-	return kf / (kf - 1) * (1 - trace/total)
+// alphaOf is k/(k-1) * (1 - trace / total): raw alpha from the sum of the item
+// variances and the variance of the total.
+func alphaOf(k, trace, total float64) float64 {
+	return k / (k - 1) * (1 - trace/total)
 }
 
-// columnPosition returns the position in dt of the column sel selects, with
-// the error the table gives when it selects none. dt is a copy the caller
-// owns, so the failure recorded on it reaches no one else.
+// columnPosition returns the position in dt of the column sel selects: a
+// string is an Excel-style index, Name a column name, an int a 0-based
+// position counted from the end when negative.
 func columnPosition(dt *insyra.DataTable, sel any) (int, error) {
-	if dt.GetCol(sel) == nil {
-		msg := "not found"
-		if info := dt.PopErr(); info != nil {
-			msg = info.Message
-		}
-		return -1, errors.New(msg)
-	}
 	_, numCols := dt.Size()
 	switch v := sel.(type) {
 	case int:
-		if v < 0 {
-			return numCols + v, nil
+		pos := v
+		if pos < 0 {
+			pos += numCols
 		}
-		return v, nil
+		if pos < 0 || pos >= numCols {
+			return -1, fmt.Errorf("column position %d is out of range for %d columns", v, numCols)
+		}
+		return pos, nil
 	case insyra.NameSelector:
-		return dt.GetColNumberByName(v.Value()), nil
+		for i, name := range dt.ColNames() {
+			if name == v.Value() {
+				return i, nil
+			}
+		}
+		return -1, fmt.Errorf("column %s does not exist, the table has %d column(s)", v.Value(), numCols)
 	case string:
-		pos, _ := insyra.ColIndexToNumber(v)
+		pos, ok := insyra.ColIndexToNumber(v)
+		if !ok || pos < 0 || pos >= numCols {
+			return -1, fmt.Errorf("column %s does not exist, the table has %d column(s); use insyra.Name(%q) for a column name", v, numCols, v)
+		}
 		return pos, nil
 	}
-	return -1, fmt.Errorf("column selector of type %T", sel)
+	return -1, fmt.Errorf("column selector of type %T; use an Excel-style index such as \"A\", insyra.Name(\"price\"), or an int position", sel)
 }

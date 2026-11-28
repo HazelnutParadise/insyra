@@ -18,7 +18,7 @@ A row with a NaN or ±Inf in any item SHALL be left out and counted in `RowsDrop
 
 ### Requirement: CronbachAlpha takes items and reverse-scored items as column selectors
 
-`items` and `ReverseScored` SHALL be column selectors of the table passed in, `nil` items meaning every column. A reverse-scored item SHALL be negated for the statistics while its `Mean` stays its own. A repeated, unknown or out-of-scale selector, a constant item, fewer than two items or rows, and more than one options value SHALL be errors.
+`items` and `ReverseScored` SHALL be column selectors of the table passed in, `nil` items meaning every column. A reverse-scored item SHALL be negated for the statistics while its `Mean` stays its own. A repeated, unknown or out-of-scale selector, a constant item, items whose total never varies, a non-finite result, fewer than two items or rows, and more than one options value SHALL be errors.
 
 #### Scenario: The same items three ways
 - **WHEN** the same three items are given by name, by letter and by position

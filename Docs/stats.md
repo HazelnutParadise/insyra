@@ -71,7 +71,7 @@ depends on the family, and each family states which:
 | Clustering, and the features KNN reads | refused |
 | PCA, and the targets `KNNRegress` reads | a blank or text cell is refused, but `NaN` and `±Inf` are **not**: they reach the result, so `PCA` returns `NaN` eigenvalues and `KNNRegress` returns a `NaN` or infinite prediction, with a nil error |
 | Factor analysis | a `NaN` or `±Inf` removes the whole observation (listwise deletion); a blank or text cell is refused |
-| Cronbach's alpha | a `NaN` or `±Inf` removes the whole row (listwise deletion), counted in `RowsDropped`; a text cell is refused, with an error naming its row and column from 0 |
+| Cronbach's alpha | a `NaN` or `±Inf` removes the whole row (listwise deletion), counted in `RowsDropped`; a blank or text cell is refused, with an error naming its row and column from 0 |
 | Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
 
 The functions below word a refusal the same way. A blank or text cell gives
@@ -433,7 +433,7 @@ type CronbachAlphaOptions struct {
 - A reverse-scored item is negated before the statistics are computed. Alpha, the SDs and the item-rest correlations are what reversing it on its own scale gives; its `Mean` is the mean of its values in the table. Nothing is reversed automatically.
 - With two items, `AlphaIfDeleted` is `NaN`: the alpha of one item is not defined.
 - A negative alpha is returned as it is, usually the sign of an item scored in the other direction.
-- Errors: a nil table; fewer than two items; an item, or a reverse-scored item, given twice or naming no column; a reverse-scored item that is not among the items; an item with no variance over the rows used, which would leave the standardized alpha undefined; fewer than two rows used; more than one options value.
+- Errors: a nil table; fewer than two items; an item, or a reverse-scored item, given twice or naming no column; a reverse-scored item that is not among the items; an item with no variance over the rows used, which would leave the standardized alpha undefined; items whose total never varies, such as `x` and `6 − x` or ipsative items, which leave alpha undefined; values too large or too small for the statistics to be finite in `float64`; fewer than two rows used; more than one options value. A `nil` cell, or a string, even one holding a number, is refused like a text cell; the error quotes a string.
 
 **Example:**
 
