@@ -95,3 +95,25 @@ func hasDuplicateValues(values []any) bool {
 	}
 	return false
 }
+
+// Shuffled returns the shuffled copy and leaves its receiver alone. On this
+// line Shuffle does the same, and for one seed both give the same order; 0.4
+// makes Shuffle reorder the receiver, so callers who want a copy use Shuffled.
+func TestDataListShuffledLeavesTheListAlone(t *testing.T) {
+	opts := SamplingOptions{UseSeed: true, Seed: 42}
+	dl := NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10).SetName("x")
+
+	got := dl.Shuffled(opts)
+	if !dl.IsEqualTo(NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)) {
+		t.Fatalf("Shuffled changed the list: %v", dl.Data())
+	}
+	if got.GetName() != "x_Shuffled" || got.Len() != 10 {
+		t.Fatalf("got name %q, length %d", got.GetName(), got.Len())
+	}
+	if !got.IsEqualTo(dl.Shuffle(opts)) {
+		t.Fatal("Shuffled and Shuffle gave different orders for one seed")
+	}
+	if got.IsEqualTo(dl) {
+		t.Fatal("seed 42 left ten elements in order")
+	}
+}
