@@ -90,6 +90,9 @@ func TestCronbachAlphaMatchesPsych(t *testing.T) {
 				{"raw alpha", got.Alpha, baselineFloat(t, rb, "raw_alpha")},
 				{"standardized alpha", got.StandardizedAlpha, baselineFloat(t, rb, "std_alpha")},
 				{"mean inter-item r", got.MeanInterItemCorrelation, baselineFloat(t, rb, "average_r")},
+				{"Guttman lambda 6", got.GuttmanLambda6, baselineFloat(t, rb, "g6")},
+				{"Feldt interval, lower", got.CI[0], baselineFloatSlice(t, rb, "ci")[0]},
+				{"Feldt interval, upper", got.CI[1], baselineFloatSlice(t, rb, "ci")[1]},
 			} {
 				if !closeTo(c.got, c.want) {
 					t.Errorf("%s: got %.12f, psych %.12f", c.what, c.got, c.want)
@@ -277,5 +280,27 @@ func TestCronbachAlphaMatchesPsychOnCompleteCases(t *testing.T) {
 	rb := runRBaseline(t, "cronbach_alpha", map[string]any{"rows": complete, "reverse": []int{}})
 	if got.N != 98 || got.RowsDropped != 2 || !closeTo(got.Alpha, baselineFloat(t, rb, "raw_alpha")) {
 		t.Errorf("N %d, dropped %d, alpha %v, psych %v", got.N, got.RowsDropped, got.Alpha, baselineFloat(t, rb, "raw_alpha"))
+	}
+}
+
+// The interval takes another level, refuses one outside (0, 1), and agrees
+// with psych's alpha.ci at that level.
+func TestCronbachAlphaConfidenceLevel(t *testing.T) {
+	requireRTools(t)
+	rows := likertScale(70, 4, 11)
+	dt := tableOfRows(rows, "a", "b", "c", "d")
+	got, err := stats.CronbachAlpha(dt, nil, stats.CronbachAlphaOptions{ConfidenceLevel: 0.9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rb := runRBaseline(t, "cronbach_alpha", map[string]any{"rows": rows, "reverse": []int{}, "level": 0.9})
+	ci := baselineFloatSlice(t, rb, "ci")
+	if got.ConfidenceLevel != 0.9 || !closeTo(got.CI[0], ci[0]) || !closeTo(got.CI[1], ci[1]) || !(got.CI[0] < got.Alpha && got.Alpha < got.CI[1]) {
+		t.Errorf("CI %v at %v, psych %v, alpha %v", got.CI, got.ConfidenceLevel, ci, got.Alpha)
+	}
+	for _, bad := range []float64{1, -0.5, math.NaN()} {
+		if _, err := stats.CronbachAlpha(dt, nil, stats.CronbachAlphaOptions{ConfidenceLevel: bad}); err == nil {
+			t.Errorf("level %v gave no error", bad)
+		}
 	}
 }
