@@ -1,6 +1,6 @@
 package isr
 
-import "github.com/HazelnutParadise/insyra"
+import "github.com/HazelnutParadise/insyra/excel"
 
 // Excel represents a sheet in an Excel file: a source for DT.From and a
 // target for (*DataTable).To.
@@ -20,5 +20,5 @@ type Excel_inOpts struct {
 type Excel_outOpts struct {
 	RowNames2FirstCol bool
 	ColNames2FirstRow bool
-	IfSheetExists     insyra.SheetExistsPolicy // zero value refuses to overwrite an existing sheet
+	IfSheetExists     excel.SheetExistsPolicy // zero value refuses to overwrite an existing sheet
 }

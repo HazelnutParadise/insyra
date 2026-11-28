@@ -510,6 +510,8 @@ dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
 
 ### ReadExcelSheet
 
+> **Deprecated:** use [`excel.Read`](excel.md) from the `excel` package. This function is removed in 0.4.
+
 ```go
 func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error)
 ```
@@ -539,6 +541,8 @@ if err != nil {
 ```
 
 ### ReadExcel — from any source
+
+> **Deprecated:** use [`excel.ReadFrom`](excel.md) from the `excel` package. This function is removed in 0.4.
 
 ```go
 func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error)
@@ -699,6 +703,8 @@ fmt.Println(jsonStr)
 
 ### ToExcel
 
+> **Deprecated:** use [`excel.Write`](excel.md) from the `excel` package. This function is removed in 0.4.
+
 ```go
 func (dt *DataTable) ToExcel(filePath string, opts ExcelWriteOptions) error
 
@@ -729,6 +735,8 @@ if errors.Is(err, insyra.ErrSheetExists) {
 ```
 
 ### WriteExcel — to any destination
+
+> **Deprecated:** use [`excel.WriteTo`](excel.md) from the `excel` package. This function is removed in 0.4.
 
 ```go
 func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error

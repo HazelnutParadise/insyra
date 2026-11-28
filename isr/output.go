@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 )
 
 // To writes the table to target, the output counterpart of DT.From. target is
@@ -97,11 +98,11 @@ func (t *DataTable) toExcel(e Excel) error {
 	if e.FilePath == "" {
 		return errors.New("isr.DT.To: Excel has no FilePath")
 	}
-	err := t.ToExcel(e.FilePath, insyra.ExcelWriteOptions{
-		Sheet:                 e.SheetName,
-		SetColNamesToFirstRow: e.OutputOpts.ColNames2FirstRow,
-		SetRowNamesToFirstCol: e.OutputOpts.RowNames2FirstCol,
-		IfSheetExists:         e.OutputOpts.IfSheetExists,
+	err := excel.Write(t, e.FilePath, excel.WriteOptions{
+		Sheet:         e.SheetName,
+		NoHeaderRow:   !e.OutputOpts.ColNames2FirstRow,
+		HasRowNames:   e.OutputOpts.RowNames2FirstCol,
+		IfSheetExists: e.OutputOpts.IfSheetExists,
 	})
 	if err != nil {
 		return fmt.Errorf("isr.DT.To: %w", err)

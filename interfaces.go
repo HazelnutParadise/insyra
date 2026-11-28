@@ -330,7 +330,12 @@ type IDataTable interface {
 	ToJSONString(useColNames bool) string
 	// ToExcel writes the DataTable as one sheet of the workbook at filePath,
 	// leaving the workbook's other sheets as they were.
+	//
+	// Deprecated: use excel.Write. Removed in 0.4.
 	ToExcel(filePath string, opts ExcelWriteOptions) error
+	// WriteExcel writes the DataTable as a one-sheet workbook to w.
+	//
+	// Deprecated: use excel.WriteTo. Removed in 0.4.
 	WriteExcel(w io.Writer, opts ExcelWriteOptions) error
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error

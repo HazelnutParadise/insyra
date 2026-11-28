@@ -35,6 +35,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `REGEXTEST` is Excel 365's name for `REGEX_MATCH`, which is deprecated in its favour, logs one warning, and is removed in 0.4.
 - CCL: `CEIL` and `FLOOR` take an optional positive multiple: `CEIL(12, 5)` is 15 and `FLOOR(12, 5)` is 10. `AVERAGE`, `POWER`, `CEILING`, `REPT` and other Excel names CCL spells differently now say which name to write.
 - `insyra.Name("price")` marks a column selector as a name rather than an Excel-style index, the 0.4 selector rule. `arrowipc.ReadOptions.Columns` takes it; other selectors on this line are unchanged. `isr.Name` now returns the same type (`isr.NameSelector` is an alias of `insyra.NameSelector`), as on 0.4, so either works in `isr` and in `arrowipc`.
+- `ReadExcelSheet`, `ReadExcel`, `DataTable.ToExcel`, `DataTable.WriteExcel`, `ExcelWriteOptions`, `SheetExistsPolicy`, `SheetExistsFail`, `SheetExistsReplace` and `ErrSheetExists` are deprecated in favour of the new [`excel`](Docs/excel.md) package and are removed in 0.4, which takes Excel out of the core so a program that does not use it no longer compiles the Excel library. They keep working unchanged ([#453](https://github.com/HazelnutParadise/insyra/issues/453)).
 
 ### CLI
 
@@ -112,6 +113,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `py`
 - **BREAKING (behaviour)**: a missing value in a returned polars DataFrame, or a pandas `pd.NA`, comes back as `nil`. polars and pandas sent the DataFrame through NumPy, which has no missing integer, so a polars null in any column came back as `NaN`, unlike the same polars Series. A polars list or struct column, and a pandas `boolean` or `string` column, an `Int64` Series, or an `Int64` column beside another, holding `pd.NA`, made `insyra.Return` raise, and a struct column came back as floats; they now come back as slices, maps and `nil`. A NaN polars holds as a value, and the NaN of a NumPy-backed pandas column, still come back as NaN. Use `ClearNils` where `ClearNaNs` removed such values.
+
+### `csvxl`
+- `SheetNames` is deprecated; use `excel.SheetNames`, the same function. It is removed in 0.4.
+
+### `excel`
+- New package `excel` reads a workbook sheet into a `DataTable` and writes a `DataTable` as a sheet, with the API 0.4 keeps. `excel.Read(path, opts...)` and `excel.ReadFrom(r, opts...)` take an optional `ReadOptions` (`Sheet`, empty meaning the first sheet, `NoHeaderRow`, `HasRowNames`, `RawStrings`) and type columns the way CSV reading does unless `RawStrings` is set; `excel.Write(dt, path, opts...)` and `excel.WriteTo(dt, w, opts...)` take an optional `WriteOptions` (`Sheet`, `NoHeaderRow`, `HasRowNames`, `IfSheetExists`) and write the header row by default; `excel.SheetNames(path)` lists a workbook's sheets. More than one options value, or a nil table, is an error ([#453](https://github.com/HazelnutParadise/insyra/issues/453)).
 
 ### `parquet`
 - `ExplainFilterWithCCL` and `ExplainApplyCCL` say how `FilterWithCCL` and each statement of `ApplyCCL` would run, from the file's metadata and the expression alone: whether the rows are evaluated batch by batch or whole columns are loaded and why, which columns are read and held, how many times the file's data is read, and an estimate of the held columns' size. `CCLPlan` has `String()` and `Show()` ([#415](https://github.com/HazelnutParadise/insyra/issues/415)).

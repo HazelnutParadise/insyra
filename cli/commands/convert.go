@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/csvxl"
+	"github.com/HazelnutParadise/insyra/excel"
 )
 
 const convertUsage = "convert <input> <output> | convert <file.xlsx> sheet <name> <file.csv> [sheet <name> <file.csv> ...] [allowformulas true|false]"
@@ -114,7 +115,7 @@ func runConvertSheetPairs(ctx *ExecContext, input string, rest []string) error {
 // regard to case, as macOS and Windows compare file names). The files are
 // written one output directory at a time.
 func convertSheetPairs(ctx *ExecContext, input string, pairs []sheetFile, allowFormulas bool) error {
-	sheets, err := csvxl.SheetNames(input)
+	sheets, err := excel.SheetNames(input)
 	if err != nil {
 		return err
 	}
@@ -177,7 +178,7 @@ func runSheetsCommand(ctx *ExecContext, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: sheets <file.xlsx>")
 	}
-	sheets, err := csvxl.SheetNames(args[0])
+	sheets, err := excel.SheetNames(args[0])
 	if err != nil {
 		return err
 	}

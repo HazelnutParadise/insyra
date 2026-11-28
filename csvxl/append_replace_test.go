@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 )
@@ -496,7 +497,7 @@ func TestReplaceOnlySheetNamedLikeThePlaceholder(t *testing.T) {
 	rootPath := filepath.Join(dir, "root.xlsx")
 	newPlaceholderBook(rootPath)
 	dt := insyra.NewDataTable(insyra.NewDataList("9").SetName("a"))
-	require.NoError(t, dt.ToExcel(rootPath, insyra.ExcelWriteOptions{Sheet: name, IfSheetExists: insyra.SheetExistsReplace}))
+	require.NoError(t, excel.Write(dt, rootPath, excel.WriteOptions{Sheet: name, NoHeaderRow: true, IfSheetExists: excel.SheetExistsReplace}))
 	f, err = excelize.OpenFile(rootPath)
 	require.NoError(t, err)
 	requireOneSheetWithoutZ100(f)

@@ -106,9 +106,9 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
 			}
 			if opts.InferSet {
-				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers, !opts.Infer)
+				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers, !opts.Infer) //nolint:staticcheck // keeps the 0.3.x default (text with a warning) until 0.4
 			} else {
-				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers)
+				table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers) //nolint:staticcheck // keeps the 0.3.x default (text with a warning) until 0.4
 			}
 		default:
 			return fmt.Errorf("unsupported file type: %s", path)

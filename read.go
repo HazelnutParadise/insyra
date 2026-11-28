@@ -556,6 +556,10 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 // DataTable. rawStrings says whether every cell stays text (true) or columns
 // are typed the way CSV reading types them (false). Left out, every cell stays
 // text with one warning, because from 0.4 columns are typed by default.
+//
+// Deprecated: use excel.Read(path, excel.ReadOptions{...}), which types
+// columns by default and reads the first sheet when none is named. Removed
+// in 0.4.
 func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error) {
 	raw, err := excelRawStrings("ReadExcelSheet", rawStrings)
 	if err != nil {
@@ -572,6 +576,8 @@ func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames boo
 // ReadExcel reads one sheet of an Excel workbook from any source — an HTTP
 // response body, a zip entry, bytes in memory — the same way ReadExcelSheet
 // reads a file.
+//
+// Deprecated: use excel.ReadFrom(r, excel.ReadOptions{...}). Removed in 0.4.
 func ReadExcel(r io.Reader, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool, rawStrings ...bool) (*DataTable, error) {
 	raw, err := excelRawStrings("ReadExcel", rawStrings)
 	if err != nil {
