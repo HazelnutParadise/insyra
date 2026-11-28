@@ -312,6 +312,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `stats.WrightVarianceRatio(returns, qs, opts...)` 用 Wright（2000）的名次與正負號變異數比 `R1`、`R2`、`S1` 檢定隨機漫步；p 值由模擬虛無分配算出，任何樣本數都準確；統計量與 R 的 `vrtest::Wright` 一致（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `VarianceRatio` 與 `Autocorrelation` 改回傳 `VarianceRatioResults`、`AutocorrelationResults`，也就是原本的結果切片多了 `Show()`，能把所有持有期或落後期印成一張表。原本用迴圈走訪或當切片傳遞的程式碼不受影響；只有把函式本身存進舊函式型別變數（例如 `var f func(insyra.IDataList, ...int) ([]stats.VarianceRatioResult, error) = stats.VarianceRatio`）的寫法要改用新的結果型別。
 - `stats.DiscreteTimeHazard(durations, observed, opts...)` 以 Allison 的人期（person-period）方法估計離散時間風險模型：一段狀態持續越久是否越容易結束、還有哪些因素會改變這個機率；`stats.PersonPeriod` 回傳它所用的人期表。`GLM` 的二項分布支援 `Cloglog` 連結函數。結果與 R 的 `glm` 一致（[#443](https://github.com/HazelnutParadise/insyra/issues/443)）。
+- 新增 `CronbachAlpha(dt, items, opts...)`，計算量表的內部一致性：原始與標準化 alpha、平均題間相關，以及每一題的平均數、標準差、題目與其他題總分的相關（SPSS 的 Corrected Item-Total Correlation、psych 的 `r.drop`）和刪題後 alpha。有缺值的列會整列排除，反向題用 `CronbachAlphaOptions.ReverseScored` 指定，在完整資料上結果與 R 的 `psych::alpha` 一致（[#734](https://github.com/HazelnutParadise/insyra/issues/734)）。
 
 ### `csvxl`
 - **BREAKING**：`ExcelToCsv` 與 `EachExcelToCsv` 會用 v0.3.3 檢查工作表名稱的同一套規則檢查 `csvNames` 指定的檔名：含路徑分隔符號、或不會直接落在輸出目錄內的檔名都會被拒絕，所以 `csvNames: []string{"sub/out.csv"}` 不再寫進子目錄。每張 CSV 先寫入暫存檔再 rename 到目標位置，寫入失敗時不會留下截斷的檔案。
