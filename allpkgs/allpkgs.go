@@ -8,6 +8,7 @@ import (
 	_ "github.com/HazelnutParadise/insyra/accel"
 	_ "github.com/HazelnutParadise/insyra/arrowipc"
 	_ "github.com/HazelnutParadise/insyra/csvxl"
+	_ "github.com/HazelnutParadise/insyra/excel"
 	_ "github.com/HazelnutParadise/insyra/datafetch"
 	_ "github.com/HazelnutParadise/insyra/finance"
 	_ "github.com/HazelnutParadise/insyra/gplot"

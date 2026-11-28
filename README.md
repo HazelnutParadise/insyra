@@ -459,6 +459,7 @@ How a cell treats a decimal (it sorts by value, but `Mean` and `Sum` need it con
 | **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
+| **[excel](/Docs/excel.md)** | Read an Excel sheet into a `DataTable` and write a `DataTable` as a sheet; kept out of the core so programs that do not need Excel do not compile it. |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[arrowipc](/Docs/arrowipc.md)** | Read-only Arrow IPC file / Feather V2 schema inspection and cancellable DataTable batch reading. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |

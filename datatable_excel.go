@@ -17,18 +17,26 @@ import (
 
 // ErrSheetExists reports that ToExcel was asked to write a sheet the workbook
 // already holds without SheetExistsReplace. Match it with errors.Is.
+//
+// Deprecated: use excel.ErrSheetExists, the same value. Removed in 0.4.
 var ErrSheetExists = errors.New("sheet already exists")
 
 // SheetExistsPolicy says what ToExcel does when the workbook already holds the
 // sheet it is writing.
+//
+// Deprecated: use excel.SheetExistsPolicy, the same type. Removed in 0.4.
 type SheetExistsPolicy int
 
 const (
 	// SheetExistsFail refuses the save and leaves the file exactly as it was.
 	// It is the zero value, so a sheet is never overwritten unless asked.
+	//
+	// Deprecated: use excel.SheetExistsFail. Removed in 0.4.
 	SheetExistsFail SheetExistsPolicy = iota
 	// SheetExistsReplace discards the sheet, formatting included, and writes
 	// the table in its place, keeping the sheet's position among the others.
+	//
+	// Deprecated: use excel.SheetExistsReplace. Removed in 0.4.
 	SheetExistsReplace
 )
 
@@ -37,6 +45,10 @@ const (
 const defaultExcelSheet = "Sheet1"
 
 // ExcelWriteOptions configures ToExcel and WriteExcel.
+//
+// Deprecated: use excel.WriteOptions, which spells the header row and row
+// names NoHeaderRow and HasRowNames and writes the header row by default.
+// Removed in 0.4.
 type ExcelWriteOptions struct {
 	// Sheet is the sheet the table is written to. Empty means "Sheet1".
 	Sheet string
@@ -66,6 +78,9 @@ func (opts ExcelWriteOptions) sheetName() string {
 // a failure never leaves a damaged workbook behind. Numbers, booleans and
 // times are written as Excel values; a time keeps its wall-clock reading but
 // not its time zone, which Excel does not store.
+//
+// Deprecated: use excel.Write(dt, path, excel.WriteOptions{...}). Removed in
+// 0.4.
 func (dt *DataTable) ToExcel(path string, opts ExcelWriteOptions) error {
 	sheet := opts.sheetName()
 	f, created, err := openOrNewWorkbook(path, sheet)
@@ -105,6 +120,9 @@ func (dt *DataTable) ToExcel(path string, opts ExcelWriteOptions) error {
 // WriteExcel writes the table as a one-sheet workbook to any destination — an
 // HTTP response, a zip entry, a buffer — the same way ToExcel writes a new
 // file.
+//
+// Deprecated: use excel.WriteTo(dt, w, excel.WriteOptions{...}). Removed in
+// 0.4.
 func (dt *DataTable) WriteExcel(w io.Writer, opts ExcelWriteOptions) error {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()

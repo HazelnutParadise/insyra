@@ -94,6 +94,8 @@ still converted.
 
 ### `SheetNames`
 
+> **Deprecated:** use [`excel.SheetNames`](excel.md#sheetnames), the same function. This one is removed in 0.4.
+
 ```go
 func SheetNames(excelFile string) ([]string, error)
 ```

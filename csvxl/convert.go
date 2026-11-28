@@ -318,6 +318,8 @@ func ExcelToCSV(excelFile, outputDir string, options ...ExcelToCSVOptions) error
 
 // SheetNames returns the names of the sheets of the workbook at excelFile, in
 // workbook order.
+//
+// Deprecated: use excel.SheetNames, the same function. Removed in 0.4.
 func SheetNames(excelFile string) ([]string, error) {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {

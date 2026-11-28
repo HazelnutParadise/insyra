@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 )
 
 func TestLoad_CSV_DefaultsHeaderTrueRownamesFalse(t *testing.T) {
@@ -285,7 +286,7 @@ func TestSave_Excel_WritesSheet1WithHeaders(t *testing.T) {
 	if err := runSaveCommand(ctx, []string{"t", path}); err != nil {
 		t.Fatalf("save failed: %v", err)
 	}
-	dt, err := insyra.ReadExcelSheet(path, "Sheet1", false, true)
+	dt, err := excel.Read(path, excel.ReadOptions{Sheet: "Sheet1", RawStrings: true})
 	if err != nil {
 		t.Fatalf("read back failed: %v", err)
 	}
@@ -312,7 +313,7 @@ func TestSave_Excel_SecondSaveNeedsIfExistsReplace(t *testing.T) {
 	if err := runSaveCommand(ctx, []string{"t", path, "sheet", "2025", "if-exists", "replace"}); err != nil {
 		t.Fatalf("replace failed: %v", err)
 	}
-	if _, err := insyra.ReadExcelSheet(path, "2024", false, true); err != nil {
+	if _, err := excel.Read(path, excel.ReadOptions{Sheet: "2024"}); err != nil {
 		t.Fatalf("the other sheet did not survive: %v", err)
 	}
 }

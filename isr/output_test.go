@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 	"github.com/HazelnutParadise/insyra/isr"
 )
 
@@ -124,7 +125,7 @@ func TestToExcelWritesTheNamedSheet(t *testing.T) {
 		t.Fatal("writing an existing sheet with the zero policy should fail")
 	}
 	replace := isr.Excel{FilePath: path, SheetName: "Result"}
-	replace.OutputOpts.IfSheetExists = insyra.SheetExistsReplace
+	replace.OutputOpts.IfSheetExists = excel.SheetExistsReplace
 	if err := outputSample().To(replace); err != nil {
 		t.Fatalf("replace: %v", err)
 	}

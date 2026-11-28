@@ -120,9 +120,9 @@ func (d DataTable) From(item any) *DataTable {
 			insyra.LogWarning("isr", "DT.From", "Excel FilePath cannot be empty")
 		}
 		if val.InputOpts.RawStrings {
-			t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames, true)
+			t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames, true) //nolint:staticcheck // keeps the 0.3.x default (text with a warning) until 0.4
 		} else {
-			t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+			t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames) //nolint:staticcheck // keeps the 0.3.x default (text with a warning) until 0.4
 		}
 		if err != nil {
 			recordDT(&t, "DT.From", "%v", err)

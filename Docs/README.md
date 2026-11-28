@@ -52,6 +52,7 @@ dt.Show()
 | Document              | Description                                                |
 | --------------------- | ---------------------------------------------------------- |
 | [csvxl](csvxl.md)     | CSV and Excel file reading/writing with encoding detection |
+| [excel](excel.md)     | Read and write Excel sheets as DataTables                  |
 | [parquet](parquet.md) | Apache Parquet file support with streaming                 |
 | [arrowipc](arrowipc.md) | Arrow IPC file / Feather V2 schema inspection and batch reading |
 
@@ -139,7 +140,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
 | Calculate new columns from existing data  | [CCL](CCL.md)                   |
 | Run a column reduction on a GPU           | [accel](accel.md)              |
-| Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
+| Read/write CSV or Excel files             | [csvxl](csvxl.md), [excel](excel.md) |
 | Perform statistical tests                 | [stats](stats.md)               |
 | Create static charts for reports          | [gplot](gplot.md)               |
 | Create interactive web charts             | [plot](plot.md)                 |

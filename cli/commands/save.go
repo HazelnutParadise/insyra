@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/excel"
 	"github.com/HazelnutParadise/insyra/parquet"
 )
 
@@ -98,13 +99,13 @@ func saveExcel(table *insyra.DataTable, path string, opts fileSaveOptions) error
 	if opts.BOMSet {
 		return fmt.Errorf("save excel: 'bom' only applies to CSV files")
 	}
-	err := table.ToExcel(path, insyra.ExcelWriteOptions{
-		Sheet:                 opts.Sheet,
-		SetColNamesToFirstRow: opts.Headers,
-		SetRowNamesToFirstCol: opts.RowNames,
-		IfSheetExists:         opts.IfExists,
+	err := excel.Write(table, path, excel.WriteOptions{
+		Sheet:         opts.Sheet,
+		NoHeaderRow:   !opts.Headers,
+		HasRowNames:   opts.RowNames,
+		IfSheetExists: opts.IfExists,
 	})
-	if errors.Is(err, insyra.ErrSheetExists) {
+	if errors.Is(err, excel.ErrSheetExists) {
 		if !opts.SheetSet {
 			// No name was given, so a new sheet may be what was meant.
 			return fmt.Errorf("save excel: %w; add \"sheet <name>\" to save it as a new sheet, or \"if-exists replace\" to overwrite that sheet (the other sheets are kept)", err)
@@ -125,7 +126,7 @@ type fileSaveOptions struct {
 	BOMSet      bool
 	Sheet       string
 	SheetSet    bool
-	IfExists    insyra.SheetExistsPolicy
+	IfExists    excel.SheetExistsPolicy
 	IfExistsSet bool
 }
 
@@ -191,9 +192,9 @@ func parseFileSaveOptions(args []string) (fileSaveOptions, error) {
 			}
 			switch strings.ToLower(v) {
 			case "fail":
-				opts.IfExists = insyra.SheetExistsFail
+				opts.IfExists = excel.SheetExistsFail
 			case "replace":
-				opts.IfExists = insyra.SheetExistsReplace
+				opts.IfExists = excel.SheetExistsReplace
 			default:
 				return opts, fmt.Errorf("save: invalid if-exists %q (expected fail|replace)", v)
 			}

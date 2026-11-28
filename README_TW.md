@@ -446,6 +446,7 @@ dl := insyra.NewDataList(prices) // 每個價格一格
 | **[plot](/Docs/plot.md)** | 封裝 [go-echarts](https://github.com/go-echarts/go-echarts) 的資料視覺化。 |
 | **[gplot](/Docs/gplot.md)** | 基於 [gonum/plot](https://github.com/gonum/plot) 的靜態圖，快速、免 Chrome、支援函數繪圖。 |
 | **[csvxl](/Docs/csvxl.md)** | 處理 Excel 與 CSV 檔案（例如 CSV 轉 Excel）。 |
+| **[excel](/Docs/excel.md)** | 把 Excel 工作表讀成 `DataTable`，或把 `DataTable` 寫成工作表；獨立於核心之外，不需要 Excel 的程式不會把它編進去。 |
 | **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
 | **[arrowipc](/Docs/arrowipc.md)** | 唯讀 Arrow IPC file／Feather V2 結構檢查，支援可取消的 DataTable 分批讀取。 |
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |

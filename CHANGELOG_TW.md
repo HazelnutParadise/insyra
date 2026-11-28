@@ -35,6 +35,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：新增 Excel 365 的名字 `REGEXTEST`。`REGEX_MATCH` 棄用，會警告一次，0.4 移除，請改用 `REGEXTEST`。
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
 - `insyra.Name("price")` 把欄位選擇器標成欄名而不是 Excel 式欄位索引，與 0.4 的規則相同。`arrowipc.ReadOptions.Columns` 使用它；這條線上其他的選擇器不變。`isr.Name` 現在回傳同一個型別（`isr.NameSelector` 是 `insyra.NameSelector` 的別名），與 0.4 相同，兩者在 `isr` 和 `arrowipc` 都能用。
+- `ReadExcelSheet`、`ReadExcel`、`DataTable.ToExcel`、`DataTable.WriteExcel`、`ExcelWriteOptions`、`SheetExistsPolicy`、`SheetExistsFail`、`SheetExistsReplace` 與 `ErrSheetExists` 標為棄用，請改用新的 [`excel`](Docs/excel.md) 套件，0.4 會移除。0.4 把 Excel 移出核心，不用 Excel 的程式不會再把 Excel 函式庫編進去。這些名稱目前照常可用（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
 
 ### CLI
 
@@ -111,6 +112,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 
 ### `py`
 - **BREAKING（行為）**：回傳的 polars DataFrame 裡的缺值，以及 pandas 的 `pd.NA`，現在會變成 `nil`。過去 polars 和 pandas 會先把整個 DataFrame 轉成 NumPy，而 NumPy 沒有可以缺值的整數，所以 polars 任何欄位的 null 都回成 `NaN`，和單獨回傳同一個 polars Series 時不一樣。polars 的 list、struct 欄位，以及含 `pd.NA` 的 pandas `boolean`、`string` 欄位、`Int64` Series，或旁邊還有其他欄位的 `Int64` 欄位，過去會讓 `insyra.Return` 出錯，struct 欄位則會變成一串浮點數，現在分別回成 slice、map 和 `nil`。polars 本身存的 NaN 值，以及 NumPy 型別 pandas 欄位裡的 NaN，仍然回成 NaN。原本用 `ClearNaNs` 清掉這些值的地方，改用 `ClearNils`。
+
+### `csvxl`
+- `SheetNames` 標為棄用，請改用 `excel.SheetNames`（同一個函式），0.4 會移除。
+
+### `excel`
+- 新增 `excel` 套件，可把活頁簿的工作表讀成 `DataTable`，也可把 `DataTable` 寫成工作表，API 與 0.4 相同。`excel.Read(path, opts...)` 與 `excel.ReadFrom(r, opts...)` 接受一個選用的 `ReadOptions`（`Sheet`，留空代表第一個工作表、`NoHeaderRow`、`HasRowNames`、`RawStrings`），沒設 `RawStrings` 時會像讀 CSV 一樣判斷欄位型別；`excel.Write(dt, path, opts...)` 與 `excel.WriteTo(dt, w, opts...)` 接受一個選用的 `WriteOptions`（`Sheet`、`NoHeaderRow`、`HasRowNames`、`IfSheetExists`），預設會寫出欄名列；`excel.SheetNames(path)` 列出活頁簿的工作表。給超過一個選項值或傳入 nil 表格都會回傳錯誤（[#453](https://github.com/HazelnutParadise/insyra/issues/453)）。
 
 ### `parquet`
 - 新增 `ExplainFilterWithCCL` 與 `ExplainApplyCCL`：只看檔案的中繼資料和式子，就能知道 `FilterWithCCL` 和 `ApplyCCL` 的每一句會怎麼跑，包括是一批批處理還是要把整欄載進記憶體、原因是什麼、會讀哪些欄、留哪些欄、要讀幾遍檔案，以及留在記憶體的欄大約多大。`CCLPlan` 有 `String()` 與 `Show()`（[#415](https://github.com/HazelnutParadise/insyra/issues/415)）。
