@@ -60,6 +60,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - `nn.MatMul` 與 `Gemm` 在空輸入推算出的輸出尺寸無法配置時回傳錯誤，不再 panic；預設、rounded 與批次 MatMul 也不再走訪巨大的空維度或配置批次位移陣列。合法空張量與既有數值結果不變，包含 Gemm 的 alpha 與 bias 行為。
 
 ### `stats`
+- 新增 `CronbachAlpha(dt, items, opts...)`，計算量表的內部一致性：原始與標準化 alpha、平均題間相關，以及每一題的平均數、標準差、題目與其他題總分的相關（SPSS 的 Corrected Item-Total Correlation、psych 的 `r.drop`）和刪題後 alpha。有缺值的列會整列排除，反向題用 `CronbachAlphaOptions.ReverseScored` 指定，在完整資料上結果與 R 的 `psych::alpha` 一致（[#734](https://github.com/HazelnutParadise/insyra/issues/734)）。
 
 - `stats.Autocorrelation(series, maxLag)` 估計第 1 到 `maxLag` 階的自相關，結果與 R 的 `acf` 一致，並提供白噪音檢定與對異質變異穩健的檢定（Lo 與 MacKinlay 1988），適合波動會變動的序列，例如日報酬。每一階還附上第 1 階到該階的 Ljung-Box 統計量 `Q`，與 R 的 `Box.test` 一致，以及穩健版本 `QRobust`，也就是各階穩健統計量的平方和（Lobato、Nankervis 與 Savin 2001），並有卡方 p 值 `PQ` 與 `PQRobust`（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
 - `stats.RunsTest(series, opts...)` 檢定漲跌順序是否隨機（Wald-Wolfowitz）：計算高於與低於切點（預設 0）的連數，回傳期望連數、`Z` 與 p 值（[#499](https://github.com/HazelnutParadise/insyra/issues/499)）。
