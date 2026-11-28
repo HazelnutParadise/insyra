@@ -214,3 +214,68 @@ func TestCronbachAlphaRefusals(t *testing.T) {
 		}
 	}
 }
+
+// The review measured items x and 6 - x, whose total never varies, giving an
+// alpha of -Inf with a nil error, and three ipsative items one of -1.8e16.
+func TestCronbachAlphaRefusesATotalWithNoVariance(t *testing.T) {
+	x := []any{1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 4.0}
+	y := make([]any, len(x))
+	for i, v := range x {
+		y[i] = 6 - v.(float64)
+	}
+	dt := insyra.NewDataTable(insyra.NewDataList(x...).SetName("x"), insyra.NewDataList(y...).SetName("y"))
+	if _, err := stats.CronbachAlpha(dt, nil); err == nil || !strings.Contains(err.Error(), "total score") {
+		t.Errorf("got %v, want an error saying the total score has no variance", err)
+	}
+	r := rand.New(rand.NewSource(8))
+	a, b, c := make([]any, 50), make([]any, 50), make([]any, 50)
+	for i := range a {
+		p, q := float64(r.Intn(5)), float64(r.Intn(4))
+		a[i], b[i], c[i] = p, q, 9-p-q
+	}
+	ipsative := insyra.NewDataTable(insyra.NewDataList(a...).SetName("a"), insyra.NewDataList(b...).SetName("b"), insyra.NewDataList(c...).SetName("c"))
+	if _, err := stats.CronbachAlpha(ipsative, nil); err == nil || !strings.Contains(err.Error(), "total score") {
+		t.Errorf("ipsative items: got %v", err)
+	}
+}
+
+// Values whose squares overflow gave NaN statistics with a nil error.
+func TestCronbachAlphaRefusesANonFiniteResult(t *testing.T) {
+	rows := likertScale(30, 3, 9)
+	for i := range rows {
+		for j := range rows[i] {
+			rows[i][j] *= 1e200
+		}
+	}
+	if res, err := stats.CronbachAlpha(tableOfRows(rows, "a", "b", "c"), nil); err == nil {
+		t.Errorf("got alpha %v and no error", res.Alpha)
+	}
+}
+
+// A string that is a number is still a text cell, and the error quotes it so
+// it does not read as a number.
+func TestCronbachAlphaQuotesATextCell(t *testing.T) {
+	dt := insyra.NewDataTable(insyra.NewDataList("1", "2", "3").SetName("a"), insyra.NewDataList(1.0, 2.0, 4.0).SetName("b"))
+	if _, err := stats.CronbachAlpha(dt, nil); err == nil || !strings.Contains(err.Error(), `"1"`) {
+		t.Errorf("got %v, want the cell quoted", err)
+	}
+}
+
+// On data with missing answers the rows used are psych's complete cases.
+func TestCronbachAlphaMatchesPsychOnCompleteCases(t *testing.T) {
+	requireRTools(t)
+	rows := likertScale(100, 4, 10)
+	dt := tableOfRows(rows, "a", "b", "c", "d")
+	dt.UpdateElement(3, "B", math.NaN())
+	dt.UpdateElement(40, "D", math.NaN())
+	got, err := stats.CronbachAlpha(dt, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := append(append([][]float64{}, rows[:3]...), rows[4:40]...)
+	complete = append(complete, rows[41:]...)
+	rb := runRBaseline(t, "cronbach_alpha", map[string]any{"rows": complete, "reverse": []int{}})
+	if got.N != 98 || got.RowsDropped != 2 || !closeTo(got.Alpha, baselineFloat(t, rb, "raw_alpha")) {
+		t.Errorf("N %d, dropped %d, alpha %v, psych %v", got.N, got.RowsDropped, got.Alpha, baselineFloat(t, rb, "raw_alpha"))
+	}
+}
