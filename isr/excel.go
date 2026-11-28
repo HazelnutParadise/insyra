@@ -1,12 +1,12 @@
 package isr
 
-import "github.com/HazelnutParadise/insyra"
+import "github.com/HazelnutParadise/insyra/excel"
 
 // Excel represents a sheet in an Excel file: a source for DT.From and a
 // target for (*DataTable).To.
 type Excel struct {
 	FilePath   string
-	SheetName  string // the sheet to read or write; writing defaults to "Sheet1"
+	SheetName  string // the sheet to read or write; reading defaults to the first sheet, writing to "Sheet1"
 	InputOpts  Excel_inOpts
 	OutputOpts Excel_outOpts
 }
@@ -18,7 +18,7 @@ type Excel_inOpts struct {
 }
 
 type Excel_outOpts struct {
-	NoHeaderRow   bool                     // leave out the row of column names
-	HasRowNames   bool                     // write the row names as the first column
-	IfSheetExists insyra.SheetExistsPolicy // zero value refuses to overwrite an existing sheet
+	NoHeaderRow   bool                    // leave out the row of column names
+	HasRowNames   bool                    // write the row names as the first column
+	IfSheetExists excel.SheetExistsPolicy // zero value refuses to overwrite an existing sheet
 }

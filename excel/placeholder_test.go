@@ -1,4 +1,4 @@
-package insyra
+package excel
 
 import (
 	"path/filepath"
@@ -9,7 +9,7 @@ import (
 
 // A workbook whose only sheet is named like Replace's placeholder used to keep
 // its old cells, because the placeholder and the sheet shared a name.
-func TestToExcelReplacesAWorkbooksOnlySheetNamedLikeThePlaceholder(t *testing.T) {
+func TestWriteReplacesAWorkbooksOnlySheetNamedLikeThePlaceholder(t *testing.T) {
 	const name = "__insyra_placeholder__"
 	path := filepath.Join(t.TempDir(), "w.xlsx")
 	f := excelize.NewFile()
@@ -30,7 +30,7 @@ func TestToExcelReplacesAWorkbooksOnlySheetNamedLikeThePlaceholder(t *testing.T)
 	_ = f.Close()
 
 	dt := excelTestTable("new")
-	if err := dt.ToExcel(path, ExcelWriteOptions{Sheet: name, IfSheetExists: SheetExistsReplace}); err != nil {
+	if err := Write(dt, path, WriteOptions{Sheet: name, IfSheetExists: SheetExistsReplace}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := excelize.OpenFile(path)

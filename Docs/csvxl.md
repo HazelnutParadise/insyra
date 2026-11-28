@@ -103,7 +103,7 @@ Each CSV is read in full before its sheet is created. When a CSV cannot be read,
 func AppendCSVToExcel(sheets []SheetFromCSV, existingFile string, csvEncoding ...string) error
 ```
 
-**Description:** Appends CSV files as new sheets, one per element of `sheets`, named as for `CSVToExcel`. Two elements that name the same sheet are an error before any file is read, and the workbook is not rewritten. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written, in the same way `DataTable.ToExcel` replaces a sheet. What the workbook records about the sheet stays: its position among the sheets, whether it is hidden, and which sheet is active. Names and formulas elsewhere in the workbook are kept, including those that refer to it. The widths of its visible columns and its view (zoom, gridlines, frozen or split panes) carry over. Nothing else stored in the old sheet survives: its cells and formulas, hidden rows and columns, row heights, comments, hyperlinks and merged ranges all go, and so do the names defined for that sheet alone. The sheet name is matched without regard to case and the replaced sheet takes the name as given, so appending to `TARGET` renames a sheet called `Target`. This works even when it is the workbook's only sheet.
+**Description:** Appends CSV files as new sheets, one per element of `sheets`, named as for `CSVToExcel`. Two elements that name the same sheet are an error before any file is read, and the workbook is not rewritten. An existing sheet with the same name is replaced by a fresh sheet before the CSV is written, in the same way `excel.Write` replaces a sheet. What the workbook records about the sheet stays: its position among the sheets, whether it is hidden, and which sheet is active. Names and formulas elsewhere in the workbook are kept, including those that refer to it. The widths of its visible columns and its view (zoom, gridlines, frozen or split panes) carry over. Nothing else stored in the old sheet survives: its cells and formulas, hidden rows and columns, row heights, comments, hyperlinks and merged ranges all go, and so do the names defined for that sheet alone. The sheet name is matched without regard to case and the replaced sheet takes the name as given, so appending to `TARGET` renames a sheet called `Target`. This works even when it is the workbook's only sheet.
 
 Each CSV is read in full before its sheet is replaced, so a CSV that cannot be read leaves the existing sheet of that name as it was. The other files are still appended, and the error lists the files that failed in the same form as `CSVToExcel`. When every file fails, the workbook file is not rewritten.
 
@@ -129,7 +129,7 @@ type ExcelToCSVOptions struct {
 }
 ```
 
-Each sheet becomes `<outputDir>/<sheet>.csv`, or the file `FileNames` gives it, named as described in [File names](#file-names). A file name is chosen by the sheet's name, never by its position, so you do not need to know the order of the sheets in the workbook; `SheetNames` lists them. A `FileNames` key that is not among the sheets converted is an error naming the sheets that are, so a misspelt sheet name is not silently ignored.
+Each sheet becomes `<outputDir>/<sheet>.csv`, or the file `FileNames` gives it, named as described in [File names](#file-names). A file name is chosen by the sheet's name, never by its position, so you do not need to know the order of the sheets in the workbook; `excel.SheetNames` lists them. A `FileNames` key that is not among the sheets converted is an error naming the sheets that are, so a misspelt sheet name is not silently ignored.
 
 Every file name is checked before the first CSV is written, so a refused name leaves no partial output. Two sheets that would be written to one file are an error, compared without regard to case because the file systems of macOS and Windows do not tell `Same.csv` from `same.csv`; this includes a `FileNames` value equal to another sheet's default name. A name containing `/` or `\`, or one that would not be a file directly inside `outputDir`, is rejected with an error, because sheet names come from the workbook and a `FileNames` value comes from the caller, and either could otherwise escape `outputDir`. A sheet named `.` or `..` is an ordinary name and becomes `..csv` or `...csv`. Each CSV is read fully from the sheet first and written through a temporary file, so a failing sheet never truncates an existing CSV.
 
@@ -197,20 +197,7 @@ Every file name is checked across all the workbooks before the first CSV is writ
 
 ### `SheetNames`
 
-```go
-func SheetNames(excelFile string) ([]string, error)
-```
-
-**Description:** Returns the names of the workbook's sheets in workbook order, for choosing `Sheets` and `FileNames`.
-
-**Parameters:**
-
-- `excelFile`: File path to use. Type: `string`.
-
-**Returns:**
-
-- `[]string`: The sheet names.
-- `error`: Error when the workbook cannot be opened.
+`csvxl.SheetNames` was removed. Use `excel.SheetNames(path)` from the [`excel` package](excel.md#sheetnames), which lists a workbook's sheets in workbook order.
 
 ### `ReadCSVToString`
 

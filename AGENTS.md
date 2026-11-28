@@ -341,7 +341,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-10-20] — `excelize` pinned to an untagged commit for two advisories
-- **Where**: `go.mod`, `github.com/xuri/excelize/v2`, reached through `ReadExcel`, `ReadExcelSheet`, `DataTable.WriteExcel` and `csvxl.AppendCSVToExcel`
+- **Where**: `go.mod`, `github.com/xuri/excelize/v2`, reached through `excel.Read`, `excel.ReadFrom`, `excel.Write`, `excel.WriteTo` and `csvxl.AppendCSVToExcel`
 - **What**: v2.11.0, the newest tag, is inside GO-2026-6689 (a panic and memory exhaustion from an unbounded CFB stream allocation) and GO-2026-6688 (mutually referencing array formulas recurse until the stack overflows); govulncheck traces both to these four functions, and the Vulnerability Scan job went red on every branch. The fixes are on the module's `master` and in no tag, so `go.mod` names the commit `v2.11.1-0.20261020033641-611b222fd8f7`. `govulncheck ./...` reports 0 affected vulnerabilities with it, `go.mod`'s `go` directive is unchanged, and the root and `csvxl` tests pass.
 - **Suggestion**: move to the next tagged release (v2.11.1 or later) as soon as it exists and drop this entry. Until then the dependency refresh before a release must not step back to v2.11.0.
 - **Status**: pending (a pseudo-version is a decision for the owner: it trades a tagged release for a fix)
@@ -433,7 +433,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-30] — on Windows, a write racing another write to the same path can fail with `Access is denied.`
-- **Where**: the `os.Rename(tmpPath, path)` in `internal/utils/atomic_file.go` that every atomic writer shares (`parquet.Write`, `lpgen.GenerateLPFile`, `ToCSV`, `ToJSON`, `ToExcel`)
+- **Where**: the `os.Rename(tmpPath, path)` in `internal/utils/atomic_file.go` that every atomic writer shares (`parquet.Write`, `lpgen.GenerateLPFile`, `ToCSV`, `ToJSON`, `excel.Write`)
 - **What**: when two goroutines rename their temporary files onto the same target at once, Windows can refuse one rename. It showed on the Windows leg of CI twice on 2026-09-30 (run 36614147428 on d4d9ba98, and the run on 86822acd), as `rename …\.shared.parquet.<n>.tmp …\shared.parquet: Access is denied.`, from `TestConcurrentWritesToOnePathDoNotMix`, which then required every `Write` to succeed. The refused write returns that error and removes its temporary file, and the file at the path is the other writer's whole table, so nothing is lost or mixed. 3d0e62dc made the test ask for that instead: each writer lands at least one file, the final file is one writer's whole table and no temporary file is left.
 - **Suggestion**: if two writers racing for one path should both succeed on Windows, retry the rename a few times on `ERROR_ACCESS_DENIED` and `ERROR_SHARING_VIOLATION` in `internal/utils`, which covers every atomic writer. Otherwise leave it: the caller already gets an error it can retry.
 - **Status**: pending
@@ -517,7 +517,7 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Status**: pending
 
 ### [2026-09-28] — a rebuilt sheet leaves its old comments, drawing and table parts in the file
-- **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCSVToExcel` and `DataTable.ToExcel` with `SheetExistsReplace`
+- **Where**: `internal/excelsheet/replace.go` `Replace`, through excelize's `DeleteSheet`; reached by `csvxl.AppendCSVToExcel` and `excel.Write` with `SheetExistsReplace`
 - **What**: `DeleteSheet` removes the worksheet and its relationships but not the parts they pointed to. Measured on 2026-09-28: after replacing a sheet that had a comment and a table, `xl/comments1.xml`, `xl/drawings/vmlDrawing1.vml` and `xl/tables/table1.xml` are still in the saved file and in `[Content_Types].xml`, referenced by nothing, so the old comment text is still inside the file; excelize also refuses a new table under the old table's name (`the same name table already exists`). Not checked in Excel or LibreOffice, neither of which was available. `dev` records the same follow-up.
 - **Suggestion**: open such a file in Excel and LibreOffice first. If either complains, or if leaving the old comment text in the file matters, remove the parts the old sheet's relationships pointed to before deleting it.
 - **Status**: pending

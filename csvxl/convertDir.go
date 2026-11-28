@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/excelsheet"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -72,7 +72,7 @@ func ExcelDirToCSV(dir string, outputDir string, options ...ExcelToCSVOptions) e
 
 // planExcelFileCSVs returns where each selected sheet of one workbook goes.
 func planExcelFileCSVs(excelFile, outputDir string, opts ExcelToCSVOptions) ([]csvTarget, error) {
-	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
+	f, err := excelize.OpenFile(excelFile, excelsheet.Options())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}
@@ -97,7 +97,7 @@ func planExcelFileCSVs(excelFile, outputDir string, opts ExcelToCSVOptions) ([]c
 // writeExcelFileCSVs writes the planned sheets of one workbook and closes the
 // workbook before returning, on every path.
 func writeExcelFileCSVs(excelFile, outputDir string, targets []csvTarget, allowFormulas bool) error {
-	f, err := excelize.OpenFile(excelFile, insyra.ExcelReadOptions())
+	f, err := excelize.OpenFile(excelFile, excelsheet.Options())
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %w", excelFile, err)
 	}

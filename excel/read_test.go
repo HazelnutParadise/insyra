@@ -1,4 +1,4 @@
-package insyra
+package excel
 
 import (
 	"bytes"
@@ -32,10 +32,10 @@ func writeInferWorkbook(t *testing.T, path string) {
 	}
 }
 
-func TestReadExcelSheetInfersColumnTypes(t *testing.T) {
+func TestReadInfersColumnTypes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "infer.xlsx")
 	writeInferWorkbook(t, path)
-	dt, err := ReadExcelSheet(path, "Sheet1", false, true)
+	dt, err := Read(path, ReadOptions{Sheet: "Sheet1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,29 +64,29 @@ func TestReadExcelSheetInfersColumnTypes(t *testing.T) {
 	}
 }
 
-func TestReadExcelSheetRawStringsKeepsText(t *testing.T) {
+func TestReadRawStringsKeepsText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "raw.xlsx")
 	writeInferWorkbook(t, path)
-	dt, err := ReadExcelSheet(path, "Sheet1", false, true, true)
+	dt, err := Read(path, ReadOptions{Sheet: "Sheet1", RawStrings: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := dt.GetColByName("id").Data(); got[0] != "1" {
 		t.Errorf("id = %#v, want text", got)
 	}
-	explicit, err := ReadExcelSheet(path, "Sheet1", false, true, false)
+	explicit, err := Read(path, ReadOptions{Sheet: "Sheet1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := explicit.GetColByName("id").Data(); got[0] != int64(1) {
 		t.Errorf("rawStrings false: id = %#v, want int64", got)
 	}
-	if _, err := ReadExcelSheet(path, "Sheet1", false, true, true, false); err == nil || !strings.Contains(err.Error(), "rawStrings") {
-		t.Errorf("two rawStrings values: err = %v", err)
+	if _, err := Read(path, ReadOptions{}, ReadOptions{RawStrings: true}); err == nil || !strings.Contains(err.Error(), "ReadOptions") {
+		t.Errorf("two ReadOptions: err = %v", err)
 	}
 }
 
-func TestReadExcelInfersLikeReadExcelSheet(t *testing.T) {
+func TestReadFromInfersLikeRead(t *testing.T) {
 	f := excelize.NewFile()
 	defer func() { _ = f.Close() }()
 	if err := f.SetSheetRow("Sheet1", "A1", &[]any{"n"}); err != nil {
@@ -100,14 +100,14 @@ func TestReadExcelInfersLikeReadExcelSheet(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := buf.Bytes()
-	dt, err := ReadExcel(bytes.NewReader(content), "Sheet1", false, true)
+	dt, err := ReadFrom(bytes.NewReader(content), ReadOptions{Sheet: "Sheet1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := dt.GetColByName("n").Data(); got[0] != int64(7) {
 		t.Errorf("n = %#v, want int64", got)
 	}
-	raw, err := ReadExcel(bytes.NewReader(content), "Sheet1", false, true, true)
+	raw, err := ReadFrom(bytes.NewReader(content), ReadOptions{Sheet: "Sheet1", RawStrings: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestReadExcelInfersLikeReadExcelSheet(t *testing.T) {
 func TestCountOnAColumnReadFromExcel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "count.xlsx")
 	writeInferWorkbook(t, path)
-	dt, err := ReadExcelSheet(path, "Sheet1", false, true)
+	dt, err := Read(path, ReadOptions{Sheet: "Sheet1"})
 	if err != nil {
 		t.Fatal(err)
 	}

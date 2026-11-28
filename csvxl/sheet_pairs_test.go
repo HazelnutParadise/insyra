@@ -181,16 +181,3 @@ func TestExcelDirToCSVRefusesTwoWorkbooksForOneFile(t *testing.T) {
 		t.Errorf("nothing should be written, got %v", got)
 	}
 }
-
-func TestSheetNamesListsTheSheetsInOrder(t *testing.T) {
-	got, err := SheetNames(sheetBook(t, "Q3", "Q1", "Q2"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, []string{"Q3", "Q1", "Q2"}) {
-		t.Errorf("SheetNames = %v", got)
-	}
-	if _, err := SheetNames(filepath.Join(t.TempDir(), "missing.xlsx")); err == nil || !strings.Contains(err.Error(), "missing.xlsx") {
-		t.Errorf("a missing workbook: got %v", err)
-	}
-}

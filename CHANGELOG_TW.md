@@ -144,6 +144,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：新增 `INT(x)`、`ROUNDUP(x, n)`、`ROUNDDOWN(x, n)`，行為跟 Excel 一樣。`ROUNDUP` 往離 0 遠的方向，`ROUNDDOWN` 往靠近 0 的方向，`INT` 跟 `FLOOR` 結果相同。
 - **BREAKING**：CCL 的 `REGEX_MATCH` 改名為 Excel 365 用的 `REGEXTEST`，公式用舊名字會得到錯誤，並指出新名字。
 - CCL：`CEIL`、`FLOOR` 可以指定正數倍數：`CEIL(12, 5)` 是 15，`FLOOR(12, 5)` 是 10。`AVERAGE`、`POWER`、`CEILING`、`REPT` 等 CCL 用其他名字的 Excel 函式，錯誤訊息會指出該寫哪個名字。
+- **BREAKING**：Excel 的讀寫從根套件搬到新的 [`excel`](Docs/excel.md) 套件，只用核心套件的程式不會再把 Excel 函式庫編進去（在 linux/amd64 上，只呼叫 `insyra.NewDataList(1, 2).Sum()` 的程式從 10.17 MB 降到 6.68 MB）。`insyra.ReadExcelSheet`、`insyra.ReadExcel`、`DataTable.ToExcel`、`DataTable.WriteExcel`、`ExcelWriteOptions`、`SheetExistsPolicy`、`SheetExistsFail`、`SheetExistsReplace`、`ErrSheetExists` 與 `ExcelReadOptions` 已從 `insyra` 移除，請改用 `excel.Read`、`excel.ReadFrom`、`excel.Write`、`excel.WriteTo`、`excel.WriteOptions`、`excel.SheetExistsPolicy`、`excel.SheetExistsFail`、`excel.SheetExistsReplace` 與 `excel.ErrSheetExists`。`isr`、CLI 與 `engine/dsl` 已改為引用 `excel`；CLI 行為不變，`isr` 沒指定工作表時改讀第一個工作表。
 
 ### CLI
 - **BREAKING**：環境名稱只能包含字母、數字、`.`、`_`、`-`，必須以字母或數字開頭，且不得含 `..`。v0.3.3 只拒絕會解析到環境目錄之外的名稱，其他名稱都接受，包括含空格、非 ASCII 字元或 `/` 的名稱。以這類名稱建立的環境，CLI 已無法再開啟、改名或刪除，請手動到環境目錄（預設為 `~/.insyra/envs/`）把資料夾改名。
@@ -328,8 +329,11 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - **BREAKING**：`CSVToExcel` 與 `AppendCSVToExcel` 改收 `[]SheetFromCSV`，每個元素同時寫出 CSV（`Path`）和它的工作表（`Sheet`，留空就用檔名），不再用兩個切片靠位置對應。`ExcelToCSV(excelFile, outputDir, opts...)` 拿掉 `csvNames`，改用 `ExcelToCSVOptions.FileNames` 以工作表名稱對應 CSV 檔名，寫了不是要轉換的工作表就回傳錯誤。原本用切片時，少給的名稱會默默改用檔名，多給的會被丟掉，`ExcelToCSV` 沒給 `Sheets` 時還得照活頁簿裡的工作表順序對應。已棄用的 `CsvToExcel`、`AppendCsvToExcel` 與 `ExcelToCsv` 維持原本的參數。
 - 兩個 CSV 寫到同一張工作表、兩張工作表寫到同一個 CSV，都會在寫出任何東西前回傳錯誤，比對時不分大小寫。原本兩個 CSV 都叫 `Sales` 時，只會產生一張混著兩個檔案資料列的工作表；兩張工作表給同一個 CSV 檔名時，只留下第二張。`ExcelDirToCSV` 也會擋下不同活頁簿撞名的情況（`a.xlsx` 的 `b_c` 和 `a_b.xlsx` 的 `c` 原本都會寫成 `a_b_c.csv`），並拒收 `FileNames`。
 - `ExcelToCSV` 會在寫第一個 CSV 前檢查完所有檔名，被拒絕的檔名不會留下寫到一半的輸出。
-- 新增 `SheetNames`，依活頁簿順序列出工作表名稱。
 - `AppendCSVToExcel` 與 `ToExcel` 搭配 `SheetExistsReplace` 取代工作表時，會保留舊工作表的欄寬與檢視（縮放、格線、凍結或分割窗格），這些在 v0.3.4 會一起消失。隱藏的列與欄、合併範圍、列高、註解、超連結與該工作表自己的定義名稱仍會移除，因為它們會藏住或錯置新資料（[#401](https://github.com/HazelnutParadise/insyra/issues/401)）。
+- **BREAKING**：移除 `csvxl.SheetNames`，請改用 `excel.SheetNames(path)`。`csvxl` 的其他部分不變。
+
+### `excel`
+- 新增 `excel` 套件，可把活頁簿的工作表讀成 `DataTable`，也可把 `DataTable` 寫成工作表。`excel.Read(path, opts...)` 與 `excel.ReadFrom(r, opts...)` 接受一個選用的 `ReadOptions`（`Sheet`，留空代表第一個工作表、`NoHeaderRow`、`HasRowNames`、`RawStrings`）；`excel.Write(dt, path, opts...)` 與 `excel.WriteTo(dt, w, opts...)` 接受一個選用的 `WriteOptions`（`Sheet`、`NoHeaderRow`、`HasRowNames`、`IfSheetExists`）；`excel.SheetNames(path)` 列出活頁簿的工作表。給超過一個選項值會回傳錯誤，所有函式都不接受 context，因為 excelize 無法中途中斷。讀寫規則與被取代的函式相同。
 
 ### `parquet`
 - `Write` 先寫入暫存檔再 rename 到目標位置，中途失敗時不會留下截斷的 Parquet 檔。
@@ -403,6 +407,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - isr 的表與 list 型別匯出為 `isr.DataTable` 和 `isr.DataList`，自己的函式可以直接收它們：`func f(t *isr.DataTable)`。`isr.DT`、`isr.DL` 和 `t.DataTable` 的寫法都不變。
 - 新增 `(*isr.DataTable).To`，把表寫成 `isr.CSV`、`isr.JSON` 或 `isr.Excel`，是 `DT.From` 的輸出版，失敗時回傳 error。傳入沒有 `FilePath` 的 `*isr.CSV` 或 `*isr.JSON` 時，結果會填進 `String` 或 `Bytes`。原本沒有任何函式讀取的 `CSV.OutputOpts` 開始生效，並新增 `IncludeBOM`；`JSON` 和 `Excel` 也新增 `OutputOpts`（`UseColIndex`；`NoHeaderRow`、`HasRowNames`、`IfSheetExists`）。JSON 預設用欄名當 key，設定 `UseColIndex` 後改用欄位索引。
 - `DT.From` 與 `Push` 遇到 `Row` 或 `Col` 有不能用的 key 時，錯誤訊息會指出型別和那個 key：`DT.From(isr.Row{"A": 1, 3.5: 2})` 原本回報 `got unexpected type map[interface {}]interface {}`，現在是 `isr.Row keys must be all column indices (string or int) or all Name selectors; key 3.5 has type float64`。
+- `DT.From(isr.Excel{FilePath: p})` 沒給 `SheetName` 時改讀活頁簿的第一個工作表，和 `excel.Read` 一樣；原本會因為沒指定工作表而失敗。
 
 ### `gplot`
 - **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。

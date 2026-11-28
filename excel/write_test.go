@@ -1,4 +1,4 @@
-package insyra
+package excel
 
 import (
 	"bytes"
@@ -9,14 +9,16 @@ import (
 	"testing"
 
 	"github.com/xuri/excelize/v2"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 // A save touches only its own sheet: a workbook's other sheets can never be
 // lost to it, and an existing sheet is replaced only when asked.
 
-func excelTestTable(values ...any) *DataTable {
-	col := NewDataList(values...).SetName("v")
-	return NewDataTable(col)
+func excelTestTable(values ...any) *insyra.DataTable {
+	col := insyra.NewDataList(values...).SetName("v")
+	return insyra.NewDataTable(col)
 }
 
 // workbookWith writes a workbook whose sheets each hold one cell naming it.
@@ -65,9 +67,9 @@ func sheetList(t *testing.T, path string) []string {
 	return f.GetSheetList()
 }
 
-func TestToExcelCreatesAWorkbook(t *testing.T) {
+func TestWriteCreatesAWorkbook(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.xlsx")
-	if err := excelTestTable(1, 2).ToExcel(path, ExcelWriteOptions{}); err != nil {
+	if err := Write(excelTestTable(1, 2), path, WriteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sheetList(t, path); !reflect.DeepEqual(got, []string{"Sheet1"}) {
@@ -78,10 +80,10 @@ func TestToExcelCreatesAWorkbook(t *testing.T) {
 	}
 }
 
-func TestToExcelAddsASheetAndLeavesTheOthers(t *testing.T) {
+func TestWriteAddsASheetAndLeavesTheOthers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "2023", "2024")
-	if err := excelTestTable(7).ToExcel(path, ExcelWriteOptions{Sheet: "2025"}); err != nil {
+	if err := Write(excelTestTable(7), path, WriteOptions{Sheet: "2025"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sheetList(t, path); !reflect.DeepEqual(got, []string{"2023", "2024", "2025"}) {
@@ -94,14 +96,14 @@ func TestToExcelAddsASheetAndLeavesTheOthers(t *testing.T) {
 	}
 }
 
-func TestToExcelRefusesAnExistingSheetByDefault(t *testing.T) {
+func TestWriteRefusesAnExistingSheetByDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "2023", "2024")
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = excelTestTable(7).ToExcel(path, ExcelWriteOptions{Sheet: "2024"})
+	err = Write(excelTestTable(7), path, WriteOptions{Sheet: "2024"})
 	if !errors.Is(err, ErrSheetExists) {
 		t.Fatalf("got %v, want ErrSheetExists", err)
 	}
@@ -114,10 +116,10 @@ func TestToExcelRefusesAnExistingSheetByDefault(t *testing.T) {
 	}
 }
 
-func TestToExcelReplacesASheetInPlace(t *testing.T) {
+func TestWriteReplacesASheetInPlace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "2023", "2024", "2025")
-	err := excelTestTable(9).ToExcel(path, ExcelWriteOptions{Sheet: "2024", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
+	err := Write(excelTestTable(9), path, WriteOptions{Sheet: "2024", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,10 +136,10 @@ func TestToExcelReplacesASheetInPlace(t *testing.T) {
 	}
 }
 
-func TestToExcelReplacesTheOnlySheet(t *testing.T) {
+func TestWriteReplacesTheOnlySheet(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "only")
-	err := excelTestTable(3).ToExcel(path, ExcelWriteOptions{Sheet: "only", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
+	err := Write(excelTestTable(3), path, WriteOptions{Sheet: "only", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,12 +151,12 @@ func TestToExcelReplacesTheOnlySheet(t *testing.T) {
 	}
 }
 
-func TestWriteExcelWritesAWorkbook(t *testing.T) {
+func TestWriteToWritesAWorkbook(t *testing.T) {
 	var buf bytes.Buffer
-	if err := excelTestTable(4, 5).WriteExcel(&buf, ExcelWriteOptions{Sheet: "data"}); err != nil {
+	if err := WriteTo(excelTestTable(4, 5), &buf, WriteOptions{Sheet: "data"}); err != nil {
 		t.Fatal(err)
 	}
-	dt, err := ReadExcel(bytes.NewReader(buf.Bytes()), "data", false, true)
+	dt, err := ReadFrom(bytes.NewReader(buf.Bytes()), ReadOptions{Sheet: "data"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,10 +167,10 @@ func TestWriteExcelWritesAWorkbook(t *testing.T) {
 
 // Sheet names match without regard to case, as in Excel, so "sheet1" is the
 // sheet "Sheet1" and is refused like it.
-func TestToExcelMatchesSheetNamesWithoutCase(t *testing.T) {
+func TestWriteMatchesSheetNamesWithoutCase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "Data")
-	err := excelTestTable(1).ToExcel(path, ExcelWriteOptions{Sheet: "data"})
+	err := Write(excelTestTable(1), path, WriteOptions{Sheet: "data"})
 	if !errors.Is(err, ErrSheetExists) {
 		t.Fatalf("got %v, want ErrSheetExists", err)
 	}
@@ -176,7 +178,7 @@ func TestToExcelMatchesSheetNamesWithoutCase(t *testing.T) {
 
 // A formula on another sheet names the replaced sheet by its name, so it
 // reads the new contents rather than breaking.
-func TestToExcelReplaceKeepsFormulasOnOtherSheetsWorking(t *testing.T) {
+func TestWriteReplaceKeepsFormulasOnOtherSheetsWorking(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	workbookWith(t, path, "data", "summary")
 	f, err := excelize.OpenFile(path)
@@ -191,7 +193,7 @@ func TestToExcelReplaceKeepsFormulasOnOtherSheetsWorking(t *testing.T) {
 	}
 	_ = f.Close()
 
-	err = excelTestTable(10, 20, 30).ToExcel(path, ExcelWriteOptions{Sheet: "data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
+	err = Write(excelTestTable(10, 20, 30), path, WriteOptions{Sheet: "data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,14 +214,14 @@ func TestToExcelReplaceKeepsFormulasOnOtherSheetsWorking(t *testing.T) {
 	}
 }
 
-func TestToExcelWritesRowNamesBesideAHeader(t *testing.T) {
+func TestWriteWritesRowNamesBesideAHeader(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "names.xlsx")
-	dt := NewDataTable(
-		NewDataList(1, 2).SetName("a"),
-		NewDataList("x").SetName("b"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1, 2).SetName("a"),
+		insyra.NewDataList("x").SetName("b"),
 	)
 	dt.SetRowNameByIndex(0, "r1")
-	err := dt.ToExcel(path, ExcelWriteOptions{HasRowNames: true})
+	err := Write(dt, path, WriteOptions{HasRowNames: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,9 +232,9 @@ func TestToExcelWritesRowNamesBesideAHeader(t *testing.T) {
 }
 
 // A path Excel cannot hold is refused before anything is written.
-func TestToExcelRefusesANonWorkbookExtension(t *testing.T) {
+func TestWriteRefusesANonWorkbookExtension(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "out.csv")
-	if err := excelTestTable(1).ToExcel(path, ExcelWriteOptions{}); err == nil {
+	if err := Write(excelTestTable(1), path, WriteOptions{}); err == nil {
 		t.Fatal("saving a workbook as .csv succeeded")
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -242,7 +244,7 @@ func TestToExcelRefusesANonWorkbookExtension(t *testing.T) {
 
 // Replacing a sheet is a delete and a rebuild, so a name defined for a later
 // sheet and the state of the sheet itself must both survive it.
-func TestToExcelReplaceKeepsOtherSheetsNamesAndHiddenState(t *testing.T) {
+func TestWriteReplaceKeepsOtherSheetsNamesAndHiddenState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "book.xlsx")
 	f := excelize.NewFile()
 	if err := f.SetSheetName("Sheet1", "First"); err != nil {
@@ -271,7 +273,7 @@ func TestToExcelReplaceKeepsOtherSheetsNamesAndHiddenState(t *testing.T) {
 	}
 	_ = f.Close()
 
-	err := excelTestTable(9).ToExcel(path, ExcelWriteOptions{Sheet: "Data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
+	err := Write(excelTestTable(9), path, WriteOptions{Sheet: "Data", IfSheetExists: SheetExistsReplace, NoHeaderRow: true})
 	if err != nil {
 		t.Fatal(err)
 	}
