@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/sqlio"
 )
 
 // runLoadSQL implements the `load sql ...` subcommand.
@@ -32,8 +33,7 @@ func runLoadSQL(ctx *ExecContext, args []string) (*insyra.DataTable, error) {
 		if err != nil {
 			return nil, err
 		}
-		opts.Query = args[2]
-		return insyra.ReadSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), "", opts)
+		return sqlio.Query(context.Background(), conn.DB, sqlio.Dialect(conn.Dialect), args[2], opts)
 	}
 
 	table := args[1]
@@ -41,11 +41,11 @@ func runLoadSQL(ctx *ExecContext, args []string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadSQLContext(context.Background(), conn.DB, insyra.SQLDialect(conn.Dialect), table, opts)
+	return sqlio.Read(context.Background(), conn.DB, sqlio.Dialect(conn.Dialect), table, opts)
 }
 
-func parseLoadSQLTableOptions(args []string) (insyra.ReadSQLOptions, error) {
-	var opts insyra.ReadSQLOptions
+func parseLoadSQLTableOptions(args []string) (sqlio.ReadOptions, error) {
+	var opts sqlio.ReadOptions
 	for i := 0; i < len(args); {
 		key := strings.ToLower(args[i])
 		next := func() (string, error) {
@@ -110,7 +110,7 @@ func parseLoadSQLTableOptions(args []string) (insyra.ReadSQLOptions, error) {
 			if err != nil {
 				return opts, err
 			}
-			opts.IndexCol = v
+			opts.RowNameColumn = v
 			i += 2
 		case "parsedates":
 			v, err := next()
@@ -129,8 +129,8 @@ func parseLoadSQLTableOptions(args []string) (insyra.ReadSQLOptions, error) {
 // parseLoadSQLQueryOptions accepts only `params <v1> <v2> ...` after
 // `load sql <conn> query "<SQL>"`. Everything from `params` onwards is consumed
 // as positional bind values, parsed with parseLiteral.
-func parseLoadSQLQueryOptions(args []string) (insyra.ReadSQLOptions, error) {
-	var opts insyra.ReadSQLOptions
+func parseLoadSQLQueryOptions(args []string) (sqlio.QueryOptions, error) {
+	var opts sqlio.QueryOptions
 	if len(args) == 0 {
 		return opts, nil
 	}

@@ -1,8 +1,9 @@
-package insyra
+package sqlio
 
 import (
 	"context"
 	"database/sql"
+	"github.com/HazelnutParadise/insyra"
 	"strings"
 	"testing"
 	"time"
@@ -37,12 +38,12 @@ func TestToSQL_TransactionRollbackOnInsertError(t *testing.T) {
 	// 建立表格，並加上 CHECK constraint 使插入會失敗
 	execSQL(t, db, "CREATE TABLE test_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, value INTEGER CHECK(value > 0));")
 
-	// 建立 DataTable，帶入違反約束的值
-	valueCol := NewDataList(-1).SetName("value")
-	dt := NewDataTable(valueCol)
+	// 建立 insyra.DataTable，帶入違反約束的值
+	valueCol := insyra.NewDataList(-1).SetName("value")
+	dt := insyra.NewDataTable(valueCol)
 
 	// 使用 AppendIfExists，因為表格已存在
-	err := dt.ToSQL(db, SQLDialectSQLite, "test_tx", ToSQLOptions{IfExists: SQLActionIfTableExistsAppend})
+	err := Write(context.Background(), dt, db, SQLite, "test_tx", WriteOptions{IfTableExists: TableExistsAppend})
 	require.Error(t, err, "expected ToSQL to return an error due to CHECK constraint violation")
 
 	var cnt int64
@@ -58,10 +59,10 @@ func TestToSQL_BatchInsertAcrossBatches(t *testing.T) {
 	for i := range total {
 		values[i] = i + 1
 	}
-	dt := NewDataTable(NewDataList(values...).SetName("n"))
+	dt := insyra.NewDataTable(insyra.NewDataList(values...).SetName("n"))
 
 	// BatchSize 500 ⇒ 3 batched INSERTs.
-	err := dt.ToSQL(db, SQLDialectSQLite, "nums", ToSQLOptions{BatchSize: 500})
+	err := Write(context.Background(), dt, db, SQLite, "nums", WriteOptions{BatchSize: 500})
 	require.NoError(t, err)
 
 	var cnt int64
@@ -80,11 +81,11 @@ func TestToSQL_AppendModeAddsMissingColumnOnce(t *testing.T) {
 	// Pre-create table with only column "a".
 	execSQL(t, db, "CREATE TABLE evolving (a INTEGER);")
 
-	dt := NewDataTable(
-		NewDataList(1, 2, 3).SetName("a"),
-		NewDataList("x", "y", "z").SetName("b"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1, 2, 3).SetName("a"),
+		insyra.NewDataList("x", "y", "z").SetName("b"),
 	)
-	err := dt.ToSQL(db, SQLDialectSQLite, "evolving", ToSQLOptions{IfExists: SQLActionIfTableExistsAppend})
+	err := Write(context.Background(), dt, db, SQLite, "evolving", WriteOptions{IfTableExists: TableExistsAppend})
 	require.NoError(t, err)
 
 	// Column "b" should have been added once and populated.
@@ -104,11 +105,11 @@ func TestToSQL_AppendModeAddsMissingColumnOnce(t *testing.T) {
 func TestToSQL_AllNilColumnFallsBackToText(t *testing.T) {
 	db := newTestSQLite(t)
 
-	dt := NewDataTable(
-		NewDataList(1, 2).SetName("a"),
-		NewDataList(nil, nil).SetName("b"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1, 2).SetName("a"),
+		insyra.NewDataList(nil, nil).SetName("b"),
 	)
-	require.NoError(t, dt.ToSQL(db, SQLDialectSQLite, "with_nil"))
+	require.NoError(t, Write(context.Background(), dt, db, SQLite, "with_nil"))
 
 	// Verify the column "b" was created with TEXT-ish affinity by reading PRAGMA.
 	rows, err := db.Query("PRAGMA table_info(with_nil)")
@@ -133,15 +134,15 @@ func TestToSQL_TimeAndBytesInference(t *testing.T) {
 	db := newTestSQLite(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
-	// NewDataList flattens slice arguments, so use Append to keep the []byte
+	// insyra.NewDataList flattens slice arguments, so use Append to keep the []byte
 	// as a single cell rather than three uint8s.
-	blobCol := NewDataList().SetName("blob")
+	blobCol := insyra.NewDataList().SetName("blob")
 	blobCol.Append([]byte{0x01, 0x02, 0x03})
-	dt := NewDataTable(
-		NewDataList(now).SetName("ts"),
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(now).SetName("ts"),
 		blobCol,
 	)
-	require.NoError(t, dt.ToSQL(db, SQLDialectSQLite, "typed"))
+	require.NoError(t, Write(context.Background(), dt, db, SQLite, "typed"))
 
 	rows, err := db.Query("PRAGMA table_info(typed)")
 	require.NoError(t, err)
@@ -168,19 +169,19 @@ func TestToSQLContext_RespectsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-cancelled
 
-	dt := NewDataTable(NewDataList(1, 2, 3).SetName("n"))
-	err := dt.ToSQLContext(ctx, db, SQLDialectSQLite, "x")
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2, 3).SetName("n"))
+	err := Write(ctx, dt, db, SQLite, "x")
 	require.Error(t, err)
 }
 
 func TestToSQL_RowNamesPersistsRowNameColumn(t *testing.T) {
 	db := newTestSQLite(t)
 
-	dt := NewDataTable(NewDataList(10, 20).SetName("v"))
+	dt := insyra.NewDataTable(insyra.NewDataList(10, 20).SetName("v"))
 	dt.SetRowNameByIndex(0, "alpha")
 	dt.SetRowNameByIndex(1, "beta")
 
-	require.NoError(t, dt.ToSQL(db, SQLDialectSQLite, "with_rn", ToSQLOptions{HasRowNames: true}))
+	require.NoError(t, Write(context.Background(), dt, db, SQLite, "with_rn", WriteOptions{HasRowNames: true}))
 
 	type row struct {
 		Name  string
@@ -204,21 +205,21 @@ func TestToSQL_RowNamesPersistsRowNameColumn(t *testing.T) {
 // ordinary table name with a space could not be appended to.
 func TestAppendToTableWithSpaceInName(t *testing.T) {
 	restoreConfig(t)
-	Config.SetLogLevel(LogLevelFatal)
+	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
 
 	db := newTestSQLite(t)
 
 	const table = "my table"
-	dt := NewDataTable(NewDataList(1, 2).SetName("value"))
-	if err := dt.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
+	dt := insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("value"))
+	if err := Write(context.Background(), dt, db, SQLite, table, WriteOptions{IfTableExists: TableExistsFail}); err != nil {
 		t.Fatalf("creating %q failed: %v", table, err)
 	}
-	more := NewDataTable(NewDataList(3).SetName("value"))
-	if err := more.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
+	more := insyra.NewDataTable(insyra.NewDataList(3).SetName("value"))
+	if err := Write(context.Background(), more, db, SQLite, table, WriteOptions{IfTableExists: TableExistsAppend}); err != nil {
 		t.Fatalf("appending to %q failed: %v", table, err)
 	}
 
-	read, err := ReadSQL(db, SQLDialectSQLite, table)
+	read, err := Read(context.Background(), db, SQLite, table)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,20 +231,35 @@ func TestAppendToTableWithSpaceInName(t *testing.T) {
 // A name containing a quote must not break out of the identifier either.
 func TestAppendToTableWithQuoteInName(t *testing.T) {
 	restoreConfig(t)
-	Config.SetLogLevel(LogLevelFatal)
+	insyra.Config.SetLogLevel(insyra.LogLevelFatal)
 
 	db := newTestSQLite(t)
 
 	const table = `we"ird`
-	dt := NewDataTable(NewDataList(1).SetName("value"))
-	if err := dt.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsFail}); err != nil {
+	dt := insyra.NewDataTable(insyra.NewDataList(1).SetName("value"))
+	if err := Write(context.Background(), dt, db, SQLite, table, WriteOptions{IfTableExists: TableExistsFail}); err != nil {
 		t.Fatalf("creating %q failed: %v", table, err)
 	}
-	more := NewDataTable(NewDataList(2).SetName("value"))
-	if err := more.ToSQL(db, SQLDialectSQLite, table, ToSQLOptions{IfExists: SQLActionIfTableExistsAppend}); err != nil {
+	more := insyra.NewDataTable(insyra.NewDataList(2).SetName("value"))
+	if err := Write(context.Background(), more, db, SQLite, table, WriteOptions{IfTableExists: TableExistsAppend}); err != nil {
 		if strings.Contains(err.Error(), "syntax") {
 			t.Fatalf("identifier was not quoted: %v", err)
 		}
 		t.Fatalf("appending to %q failed: %v", table, err)
 	}
+}
+
+// restoreConfig puts back the settings a test changed.
+func restoreConfig(t *testing.T) {
+	t.Helper()
+	level := insyra.Config.GetLogLevel()
+	panicOnError := insyra.Config.GetPanicOnError()
+	colored := insyra.Config.GetUseColoredOutput()
+	hook := insyra.Config.GetDefaultErrHandlingFunc()
+	t.Cleanup(func() {
+		insyra.Config.SetLogLevel(level)
+		insyra.Config.SetPanicOnError(panicOnError)
+		insyra.Config.SetUseColoredOutput(colored)
+		insyra.Config.SetDefaultErrHandlingFunc(hook)
+	})
 }

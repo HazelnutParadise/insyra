@@ -1,7 +1,6 @@
 package insyra
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -102,27 +101,6 @@ func TestExtraOptionalValuesAreRefused(t *testing.T) {
 			dt := table()
 			dt.GroupBy(Name("g")).Describe(DescribeOptions{}, DescribeOptions{})
 			return recorded(dt.Err())
-		}},
-		{"ReadSQL", func() error {
-			db := newTestSQLite(t)
-			execSQL(t, db, "CREATE TABLE t (a INTEGER)")
-			execSQL(t, db, "INSERT INTO t VALUES (1)")
-			_, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{}, ReadSQLOptions{})
-			return err
-		}},
-		{"ReadSQLStream", func() error {
-			db := newTestSQLite(t)
-			execSQL(t, db, "CREATE TABLE t (a INTEGER)")
-			execSQL(t, db, "INSERT INTO t VALUES (1)")
-			for _, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "t", ReadSQLOptions{}, ReadSQLOptions{}) {
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}},
-		{"ToSQL", func() error {
-			return table().ToSQL(newTestSQLite(t), SQLDialectSQLite, "out", ToSQLOptions{}, ToSQLOptions{})
 		}},
 		{"ReadCSV_File", func() error {
 			path := filepath.Join(t.TempDir(), "a.csv")

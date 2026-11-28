@@ -1,4 +1,4 @@
-package insyra
+package sqlio
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestReadSQL_BasicSelect(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (a INTEGER, b TEXT);")
 	execSQL(t, db, "INSERT INTO t (a, b) VALUES (1, 'one'), (2, 'two');")
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "t")
+	dt, err := Read(context.Background(), db, SQLite, "t")
 	require.NoError(t, err)
 	require.NotNil(t, dt)
 
@@ -28,7 +28,7 @@ func TestReadSQL_ColumnsSubset(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (a INTEGER, b TEXT, c REAL);")
 	execSQL(t, db, "INSERT INTO t (a, b, c) VALUES (1, 'one', 1.5);")
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{Columns: []string{"a", "c"}})
+	dt, err := Read(context.Background(), db, SQLite, "t", ReadOptions{Columns: []string{"a", "c"}})
 	require.NoError(t, err)
 	_, cols := dt.Size()
 	require.Equal(t, 2, cols)
@@ -41,8 +41,7 @@ func TestReadSQL_ParamsBoundToCustomQuery(t *testing.T) {
 		execSQL(t, db, "INSERT INTO t (n) VALUES (?);", v)
 	}
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "", ReadSQLOptions{
-		Query:  "SELECT n FROM t WHERE n > ? AND n < ? ORDER BY n",
+	dt, err := Query(context.Background(), db, SQLite, "SELECT n FROM t WHERE n > ? AND n < ? ORDER BY n", QueryOptions{
 		Params: []any{1, 5},
 	})
 	require.NoError(t, err)
@@ -55,7 +54,7 @@ func TestReadSQL_IndexColAliasesRowName(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (label TEXT, n INTEGER);")
 	execSQL(t, db, "INSERT INTO t (label, n) VALUES ('alpha', 1), ('beta', 2);")
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{IndexCol: "label"})
+	dt, err := Read(context.Background(), db, SQLite, "t", ReadOptions{RowNameColumn: "label"})
 	require.NoError(t, err)
 
 	// IndexCol "label" becomes the row name; only "n" should remain as a column.
@@ -75,7 +74,7 @@ func TestReadSQL_ParseDatesParsesIsoString(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (when_at TEXT);")
 	execSQL(t, db, "INSERT INTO t (when_at) VALUES ('2024-06-01T12:34:56Z');")
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{ParseDates: []string{"when_at"}})
+	dt, err := Read(context.Background(), db, SQLite, "t", ReadOptions{ParseDates: []string{"when_at"}})
 	require.NoError(t, err)
 
 	dl := dt.GetColByName("when_at")
@@ -93,7 +92,7 @@ func TestReadSQL_DTypeForcesType(t *testing.T) {
 	execSQL(t, db, "CREATE TABLE t (n TEXT);")
 	execSQL(t, db, "INSERT INTO t (n) VALUES ('42'), ('100');")
 
-	dt, err := ReadSQL(db, SQLDialectSQLite, "t", ReadSQLOptions{
+	dt, err := Read(context.Background(), db, SQLite, "t", ReadOptions{
 		DType: map[string]reflect.Type{"n": reflect.TypeFor[int64]()},
 	})
 	require.NoError(t, err)
@@ -112,7 +111,7 @@ func TestReadSQLContext_RespectsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := ReadSQLContext(ctx, db, SQLDialectSQLite, "t")
+	_, err := Read(ctx, db, SQLite, "t")
 	require.Error(t, err)
 }
 
@@ -125,7 +124,7 @@ func TestReadSQLStream_EmitsChunks(t *testing.T) {
 
 	totalRows := 0
 	chunkCount := 0
-	for table, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 10}) {
+	for table, err := range Stream(context.Background(), db, SQLite, "big", 10) {
 		require.NoError(t, err)
 		require.NotNil(t, table)
 		r, _ := table.Size()
@@ -150,7 +149,7 @@ func TestReadSQLStream_StopsOnCancelledContext(t *testing.T) {
 	// and the loop ends there.
 	chunks := 0
 	var last error
-	for _, err := range ReadSQLStream(ctx, db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 5}) {
+	for _, err := range Stream(ctx, db, SQLite, "big", 5) {
 		if err != nil {
 			last = err
 			continue
@@ -171,7 +170,7 @@ func TestReadSQLStream_BreakingEarlyReleasesTheConnection(t *testing.T) {
 	sqlDB := db
 
 	// No cancel anywhere: leaving the loop must be enough.
-	for _, err := range ReadSQLStream(context.Background(), db, SQLDialectSQLite, "big", ReadSQLOptions{ChunkSize: 5}) {
+	for _, err := range Stream(context.Background(), db, SQLite, "big", 5) {
 		require.NoError(t, err)
 		break
 	}
@@ -180,7 +179,7 @@ func TestReadSQLStream_BreakingEarlyReleasesTheConnection(t *testing.T) {
 
 func TestReadSQLStream_NilDBIsOneFailure(t *testing.T) {
 	yields := 0
-	for table, err := range ReadSQLStream(context.Background(), nil, SQLDialectSQLite, "t") {
+	for table, err := range Stream(context.Background(), nil, SQLite, "t", 1000) {
 		yields++
 		require.Nil(t, table)
 		require.Error(t, err)

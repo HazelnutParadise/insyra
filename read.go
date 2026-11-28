@@ -640,6 +640,3 @@ func ReadJSON(data any) (*DataTable, error) {
 
 	return dt, nil
 }
-
-// SQL read helpers (ReadSQL, ReadSQLContext, ReadSQLStream) live in
-// datatable_from_sql.go.

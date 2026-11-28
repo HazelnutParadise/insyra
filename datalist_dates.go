@@ -1,18 +1,15 @@
 package insyra
 
-import "time"
+import (
+	"time"
+
+	"github.com/HazelnutParadise/insyra/internal/prep"
+)
 
 // dateParseLayouts are the time layouts DataList.ParseDates,
-// DataTable.ParseDatesCols and ReadSQLOptions.ParseDates try in order when the
+// DataTable.ParseDatesCols and sqlio.ReadOptions.ParseDates try in order when the
 // caller supplies no layouts of its own.
-var dateParseLayouts = []string{
-	time.RFC3339Nano,
-	time.RFC3339,
-	"2006-01-02 15:04:05.999999999",
-	"2006-01-02 15:04:05",
-	"2006-01-02T15:04:05",
-	"2006-01-02",
-}
+var dateParseLayouts = prep.DateParseLayouts
 
 // ParseDates converts string cells to time.Time in place and returns the
 // DataList so calls can be chained.
@@ -25,7 +22,7 @@ var dateParseLayouts = []string{
 // rather than half converted.
 //
 // With no layouts given, the defaults are the same ISO-style list
-// ReadSQLOptions.ParseDates uses. Passing layouts replaces that list entirely.
+// sqlio.ReadOptions.ParseDates uses. Passing layouts replaces that list entirely.
 func (dl *DataList) ParseDates(layouts ...string) *DataList {
 	use := effectiveDateLayouts(layouts)
 	dl.AtomicDo(func(dl *DataList) {
@@ -91,10 +88,5 @@ func parseDatesInPlace(data []any, layouts []string) {
 // parseTimeWithLayouts tries each layout in order, returning the first match
 // as a UTC instant.
 func parseTimeWithLayouts(s string, layouts []string) (time.Time, bool) {
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t.UTC(), true
-		}
-	}
-	return time.Time{}, false
+	return prep.ParseTimeWithLayouts(s, layouts)
 }

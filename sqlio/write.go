@@ -1,4 +1,4 @@
-package insyra
+package sqlio
 
 import (
 	"context"
@@ -12,82 +12,78 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
-// defaultBatchSize is the per-INSERT row count when ToSQLOptions.BatchSize is unset.
+// defaultBatchSize is the per-INSERT row count when WriteOptions.BatchSize is unset.
 const defaultBatchSize = 500
 
-type ToSQLOptions struct {
-	IfExists    SQLActionIfTableExists // SQLActionIfTableExistsFail (default), Replace, or Append
-	HasRowNames bool                   // write the row names as an extra column
-	ColumnTypes map[string]string      // 自訂型別
+// WriteOptions are the settings of Write. The zero value creates the table,
+// refuses one that is already there, writes no row names, infers each
+// column's type and inserts 500 rows per statement.
+type WriteOptions struct {
+	// IfTableExists says what happens when the table is already there:
+	// TableExistsFail (the default), TableExistsReplace or TableExistsAppend.
+	IfTableExists TableExistsPolicy
+	// HasRowNames writes the row names as a first column named row_name.
+	HasRowNames bool
+	// ColumnTypes sets the SQL type of the named columns, such as
+	// "VARCHAR(64)"; other columns get a type inferred from their values.
+	ColumnTypes map[string]string
 
-	// Schema is an optional schema (PostgreSQL) or database (MySQL) name to
-	// prefix the table reference with. SQLite ignores this. The caller is
-	// responsible for any required quoting; the value is passed through as-is.
+	// Schema is a schema (PostgreSQL) or database (MySQL) to write the table
+	// into. SQLite ignores it.
 	Schema string
 
-	// BatchSize controls how many rows are bundled into a single multi-row
-	// INSERT. Zero falls back to defaultBatchSize. Note that the total number
-	// of bind parameters per batch (BatchSize * column-count) must stay below
-	// the driver limit (PostgreSQL/MySQL: 65535).
+	// BatchSize is how many rows one INSERT statement carries; 0 means 500.
+	// BatchSize times the number of columns must stay below the driver's
+	// limit on bound values (65535 on PostgreSQL and MySQL).
 	BatchSize int
 }
 
-type SQLActionIfTableExists int
+// TableExistsPolicy says what Write does with a table that is already there.
+type TableExistsPolicy int
 
 const (
-	// SQLActionIfTableExistsFail returns an error when the table exists.
-	SQLActionIfTableExistsFail SQLActionIfTableExists = iota
-	// SQLActionIfTableExistsReplace replaces the table with one holding only
-	// the new rows. A write that fails leaves the old table as it was: on
-	// SQLite and PostgreSQL the drop and recreate run in one transaction, and
-	// on MySQL, whose DDL commits on its own, the rows go into a staging
-	// table that RENAME TABLE puts in place. On MySQL a table that another
-	// table references by foreign key is refused.
-	SQLActionIfTableExistsReplace
-	// SQLActionIfTableExistsAppend keeps the table, adds any missing columns
-	// and appends the rows.
-	SQLActionIfTableExistsAppend
+	// TableExistsFail refuses to write and leaves the table as it was. It is
+	// the zero value.
+	TableExistsFail TableExistsPolicy = iota
+	// TableExistsReplace replaces the table with one holding only the new
+	// rows. A write that fails leaves the old table as it was: on SQLite and
+	// PostgreSQL the drop and recreate run in one transaction, and on MySQL,
+	// whose DDL commits on its own, the rows go into a staging table that
+	// RENAME TABLE puts in place. On MySQL a table that another table
+	// references by foreign key is refused.
+	TableExistsReplace
+	// TableExistsAppend keeps the table, adds any missing columns and appends
+	// the rows.
+	TableExistsAppend
 )
 
-// ToSQL writes the DataTable to the given database table.
-//
-// db is any database/sql connection; a gorm user passes the one gorm.DB()
-// returns. dialect names the database behind it and has no default.
-//
-// Equivalent to ToSQLContext(context.Background(), db, dialect, tableName, options...).
-func (dt *DataTable) ToSQL(db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error {
-	return dt.ToSQLContext(context.Background(), db, dialect, tableName, options...)
-}
-
-// ToSQLContext is the context-aware variant of ToSQL.
-//
-// All database calls run under ctx, so callers can cancel long writes.
-// Rows are inserted with batched multi-value INSERT statements; the batch size
-// is controlled by options[0].BatchSize.
-func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDialect, tableName string, options ...ToSQLOptions) error {
-	if dt == nil {
-		return fmt.Errorf("dt is nil")
+// Write writes dt to a database table. db is any database/sql connection; a
+// gorm user passes the one gorm.DB() returns. dialect names the database
+// behind it and has no default. Every statement runs under ctx, and the rows
+// go in batched multi-row INSERT statements. A nil or empty table is an
+// error. At most one WriteOptions may be given.
+func Write(ctx context.Context, dt insyra.IDataTable, db *sql.DB, dialect Dialect, table string, opts ...WriteOptions) error {
+	o, err := oneOption("WriteOptions", opts)
+	if err != nil {
+		return err
+	}
+	if insyra.IsNilTable(dt) {
+		return fmt.Errorf("the table is nil")
 	}
 	if db == nil {
 		return fmt.Errorf("db cannot be nil")
 	}
-	if err := checkSQLDialect(dialect); err != nil {
+	if err := checkDialect(dialect); err != nil {
 		return err
 	}
-
-	if msg := extraOptional("ToSQLOptions", len(options)); msg != "" {
-		return errors.New(msg)
-	}
-	var opts ToSQLOptions
-	if len(options) > 0 {
-		opts = options[0]
-	}
-	return dt.toSQL(ctx, db, dialect, tableName, opts, dialect == SQLDialectMySQL)
+	return write(ctx, dt, db, dialect, table, o, dialect == MySQL)
 }
 
-// toSQL writes the table with options already resolved. ddlCommits says the
+// write writes the table with options already resolved. ddlCommits says the
 // database commits every DDL statement at once, as MySQL does, so a CREATE,
 // DROP or ALTER inside a transaction cannot be rolled back. There a new or
 // replacing table is written under a staging name that a rename puts in
@@ -95,11 +91,11 @@ func (dt *DataTable) ToSQLContext(ctx context.Context, db *sql.DB, dialect SQLDi
 // SQLite and PostgreSQL run DDL inside a transaction, where a failed write
 // already undoes everything, and a rename would carry the views that read
 // the table over to the old copy.
-func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialect, tableName string, opts ToSQLOptions, ddlCommits bool) error {
+func write(ctx context.Context, dt insyra.IDataTable, db *sql.DB, sqlDialect Dialect, tableName string, opts WriteOptions, ddlCommits bool) error {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
-	cols, rows := dt.collectRowsForSQL(opts.HasRowNames)
+	cols, rows := collectRows(dt, opts.HasRowNames)
 	if err := nameUnnamedSQLColumns(cols, opts.HasRowNames); err != nil {
 		return err
 	}
@@ -109,7 +105,7 @@ func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialec
 
 	fullName := qualifiedTableName(opts.Schema, tableName)
 	dialect := string(sqlDialect)
-	if opts.IfExists == SQLActionIfTableExistsReplace && ddlCommits {
+	if opts.IfTableExists == TableExistsReplace && ddlCommits {
 		exists, err := tableExists(ctx, db, dialect, opts.Schema, tableName)
 		if err != nil {
 			return err
@@ -120,7 +116,7 @@ func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialec
 		// Nothing to replace, so the table is created. Should another session
 		// create it meanwhile, refuse rather than fall back to dropping it,
 		// which is what this path avoids.
-		opts.IfExists = SQLActionIfTableExistsFail
+		opts.IfTableExists = TableExistsFail
 	}
 	if ddlCommits {
 		return saveRowsWithCommittedDDL(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
@@ -128,11 +124,11 @@ func (dt *DataTable) toSQL(ctx context.Context, db *sql.DB, sqlDialect SQLDialec
 	return saveRowsToDB(ctx, db, dialect, fullName, tableName, opts.Schema, cols, rows, opts)
 }
 
-// collectRowsForSQL extracts the canonical column ordering and row values
-// from the DataTable. When includeRowName is true, the first column is
-// "row_name" populated from GetRowNameByIndex.
-func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows [][]any) {
-	dt.AtomicDo(func(dt *DataTable) {
+// collectRows takes the column names and the rows of dt in one consistent
+// snapshot. When includeRowName is true, the first column is "row_name",
+// holding each row's name or "" for a row without one.
+func collectRows(table insyra.IDataTable, includeRowName bool) (cols []string, rows [][]any) {
+	table.AtomicDo(func(dt *insyra.DataTable) {
 		numRow, numCol := dt.Size()
 		if numRow == 0 {
 			return
@@ -140,9 +136,7 @@ func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows
 		if includeRowName {
 			cols = append(cols, "row_name")
 		}
-		for j := range numCol {
-			cols = append(cols, dt.columns[j].GetName())
-		}
+		cols = append(cols, dt.ColNames()...)
 		rows = make([][]any, 0, numRow)
 		for i := range numRow {
 			row := make([]any, 0, len(cols))
@@ -182,7 +176,7 @@ func nameUnnamedSQLColumns(cols []string, hasRowNames bool) error {
 		if cols[i] != "" {
 			continue
 		}
-		letter, ok := ColNumberToIndex(i - first)
+		letter, ok := insyra.ColNumberToIndex(i - first)
 		if !ok {
 			return fmt.Errorf("column index %d has no name", i-first)
 		}
@@ -238,7 +232,7 @@ func validateSQLType(typ string) error {
 	return nil
 }
 
-func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts WriteOptions) error {
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
@@ -259,15 +253,15 @@ func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable
 		}
 
 		if exists {
-			switch opts.IfExists {
-			case SQLActionIfTableExistsFail:
+			switch opts.IfTableExists {
+			case TableExistsFail:
 				return fmt.Errorf("table %s already exists", fullName)
-			case SQLActionIfTableExistsReplace:
+			case TableExistsReplace:
 				if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedTable)); err != nil {
 					return err
 				}
 				exists = false
-			case SQLActionIfTableExistsAppend:
+			case TableExistsAppend:
 				// keep existing table
 			}
 		}
@@ -277,7 +271,7 @@ func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable
 			if _, err := tx.ExecContext(ctx, createSQL); err != nil {
 				return err
 			}
-		} else if opts.IfExists == SQLActionIfTableExistsAppend {
+		} else if opts.IfTableExists == TableExistsAppend {
 			// Hoist the schema check out of the per-row loop. Existing column
 			// names are fetched once; missing columns are added once.
 			existing, err := fetchTableColumns(ctx, tx, dialect, schema, plainTable)
@@ -301,7 +295,7 @@ func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable
 					if _, err := tx.ExecContext(ctx, alterSQL); err != nil {
 						return err
 					}
-					LogInfo("DataTable", "ToSQL", "Added column %s to table %s", c, fullName)
+					insyra.LogInfo("sqlio", "Write", "Added column %s to table %s", c, fullName)
 				}
 			}
 		}
@@ -316,7 +310,7 @@ func saveRowsToDB(ctx context.Context, db *sql.DB, dialect, fullName, plainTable
 // table another session creates meanwhile is refused, not overwritten. An
 // append adds its missing columns first, writes the rows in one transaction,
 // and drops the columns it added if the rows fail.
-func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts WriteOptions) error {
 	columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
 	if err != nil {
 		return err
@@ -328,7 +322,7 @@ func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName
 	if !exists {
 		return createThroughStagingTable(ctx, db, dialect, fullName, plainTable, schema, cols, rows, columnTypes, opts)
 	}
-	if opts.IfExists != SQLActionIfTableExistsAppend {
+	if opts.IfTableExists != TableExistsAppend {
 		return fmt.Errorf("table %s already exists", fullName)
 	}
 
@@ -380,7 +374,7 @@ func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName
 		return dropAdded(err)
 	}
 	for _, c := range added {
-		LogInfo("DataTable", "ToSQL", "Added column %s to table %s", c, fullName)
+		insyra.LogInfo("sqlio", "Write", "Added column %s to table %s", c, fullName)
 	}
 	return nil
 }
@@ -388,7 +382,7 @@ func saveRowsWithCommittedDDL(ctx context.Context, db *sql.DB, dialect, fullName
 // createThroughStagingTable creates a missing table without ever leaving an
 // incomplete one under its name: the rows go into a staging table, which a
 // rename then puts under the target's name.
-func createThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, columnTypes map[string]string, opts ToSQLOptions) error {
+func createThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, columnTypes map[string]string, opts WriteOptions) error {
 	suffix, err := stagingSuffix()
 	if err != nil {
 		return err
@@ -473,7 +467,7 @@ func runSQLCleanup(ctx context.Context, run func(ctx context.Context) error) err
 // resolveSQLColumnTypes gives every column its SQL type: the caller's
 // ColumnTypes first, otherwise one inferred from the column's first non-nil
 // value. Every type is checked against the safe character set.
-func resolveSQLColumnTypes(dialect string, cols []string, rows [][]any, opts ToSQLOptions) (map[string]string, error) {
+func resolveSQLColumnTypes(dialect string, cols []string, rows [][]any, opts WriteOptions) (map[string]string, error) {
 	columnTypes := make(map[string]string, len(cols))
 	if len(opts.ColumnTypes) > 0 {
 		maps.Copy(columnTypes, opts.ColumnTypes)
@@ -560,7 +554,7 @@ const stagingCleanupTimeout = 30 * time.Second
 // target's name and the old table under a backup name, which is then dropped.
 // A failure before the rename drops the staging table and leaves the target
 // untouched.
-func replaceThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+func replaceThroughStagingTable(ctx context.Context, db *sql.DB, dialect, fullName, plainTable, schema string, cols []string, rows [][]any, opts WriteOptions) error {
 	columnTypes, err := resolveSQLColumnTypes(dialect, cols, rows, opts)
 	if err != nil {
 		return err

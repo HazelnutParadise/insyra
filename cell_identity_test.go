@@ -1,39 +1,28 @@
 package insyra
 
 import (
-	"database/sql"
 	"fmt"
 	"math"
 	"strings"
 	"testing"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
-// A cell Go cannot compare used to crash the library. convertSQLValue keeps a
-// binary column as []byte on purpose, so reading a BLOB column and counting it
-// took the process down, and searching for a value plainly in the list
-// reported "not found".
+// A cell Go cannot compare used to crash the library. sqlio keeps a binary
+// column as []byte on purpose, so reading a BLOB column and counting it took
+// the process down, and searching for a value plainly in the list reported
+// "not found". sqlio's own test reads such a column from SQLite; this one
+// builds the same cells directly.
 
 type anyField struct{ X any }
 
 func blobTable(t *testing.T) *DataTable {
 	t.Helper()
-	sqlDB, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
+	payload := NewDataList()
+	for _, b := range [][]byte{{0x00, 0xff, 0x41}, {0x00, 0xff, 0x41}, {0x00, 0xff, 0x42}} {
+		payload.Append(b)
 	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	sqlDB.SetMaxOpenConns(1)
-	execSQL(t, sqlDB, `CREATE TABLE files (name TEXT, payload BLOB)`)
-	execSQL(t, sqlDB, `INSERT INTO files VALUES ('a', X'00FF41'), ('b', X'00FF41'), ('c', X'00FF42')`)
-
-	dt, err := ReadSQL(sqlDB, SQLDialectSQLite, "files")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return dt
+	return NewDataTable(NewDataList("a", "b", "c").SetName("name"), payload.SetName("payload"))
 }
 
 func TestBlobColumnCanBeCountedAndFound(t *testing.T) {

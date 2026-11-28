@@ -57,17 +57,3 @@ func (r ResampleFreq) String() string {
 	}
 	return fmt.Sprintf("ResampleFreq(%d)", int(r))
 }
-
-// String returns the constant name of v, or SQLActionIfTableExists(n) for a value that
-// is not one of the constants.
-func (s SQLActionIfTableExists) String() string {
-	switch s {
-	case SQLActionIfTableExistsFail:
-		return "SQLActionIfTableExistsFail"
-	case SQLActionIfTableExistsReplace:
-		return "SQLActionIfTableExistsReplace"
-	case SQLActionIfTableExistsAppend:
-		return "SQLActionIfTableExistsAppend"
-	}
-	return fmt.Sprintf("SQLActionIfTableExists(%d)", int(s))
-}
